@@ -26,15 +26,19 @@ class HomeViewModel : ViewModel() {
 
         viewModelScope.launch {
             try {
-                // Call the API
                 val response = ApiClient.api.getInvasions()
+                _invasions.value = response.invasions
                 Log.d(TAG, "API call successful. Data size: ${response.invasions.size}")
-
-                _invasions.value = response.invasions  // Access the invasions list from the response
             } catch (e: Exception) {
                 Log.e(TAG, "Error fetching invasions: ${e.message}", e)
                 _error.value = "Failed to fetch invasions: ${e.message}"
             }
         }
+    }
+
+    fun deleteInvasion(invasion: Invasion) {
+        val currentList = _invasions.value?.toMutableList() ?: mutableListOf()
+        currentList.remove(invasion)
+        _invasions.value = currentList
     }
 }

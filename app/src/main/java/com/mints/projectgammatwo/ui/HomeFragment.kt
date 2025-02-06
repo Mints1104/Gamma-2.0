@@ -11,7 +11,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
-import com.mints.projectgammatwo.recyclerviews.InvasionsAdapter
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
 
 class HomeFragment : Fragment() {
@@ -31,9 +30,11 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Initialize RecyclerView
+        // Initialize RecyclerView with the adapter that handles deletion
         val recyclerView = view.findViewById<RecyclerView>(R.id.invasionsRecyclerView)
-        adapter = InvasionsAdapter()
+        adapter = InvasionsAdapter { invasion ->
+            viewModel.deleteInvasion(invasion)
+        }
         recyclerView.adapter = adapter
         recyclerView.layoutManager = LinearLayoutManager(context)
 
