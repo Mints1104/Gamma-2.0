@@ -1,15 +1,18 @@
 package com.mints.projectgammatwo.viewmodels
 
+import android.app.Application
 import android.util.Log
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mints.projectgammatwo.data.ApiClient
+import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.Invasion
 import kotlinx.coroutines.launch
 
-class HomeViewModel : ViewModel() {
+class HomeViewModel(application: Application) : AndroidViewModel(application) {
+    private val filterPreferences = FilterPreferences(application)
 
     private val _invasions = MutableLiveData<List<Invasion>>()
     val invasions: LiveData<List<Invasion>> get() = _invasions
@@ -27,8 +30,15 @@ class HomeViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 val response = ApiClient.api.getInvasions()
-                _invasions.value = response.invasions
-                Log.d(TAG, "API call successful. Data size: ${response.invasions.size}")
+                val filteredAndSortedInvasions = response.invasions
+                    .filter { invasion ->
+                        invasion.character in filterPreferences.getEnabledCharacters()
+                    }
+                    .sortedBy { it.invasion_start }
+                    .reversed() // Most recent first
+
+                _invasions.value = filteredAndSortedInvasions
+                Log.d(TAG, "API call successful. Filtered data size: ${filteredAndSortedInvasions.size}")
             } catch (e: Exception) {
                 Log.e(TAG, "Error fetching invasions: ${e.message}", e)
                 _error.value = "Failed to fetch invasions: ${e.message}"
