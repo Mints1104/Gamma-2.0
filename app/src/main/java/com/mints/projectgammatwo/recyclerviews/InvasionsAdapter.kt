@@ -41,6 +41,7 @@ class InvasionsAdapter(
         private val characterNameText: TextView = itemView.findViewById(R.id.characterNameText)
         private val typeText: TextView = itemView.findViewById(R.id.typeText)
         private val coordinatesText: TextView = itemView.findViewById(R.id.coordinatesText)
+        private val locationNameText:TextView = itemView.findViewById(R.id.locationText)
         private val timeText: TextView = itemView.findViewById(R.id.timeText)
         private val teleportButton: Button = itemView.findViewById(R.id.teleportButton)
         private val copyButton: Button = itemView.findViewById(R.id.copyButton)
@@ -52,7 +53,7 @@ class InvasionsAdapter(
             typeText.text = invasion.typeDescription
             val coordsFormatted = String.format("%.5f, %.5f", invasion.lat, invasion.lng)
             coordinatesText.text = "Location: $coordsFormatted"
-
+            locationNameText.text = "Pokestop: ${invasion.name}"
             val startTime = dateFormat.format(Date(invasion.invasion_start * 1000))
             val endTime = dateFormat.format(Date(invasion.invasion_end * 1000))
             timeText.text = "Time: $startTime - $endTime"

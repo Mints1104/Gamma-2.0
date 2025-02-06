@@ -30,9 +30,19 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val response = ApiClient.api.getInvasions()
+                val enabledCharacters = filterPreferences.getEnabledCharacters()
+
                 val filteredAndSortedInvasions = response.invasions
+                    .map { invasion ->
+                        // Handle special cases for Kecleon and Showcase
+                        when (invasion.type) {
+                            8 -> invasion.copy(character = 1)
+                            9 -> invasion.copy(character = 0)
+                            else -> invasion
+                        }
+                    }
                     .filter { invasion ->
-                        invasion.character in filterPreferences.getEnabledCharacters()
+                        invasion.character in enabledCharacters
                     }
                     .sortedBy { it.invasion_start }
                     .reversed() // Most recent first
