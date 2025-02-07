@@ -4,12 +4,13 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.recyclerview.widget.RecyclerView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
 
@@ -44,15 +45,23 @@ class HomeFragment : Fragment() {
             viewModel.fetchInvasions()
         }
 
-        // Observe LiveData
+        // Observe invasions LiveData
         viewModel.invasions.observe(viewLifecycleOwner) { invasions ->
             adapter.submitList(invasions)
             swipeRefresh.isRefreshing = false
         }
 
+        // Observe error LiveData
         viewModel.error.observe(viewLifecycleOwner) { errorMessage ->
             Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
             swipeRefresh.isRefreshing = false
+        }
+
+        // Observe deletion counter LiveData.
+        // Ensure you have a TextView with ID "deletedCountText" in your fragment_home.xml layout.
+        val deletedCountTextView = view.findViewById<TextView>(R.id.deletedCountText)
+        viewModel.deletedCount.observe(viewLifecycleOwner) { count ->
+            deletedCountTextView.text = "Battled in last 24h: $count"
         }
 
         // Initial data fetch

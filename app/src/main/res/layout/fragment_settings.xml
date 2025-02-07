@@ -10,11 +10,66 @@
         android:orientation="vertical"
         android:padding="16dp">
 
+        <!-- Reset Buttons -->
+        <Button
+            android:id="@+id/resetVisitedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Reset Visited Invasions" />
+
+        <Button
+            android:id="@+id/resetFiltersButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Reset Filters to Default" />
+
+        <!-- Data Source Selection -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Select Data Sources:"
+            android:textStyle="bold" />
+
+        <CheckBox
+            android:id="@+id/checkbox_nyc"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="NYC"
+            android:checked="true" />
+
+        <CheckBox
+            android:id="@+id/checkbox_london"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="London" />
+
+        <CheckBox
+            android:id="@+id/checkbox_sg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Singapore" />
+
+        <CheckBox
+            android:id="@+id/checkbox_vancouver"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Vancouver" />
+
+        <CheckBox
+            android:id="@+id/checkbox_sydney"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Sydney" />
+
+        <!-- (Optional) Existing filters sections -->
         <LinearLayout
             android:id="@+id/characterFiltersLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical" />
+            android:orientation="vertical"
+            android:layout_marginTop="16dp" />
 
         <View
             android:layout_width="match_parent"
@@ -27,6 +82,16 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical" />
+
+        <!-- Version and attribution info -->
+        <TextView
+            android:id="@+id/versionInfoText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Gamma 2.0 by Mints&#10;Version: 0.02"
+            android:textAlignment="center"
+            android:textSize="14sp" />
 
     </LinearLayout>
 </ScrollView>

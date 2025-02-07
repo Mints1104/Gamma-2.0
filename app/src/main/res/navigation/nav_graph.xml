@@ -9,19 +9,17 @@
         android:id="@+id/homeFragment"
         android:name="com.mints.projectgammatwo.ui.HomeFragment"
         android:label="Rockets"
-        tools:layout="@layout/fragment_home">
-        <action
-            android:id="@+id/action_homeFragment_to_filterFragment"
-            app:destination="@id/filterFragment" />
-    </fragment>
+        tools:layout="@layout/fragment_home" />
 
     <fragment
         android:id="@+id/filterFragment"
         android:name="com.mints.projectgammatwo.ui.FilterFragment"
         android:label="Filter"
-        tools:layout="@layout/fragment_settings">
-        <action
-            android:id="@+id/action_filterFragment_to_homeFragment"
-            app:destination="@id/homeFragment" />
-    </fragment>
+        tools:layout="@layout/fragment_list" />
+
+    <fragment
+        android:id="@+id/settingsFragment"
+        android:name="com.mints.projectgammatwo.ui.SettingsFragment"
+        android:label="Settings"
+        tools:layout="@layout/fragment_settings" />
 </navigation>

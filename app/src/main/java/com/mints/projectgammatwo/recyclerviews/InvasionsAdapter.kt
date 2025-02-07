@@ -40,8 +40,9 @@ class InvasionsAdapter(
     ) : RecyclerView.ViewHolder(itemView) {
         private val characterNameText: TextView = itemView.findViewById(R.id.characterNameText)
         private val typeText: TextView = itemView.findViewById(R.id.typeText)
+        private val locationNameText: TextView = itemView.findViewById(R.id.locationText)
+        private val sourceText: TextView = itemView.findViewById(R.id.sourceText)  // New TextView for source
         private val coordinatesText: TextView = itemView.findViewById(R.id.coordinatesText)
-        private val locationNameText:TextView = itemView.findViewById(R.id.locationText)
         private val timeText: TextView = itemView.findViewById(R.id.timeText)
         private val teleportButton: Button = itemView.findViewById(R.id.teleportButton)
         private val copyButton: Button = itemView.findViewById(R.id.copyButton)
@@ -51,9 +52,13 @@ class InvasionsAdapter(
         fun bind(invasion: Invasion) {
             characterNameText.text = invasion.characterName
             typeText.text = invasion.typeDescription
+            locationNameText.text = "Pokestop: ${invasion.name}"
+
+            // Bind the source. (Assumes your Invasion data class has a "source" property.)
+            sourceText.text = "Source: ${invasion.source}"
+
             val coordsFormatted = String.format("%.5f, %.5f", invasion.lat, invasion.lng)
             coordinatesText.text = "Location: $coordsFormatted"
-            locationNameText.text = "Pokestop: ${invasion.name}"
             val startTime = dateFormat.format(Date(invasion.invasion_start * 1000))
             val endTime = dateFormat.format(Date(invasion.invasion_end * 1000))
             timeText.text = "Time: $startTime - $endTime"
@@ -63,6 +68,7 @@ class InvasionsAdapter(
                 val url = "https://ipogo.app/?coords=${invasion.lat},${invasion.lng}"
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                 itemView.context.startActivity(intent)
+                onDeleteInvasion(invasion)
             }
 
             // Copy button

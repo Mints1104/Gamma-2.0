@@ -3,7 +3,6 @@ package com.mints.projectgammatwo.data
 import android.content.Context
 import android.content.SharedPreferences
 
-
 class FilterPreferences(context: Context) {
 
     // Initialize SharedPreferences with a specific file name ("invasion_filters") and private access mode.
@@ -53,6 +52,17 @@ class FilterPreferences(context: Context) {
             ?.toSet()
         // If no set was saved (the result is null), use the default set of characters.
             ?: DataMappings.characterNamesMap.keys
+    }
+
+    /**
+     * Resets the filters to their default values.
+     *
+     * How it works:
+     * 1. Removes the stored set of enabled characters using the KEY_CHARACTERS key.
+     * 2. The next call to getEnabledCharacters() will return the default values.
+     */
+    fun resetToDefault() {
+        prefs.edit().remove(KEY_CHARACTERS).apply()
     }
 
     companion object {
