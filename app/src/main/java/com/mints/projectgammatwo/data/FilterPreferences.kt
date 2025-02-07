@@ -65,6 +65,14 @@ class FilterPreferences(context: Context) {
         prefs.edit().remove(KEY_CHARACTERS).apply()
     }
 
+    /**
+     * Wipes the invasion filter completely by clearing all stored filter values.
+     * This does not affect the data source settings.
+     */
+    fun wipeFilters() {
+        prefs.edit().putStringSet(KEY_CHARACTERS, emptySet()).apply()
+    }
+
     companion object {
         // Constant for the SharedPreferences file name.
         private const val PREF_NAME = "invasion_filters"

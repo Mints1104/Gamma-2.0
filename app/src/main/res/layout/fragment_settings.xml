@@ -24,6 +24,14 @@
             android:layout_marginTop="8dp"
             android:text="Reset Filters to Default" />
 
+        <!-- New Wipe Invasion Filters Button -->
+        <Button
+            android:id="@+id/wipeFiltersButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Wipe Invasion Filters" />
+
         <!-- Data Source Selection -->
         <TextView
             android:layout_width="wrap_content"
@@ -89,7 +97,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Gamma 2.0 by Mints&#10;Version: 0.02"
+            android:text="Gamma 2.0 by Mints&#10;Version: 0.03"
             android:textAlignment="center"
             android:textSize="14sp" />
 

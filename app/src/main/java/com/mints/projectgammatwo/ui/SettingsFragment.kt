@@ -1,4 +1,3 @@
-// SettingsFragment.kt
 package com.mints.projectgammatwo.ui
 
 import android.os.Bundle
@@ -16,6 +15,7 @@ class SettingsFragment : Fragment() {
 
     private lateinit var resetVisitedButton: Button
     private lateinit var resetFiltersButton: Button
+    private lateinit var wipeFiltersButton: Button  // New button for wiping invasion filters
     private lateinit var checkboxNYC: CheckBox
     private lateinit var checkboxLondon: CheckBox
     private lateinit var checkboxSG: CheckBox
@@ -37,6 +37,7 @@ class SettingsFragment : Fragment() {
 
         resetVisitedButton = view.findViewById(R.id.resetVisitedButton)
         resetFiltersButton = view.findViewById(R.id.resetFiltersButton)
+        wipeFiltersButton = view.findViewById(R.id.wipeFiltersButton)  // Initialize the new button
         checkboxNYC = view.findViewById(R.id.checkbox_nyc)
         checkboxLondon = view.findViewById(R.id.checkbox_london)
         checkboxSG = view.findViewById(R.id.checkbox_sg)
@@ -57,10 +58,16 @@ class SettingsFragment : Fragment() {
             Toast.makeText(requireContext(), "Visited invasions reset", Toast.LENGTH_SHORT).show()
         }
 
-        // Reset Filters button.
+        // Reset Filters button: Resets the enabled characters key.
         resetFiltersButton.setOnClickListener {
             filterPreferences.resetToDefault()
-            Toast.makeText(requireContext(), "Filters reset to default", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "Invasion filters reset to default", Toast.LENGTH_SHORT).show()
+        }
+
+        // Wipe Filters button: Fully clear all invasion filter preferences.
+        wipeFiltersButton.setOnClickListener {
+            filterPreferences.wipeFilters()
+            Toast.makeText(requireContext(), "All invasion filters wiped", Toast.LENGTH_SHORT).show()
         }
 
 
