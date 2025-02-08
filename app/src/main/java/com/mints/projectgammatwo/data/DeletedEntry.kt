@@ -3,7 +3,6 @@ package com.mints.projectgammatwo.data
 import android.content.Context
 import android.content.SharedPreferences
 
-// A simple data class to hold deletion info.
 data class DeletedEntry(val lat: Double, val lng: Double, val timestamp: Long)
 
 class DeletedInvasionsRepository(context: Context) {
@@ -45,8 +44,12 @@ class DeletedInvasionsRepository(context: Context) {
         return getDeletedEntries().count { it.timestamp >= twentyFourHoursAgo }
     }
 
-    // New: Reset the visited (deleted) invasions.
     fun resetDeletedInvasions() {
         prefs.edit().remove(key).apply()
+    }
+
+    fun setDeletedEntries(entries: Set<DeletedEntry>) {
+        val stringSet = entries.map { "${it.lat},${it.lng},${it.timestamp}" }.toSet()
+        prefs.edit().putStringSet(key, stringSet).apply()
     }
 }

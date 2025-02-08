@@ -10,7 +10,9 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- Reset Buttons -->
+
+
+        <!-- Existing Buttons -->
         <Button
             android:id="@+id/resetVisitedButton"
             android:layout_width="match_parent"
@@ -21,31 +23,25 @@
             android:id="@+id/resetFiltersButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Reset Filters to Default" />
+            android:text="Reset Invasion Filters" />
 
-        <!-- New Wipe Invasion Filters Button -->
         <Button
             android:id="@+id/wipeFiltersButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
             android:text="Wipe Invasion Filters" />
 
-        <!-- Data Source Selection -->
+        <!-- Data Source Checkboxes -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Select Data Sources:"
-            android:textStyle="bold" />
+            android:text="Data Sources:" />
 
         <CheckBox
             android:id="@+id/checkbox_nyc"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="NYC"
-            android:checked="true" />
+            android:text="NYC" />
 
         <CheckBox
             android:id="@+id/checkbox_london"
@@ -57,7 +53,7 @@
             android:id="@+id/checkbox_sg"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Singapore" />
+            android:text="SG" />
 
         <CheckBox
             android:id="@+id/checkbox_vancouver"
@@ -71,13 +67,23 @@
             android:layout_height="wrap_content"
             android:text="Sydney" />
 
-        <!-- (Optional) Existing filters sections -->
-        <LinearLayout
-            android:id="@+id/characterFiltersLayout"
+        <!-- Export/Import Buttons -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="16dp" />
+
+        <Button
+            android:id="@+id/btnExportSettings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginTop="16dp" />
+            android:text="Export Settings" />
+
+        <Button
+            android:id="@+id/btnImportSettings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Import Settings" />
+
 
         <View
             android:layout_width="match_parent"
@@ -97,9 +103,40 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Gamma 2.0 by Mints&#10;Version: 0.03"
+            android:text="Gamma 2.0 by Mints&#10;Version: 1.0"
             android:textAlignment="center"
             android:textSize="14sp" />
+
+        <!-- Teleport Method Selection -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Teleport Method:"
+            android:visibility="invisible"
+            android:layout_marginTop="16dp"/>
+
+        <RadioGroup
+            android:id="@+id/radioGroupTeleport"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/radio_ipogo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:visibility="invisible"
+
+                android:text="ipogo" />
+
+            <RadioButton
+                android:id="@+id/radio_joystick"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:visibility="invisible"
+
+                android:text="GPS Joystick" />
+        </RadioGroup>
 
     </LinearLayout>
 </ScrollView>

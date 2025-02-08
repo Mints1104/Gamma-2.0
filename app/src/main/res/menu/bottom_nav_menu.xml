@@ -11,7 +11,14 @@
         android:title="Filter" />
 
     <item
+        android:id="@+id/favoritesFragment"
+        android:title="Favorites"
+        android:icon="@drawable/ic_favorite" />
+
+    <item
         android:id="@+id/settingsFragment"
         android:icon="@android:drawable/ic_menu_manage"
         android:title="Settings" />
+
+
 </menu>
