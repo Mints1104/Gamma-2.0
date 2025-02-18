@@ -11,6 +11,7 @@ import android.text.InputType
 import android.view.*
 import android.widget.EditText
 import android.widget.Toast
+import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -232,31 +233,32 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     }
 
     private fun deleteFavorite(favorite: FavoriteLocation) {
-        // Find the index of the item being deleted.
+        // Use the activity's root view
+        val rootView = requireActivity().findViewById<View>(android.R.id.content)
+
+        // Get the index of the favorite and remove it from the list
         val deletedIndex = favoritesList.indexOf(favorite)
-        // Remove the item from the list.
         favoritesList.removeAt(deletedIndex)
-        // Update the adapter.
         adapter.submitList(favoritesList.toList())
 
-        // Show the Snackbar.
-        Snackbar.make(requireView(), "Deleted: ${favorite.name}", Snackbar.LENGTH_LONG)
+        // Create the Snackbar using the root view as the parent
+        val snackbar = Snackbar.make(rootView, "Deleted: ${favorite.name}", Snackbar.LENGTH_LONG)
             .setAction("UNDO") {
-                // Reinsert the deleted favorite at its original position.
+                // Reinsert the deleted item at its original position
                 favoritesList.add(deletedIndex, favorite)
                 adapter.submitList(favoritesList.toList())
             }
             .addCallback(object : Snackbar.Callback() {
                 override fun onDismissed(transientBottomBar: Snackbar?, event: Int) {
-                    // If the Snackbar wasn't dismissed because of the UNDO action,
-                    // commit the deletion (save the updated list).
                     if (event != DISMISS_EVENT_ACTION) {
                         saveFavorites()
                     }
                 }
             })
-            .show()
+
+        snackbar.show()
     }
+
 
 
 
