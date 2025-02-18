@@ -15,11 +15,18 @@ import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.snackbar.Snackbar
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.FavoriteLocation
 import com.mints.projectgammatwo.recyclerviews.FavoritesAdapter
+
+private const val PREFS_NAME = "FavoritesPrefs"
+private const val SORT_ORDER_KEY = "sort_order"
+private const val SORT_ORDER_NAME = "name"
+private const val SORT_ORDER_DEFAULT = "default"
+
 
 class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListener {
 
@@ -32,10 +39,10 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     // SharedPreferences keys for favorites.
     private val FAVORITES_PREFS_NAME = "favorites_prefs"
     private val KEY_FAVORITES = "favorites_list"
+    private val FAVORITES_SORTED = "favorites_sorted"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Enable options menu for the Favorites tab.
         setHasOptionsMenu(true)
     }
 
@@ -57,6 +64,8 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
 
         loadFavorites()
+
+
 
         addFavoriteFab.setOnClickListener {
             showAddFavoriteDialog()
@@ -80,7 +89,53 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
                 showImportFavoritesDialog()
                 true
             }
+            R.id.action_sortByName -> {
+                saveSortOrderPreference(SORT_ORDER_NAME)
+
+                sortFavsByName()
+
+
+                true
+
+            }
+
+            R.id.action_sortByDefault -> {
+                sortFavsByDefault()
+
+                true
+            }
             else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun saveSortOrderPreference(sortOrder: String) {
+        val prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(SORT_ORDER_KEY, sortOrder).apply()
+    }
+
+    private fun sortFavsByName() {
+        val sortedList = favoritesList.toMutableList().apply {
+            sortBy { it.name }
+        }
+        // Update the adapter with the sorted list
+        adapter.submitList(sortedList)
+    }
+
+    private fun sortFavsByDefault() {
+        loadFavorites() // Reloads in original order
+    }
+
+
+
+    private fun loadSortOrderPreference(): String {
+        val prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(SORT_ORDER_KEY, SORT_ORDER_DEFAULT) ?: SORT_ORDER_DEFAULT
+    }
+
+    private fun applySavedSortOrder() {
+        when (loadSortOrderPreference()) {
+            SORT_ORDER_NAME -> sortFavsByName()
+            SORT_ORDER_DEFAULT -> sortFavsByDefault()
         }
     }
 
@@ -133,23 +188,80 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
 
     private fun loadFavorites() {
         val prefs = requireContext().getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
+
+        // Load the full favorites list
         val json = prefs.getString(KEY_FAVORITES, "[]")
         val type = object : TypeToken<List<FavoriteLocation>>() {}.type
-        favoritesList = gson.fromJson(json, type) ?: mutableListOf()
+        val loadedFavorites: List<FavoriteLocation> = gson.fromJson(json, type) ?: mutableListOf()
+
+        // Load the original order of names
+        val orderJson = prefs.getString("favorites_order", "[]")
+        val orderType = object : TypeToken<List<String>>() {}.type
+        val originalOrder: List<String> = gson.fromJson(orderJson, orderType) ?: emptyList()
+
+        // Reorder the loadedFavorites to match the original order
+        favoritesList = if (originalOrder.isNotEmpty()) {
+            loadedFavorites.sortedBy { originalOrder.indexOf(it.name) }.toMutableList()
+        } else {
+            loadedFavorites.toMutableList()
+        }
+
         adapter.submitList(favoritesList.toList())
     }
+
 
     private fun saveFavorites() {
         val prefs = requireContext().getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+
+        // Save the full favorites list as JSON
+        editor.putString(KEY_FAVORITES, gson.toJson(favoritesList))
+
+        // Save the order separately
+        val originalOrder = favoritesList.map { it.name } // Store names as order reference
+        editor.putString("favorites_order", gson.toJson(originalOrder))
+
+        editor.apply()
+    }
+
+
+    private fun saveSortingOrder() {
+        val prefs = requireContext().getSharedPreferences(FAVORITES_SORTED, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_FAVORITES, gson.toJson(favoritesList)).apply()
+
     }
 
     private fun deleteFavorite(favorite: FavoriteLocation) {
-        favoritesList.remove(favorite)
+        // Find the index of the item being deleted.
+        val deletedIndex = favoritesList.indexOf(favorite)
+        // Remove the item from the list.
+        favoritesList.removeAt(deletedIndex)
+        // Update the adapter.
         adapter.submitList(favoritesList.toList())
-        saveFavorites()
-        Toast.makeText(requireContext(), "Favorite deleted", Toast.LENGTH_SHORT).show()
+
+        // Show the Snackbar.
+        Snackbar.make(requireView(), "Deleted: ${favorite.name}", Snackbar.LENGTH_LONG)
+            .setAction("UNDO") {
+                // Reinsert the deleted favorite at its original position.
+                favoritesList.add(deletedIndex, favorite)
+                adapter.submitList(favoritesList.toList())
+            }
+            .addCallback(object : Snackbar.Callback() {
+                override fun onDismissed(transientBottomBar: Snackbar?, event: Int) {
+                    // If the Snackbar wasn't dismissed because of the UNDO action,
+                    // commit the deletion (save the updated list).
+                    if (event != DISMISS_EVENT_ACTION) {
+                        saveFavorites()
+                    }
+                }
+            })
+            .show()
     }
+
+
+
+
+
 
     private fun copyFavorite(favorite: FavoriteLocation) {
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager

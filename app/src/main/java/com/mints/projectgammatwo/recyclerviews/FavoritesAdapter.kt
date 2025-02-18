@@ -61,6 +61,7 @@ class FavoritesAdapter(
         private val teleportButton: Button = itemView.findViewById(R.id.teleportButton)
         private val deleteButton: Button = itemView.findViewById(R.id.deleteButton)
 
+
         fun bind(favorite: FavoriteLocation) {
             favoriteName.text = favorite.name
             favoriteLocation.text = "${favorite.lat}, ${favorite.lng}"
@@ -92,6 +93,8 @@ class FavoritesAdapter(
             // The dragHandle view is used to indicate the draggable area.
         }
     }
+
+
 
     class FavoriteDiffCallback : DiffUtil.ItemCallback<FavoriteLocation>() {
         override fun areItemsTheSame(oldItem: FavoriteLocation, newItem: FavoriteLocation): Boolean {
