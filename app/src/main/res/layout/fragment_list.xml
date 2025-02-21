@@ -10,23 +10,42 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <LinearLayout
-            android:id="@+id/characterFiltersLayout"
+        <!-- Toggle between Rocket and Quest Filters -->
+        <RadioGroup
+            android:id="@+id/filterTypeRadioGroup"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical" />
+            android:orientation="horizontal">
+            <RadioButton
+                android:id="@+id/rbRocket"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Rocket Filters"
+                android:checked="true"/>
+            <RadioButton
+                android:id="@+id/rbQuest"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Quest Filters"
+                android:layout_marginStart="16dp"/>
+        </RadioGroup>
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="?android:attr/listDivider"
-            android:layout_marginVertical="16dp" />
-
+        <!-- Container for Rocket Filters -->
         <LinearLayout
-            android:id="@+id/typeFiltersLayout"
+            android:id="@+id/rocketFiltersLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical" />
+            android:orientation="vertical"
+            android:layout_marginTop="16dp" />
+
+        <!-- Container for Quest Filters -->
+        <LinearLayout
+            android:id="@+id/questFiltersLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="16dp"
+            android:visibility="gone" />
 
     </LinearLayout>
 </ScrollView>

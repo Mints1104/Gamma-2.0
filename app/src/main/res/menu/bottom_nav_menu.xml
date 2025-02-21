@@ -6,6 +6,11 @@
         android:title="Rockets" />
 
     <item
+        android:id="@+id/questsFragment"
+        android:icon="@drawable/ic_search"
+        android:title="Quests" />
+
+    <item
         android:id="@+id/filterFragment"
         android:icon="@android:drawable/ic_menu_sort_by_size"
         android:title="Filter" />
@@ -17,7 +22,7 @@
 
     <item
         android:id="@+id/settingsFragment"
-        android:icon="@android:drawable/ic_menu_manage"
+        android:icon="@drawable/ic_settings"
         android:title="Settings" />
 
 

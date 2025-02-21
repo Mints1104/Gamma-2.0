@@ -28,6 +28,10 @@
         android:name="com.mints.projectgammatwo.ui.FavoritesFragment"
         android:label="Favorites" />
 
+    <fragment
+        android:id="@+id/questsFragment"
+        android:name="com.mints.projectgammatwo.ui.QuestsFragment"
+        android:label="Quests" />
 
 
 </navigation>
