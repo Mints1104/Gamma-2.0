@@ -38,6 +38,14 @@
             android:layout_marginTop="4dp"
             android:textSize="14sp"/>
 
+        <TextView
+            android:id="@+id/sourceText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textSize="14sp"/>
+
+
         <!-- Coordinates -->
         <TextView
             android:id="@+id/coordinatesText"

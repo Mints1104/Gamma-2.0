@@ -8,15 +8,21 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import com.mints.projectgammatwo.R
+import com.mints.projectgammatwo.data.ApiClient
+import com.mints.projectgammatwo.data.DataSourcePreferences
 import com.mints.projectgammatwo.data.QuestFilterPreferences
 import com.mints.projectgammatwo.data.VisitedQuestsPreferences
 import com.mints.projectgammatwo.recyclerviews.QuestsAdapter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Call
@@ -40,8 +46,10 @@ data class Quest(
     @SerializedName("rewards_amounts")
     val rewardsAmounts: String,
     @SerializedName("rewards_ids")
-    val rewardsIds: String
+    val rewardsIds: String,
+    val source: String = ""  // New property; default is empty
 )
+
 
 data class QuestsResponse(
     val quests: List<Quest>,
@@ -79,6 +87,7 @@ class QuestsFragment : Fragment() {
     private lateinit var questsAdapter: QuestsAdapter
     private lateinit var filterPreferences: QuestFilterPreferences
     private lateinit var visitedPreferences: VisitedQuestsPreferences
+    private lateinit var dataSourcePreferences: DataSourcePreferences
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -96,14 +105,15 @@ class QuestsFragment : Fragment() {
 
         filterPreferences = QuestFilterPreferences(requireContext())
         visitedPreferences = VisitedQuestsPreferences(requireContext())
+        dataSourcePreferences = DataSourcePreferences(requireContext())
 
         // Initialize adapter with onDelete callback that saves visited quests
         questsAdapter = QuestsAdapter { quest ->
-            // Create a unique identifier for the quest
+            // Create a unique identifier for the quest.
             val questId = "${quest.name}|${quest.lat}|${quest.lng}"
-            // Save as visited
+            // Save as visited.
             visitedPreferences.addVisitedQuest(questId)
-            // Remove from the adapter list
+            // Remove from the adapter list.
             val currentList = questsAdapter.currentList.toMutableList()
             currentList.remove(quest)
             questsAdapter.submitList(currentList)
@@ -117,7 +127,7 @@ class QuestsFragment : Fragment() {
             fetchQuests()
         }
 
-        // Load quests initially
+        // Load quests initially.
         fetchQuests()
     }
 
@@ -129,50 +139,60 @@ class QuestsFragment : Fragment() {
         }
         val client = OkHttpClient.Builder().addInterceptor(interceptor).build()
 
-        val retrofit = Retrofit.Builder()
-            .baseUrl("https://nycpokemap.com/")
-            .addConverterFactory(GsonConverterFactory.create())
-            .client(client)
-            .build()
-
-        val service = retrofit.create(QuestsApiService::class.java)
-
-        // Get enabled quest filters from SharedPreferences.
-        // If none are set, default to one value ("7,0,1").
         val enabledFilters = filterPreferences.getEnabledFilters()
-            val filtersToUse = if (enabledFilters.isEmpty()) listOf("7,0,1") else enabledFilters.toList()
+        val filtersToUse = if (enabledFilters.isEmpty()) listOf("7,0,1") else enabledFilters.toList()
 
-        val call = service.getQuests(filtersToUse, System.currentTimeMillis())
-        call.enqueue(object : retrofit2.Callback<QuestsResponse> {
-            override fun onResponse(call: Call<QuestsResponse>, response: retrofit2.Response<QuestsResponse>) {
-                swipeRefresh.isRefreshing = false
-                if (response.isSuccessful) {
-                    response.body()?.let { questsResponse ->
-                        // Save API filters for quest filtering UI
-                        val filtersJson = Gson().toJson(questsResponse.filters)
-                        requireContext().getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
-                            .edit().putString("quest_api_filters", filtersJson).apply()
+        // Get selected data sources
+        val selectedSources = dataSourcePreferences.getSelectedSources()
 
-                        // Filter out quests that have already been visited.
-                        val visited = visitedPreferences.getVisitedQuests()
-                        val filteredQuests = questsResponse.quests.filter { quest ->
-                            val id = "${quest.name}|${quest.lat}|${quest.lng}"
-                            !visited.contains(id)
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                // For each selected source, fetch quests on the IO dispatcher and tag them with the source.
+                val deferredList = selectedSources.mapNotNull { source ->
+                    ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
+                        async(Dispatchers.IO) {
+                            val retrofit = Retrofit.Builder()
+                                .baseUrl(baseUrl)
+                                .addConverterFactory(GsonConverterFactory.create())
+                                .client(client)
+                                .build()
+                            val service = retrofit.create(QuestsApiService::class.java)
+                            val response = service.getQuests(filtersToUse, System.currentTimeMillis()).execute()
+                            Pair(source, response)
                         }
-                        questsAdapter.submitList(filteredQuests)
-                        updateQuestsCount(filteredQuests.size)
-                    } ?: Log.e("QuestsFragment", "No quests found")
-                } else {
-                    Log.e("QuestsFragment", "API error: ${response.errorBody()?.string()}")
+                    }
                 }
-            }
+                val responses = deferredList.mapNotNull { it.await() }
 
-            override fun onFailure(call: Call<QuestsResponse>, t: Throwable) {
+                // Use the filters from the first successful response to update the quest filter UI.
+                responses.firstOrNull()?.second?.body()?.filters?.let { filters ->
+                    val filtersJson = Gson().toJson(filters)
+                    requireContext().getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
+                        .edit().putString("quest_api_filters", filtersJson).apply()
+                }
+
+                // Combine quests from all responses and tag each with its source.
+                val allQuests = responses.flatMap { (source, response) ->
+                    response.body()?.quests?.map { quest ->
+                        quest.copy(source = source)
+                    } ?: emptyList()
+                }
+                val visited = visitedPreferences.getVisitedQuests()
+                val filteredQuests = allQuests.filter { quest ->
+                    val id = "${quest.name}|${quest.lat}|${quest.lng}"
+                    !visited.contains(id)
+                }
+                questsAdapter.submitList(filteredQuests)
+                updateQuestsCount(filteredQuests.size)
+            } catch (e: Exception) {
+                Log.e("QuestsFragment", "Error fetching quests", e)
+            } finally {
                 swipeRefresh.isRefreshing = false
-                Log.e("QuestsFragment", "Failed to fetch quests", t)
             }
-        })
+        }
     }
+
+
 
     private fun updateQuestsCount(count: Int) {
         questsCountText.text = "Total Quests: $count"

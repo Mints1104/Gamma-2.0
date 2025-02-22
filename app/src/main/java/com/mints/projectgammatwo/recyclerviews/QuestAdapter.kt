@@ -39,28 +39,26 @@ class QuestsAdapter(
         private val rewardText: TextView = itemView.findViewById(R.id.rewardText)
         private val conditionsText: TextView = itemView.findViewById(R.id.conditionsText)
         private val coordinatesText: TextView = itemView.findViewById(R.id.coordinatesText)
+        private val sourceText: TextView = itemView.findViewById(R.id.sourceText) // New TextView for source
         private val teleportButton: Button = itemView.findViewById(R.id.teleportButton)
         private val copyButton: Button = itemView.findViewById(R.id.copyButton)
         private val deleteButton: Button = itemView.findViewById(R.id.deleteButton)
 
         fun bind(quest: Quest) {
-            // Set text based on the Quest model directly
             questNameText.text = quest.name
             rewardText.text = "Reward: ${quest.rewardsString}"
             conditionsText.text = "Condition: ${quest.conditionsString}"
             val coordsFormatted = String.format("%.5f, %.5f", quest.lat, quest.lng)
             coordinatesText.text = "Location: $coordsFormatted"
+            sourceText.text = "Source: ${quest.source}"  // Display the source
 
-            // Teleport button opens the location in ipogo
             teleportButton.setOnClickListener {
                 val url = "https://ipogo.app/?coords=${quest.lat},${quest.lng}"
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                 itemView.context.startActivity(intent)
                 onDeleteQuest(quest)
-
             }
 
-            // Copy button copies the quest details to the clipboard
             copyButton.setOnClickListener {
                 val textToCopy = "Quest: ${quest.name}\nReward: ${quest.rewardsString}\nLocation: $coordsFormatted"
                 val clipboard = itemView.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -69,7 +67,6 @@ class QuestsAdapter(
                 Toast.makeText(itemView.context, "Quest info copied", Toast.LENGTH_SHORT).show()
             }
 
-            // Delete button triggers the delete callback
             deleteButton.setOnClickListener {
                 onDeleteQuest(quest)
             }
@@ -78,10 +75,8 @@ class QuestsAdapter(
 
     class QuestDiffCallback : DiffUtil.ItemCallback<Quest>() {
         override fun areItemsTheSame(oldItem: Quest, newItem: Quest): Boolean {
-            // Assumes that a unique combination of name and coordinates identifies a quest
             return oldItem.name == newItem.name && oldItem.lat == newItem.lat && oldItem.lng == newItem.lng
         }
-
         override fun areContentsTheSame(oldItem: Quest, newItem: Quest): Boolean {
             return oldItem == newItem
         }
