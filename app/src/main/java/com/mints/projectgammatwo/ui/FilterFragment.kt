@@ -166,7 +166,7 @@ class FilterFragment : Fragment() {
     private fun buildQuestFilterString(section: String, rawValue: String): String {
         return when (section) {
             "Stardust" -> "3,$rawValue,0"
-            "Mega Energy" -> "2,0,$rawValue"
+            "Mega Energy" -> "12,0,$rawValue"
             "Pokémon Encounter" -> "7,0,$rawValue"
             "Item" -> "2,0,$rawValue"  // Updated for item filters.
             else -> rawValue // For "Pokémon Candy" (or any other), no extra formatting.
