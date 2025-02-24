@@ -23,9 +23,6 @@ import com.mints.projectgammatwo.data.QuestFilterPreferences
 
 class SettingsFragment : Fragment() {
 
-    private lateinit var resetVisitedButton: Button
-    private lateinit var resetFiltersButton: Button
-    private lateinit var wipeFiltersButton: Button
     private lateinit var checkboxNYC: CheckBox
     private lateinit var checkboxLondon: CheckBox
     private lateinit var checkboxSG: CheckBox
@@ -60,9 +57,7 @@ class SettingsFragment : Fragment() {
         questFilterPreferences = QuestFilterPreferences(requireContext())
         deletedRepo = DeletedInvasionsRepository(requireContext())
 
-        resetVisitedButton = view.findViewById(R.id.resetVisitedButton)
-        resetFiltersButton = view.findViewById(R.id.resetFiltersButton)
-        wipeFiltersButton = view.findViewById(R.id.wipeFiltersButton)
+
         checkboxNYC = view.findViewById(R.id.checkbox_nyc)
         checkboxLondon = view.findViewById(R.id.checkbox_london)
         checkboxSG = view.findViewById(R.id.checkbox_sg)
@@ -111,19 +106,7 @@ class SettingsFragment : Fragment() {
         checkboxVancouver.setOnClickListener(checkListener)
         checkboxSydney.setOnClickListener(checkListener)
 
-        // Reset and wipe buttons.
-        resetVisitedButton.setOnClickListener {
-            deletedRepo.resetDeletedInvasions()
-            Toast.makeText(requireContext(), "Visited invasions reset", Toast.LENGTH_SHORT).show()
-        }
-        resetFiltersButton.setOnClickListener {
-            filterPreferences.resetToDefault()
-            Toast.makeText(requireContext(), "Invasion filters reset to default", Toast.LENGTH_SHORT).show()
-        }
-        wipeFiltersButton.setOnClickListener {
-            filterPreferences.wipeFilters()
-            Toast.makeText(requireContext(), "All invasion filters wiped", Toast.LENGTH_SHORT).show()
-        }
+
 
         // Export settings.
         btnExportSettings.setOnClickListener {

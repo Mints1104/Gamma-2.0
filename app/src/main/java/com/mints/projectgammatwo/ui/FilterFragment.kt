@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.RadioButton
@@ -13,16 +14,21 @@ import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.core.view.setPadding
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
+import com.google.android.material.button.MaterialButton
 import com.google.gson.Gson
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.DataMappings
 import com.mints.projectgammatwo.data.FilterPreferences
+import com.mints.projectgammatwo.data.Quests
+import com.mints.projectgammatwo.viewmodels.QuestsViewModel
 
 class FilterFragment : Fragment() {
 
     // For Rocket filters we use your existing FilterPreferences.
     private lateinit var filterPreferences: FilterPreferences
     private val enabledRocketFilters = mutableSetOf<Int>()
+    private lateinit var questsViewModel: QuestsViewModel
 
     // For Quest filters we use a separate SharedPreferences instance.
     private val questPrefs: SharedPreferences by lazy {
@@ -48,6 +54,7 @@ class FilterFragment : Fragment() {
         enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
         // Load saved quest filters from our dedicated SharedPreferences.
         enabledQuestFilters.addAll(getEnabledQuestFilters())
+        questsViewModel = ViewModelProvider(this)[QuestsViewModel::class.java]
 
         // Get references to UI containers.
         val radioGroup = view.findViewById<RadioGroup>(R.id.filterTypeRadioGroup)
@@ -79,6 +86,9 @@ class FilterFragment : Fragment() {
     // Setup Rocket Filters (using your DataMappings.characterNamesMap).
     private fun setupRocketFilters(parent: LinearLayout) {
         parent.removeAllViews()
+        // Add Reset and Toggle All buttons for Rocket Filters
+        addResetButton(parent, "Rocket")
+        addToggleAllButton(parent, "Rocket")
         addSectionHeader(parent, "Rocket Filters")
         DataMappings.characterNamesMap.forEach { (id, name) ->
             addCheckBox(parent, name, id, enabledRocketFilters) { checked ->
@@ -90,27 +100,110 @@ class FilterFragment : Fragment() {
 
 
 
+
+    private fun addResetButton(parent: LinearLayout, filterType: String) {
+        val resetButton = MaterialButton(requireContext()).apply {
+            text = "Reset $filterType Filters"
+            setPadding(16, 8, 16, 8)
+            setOnClickListener {
+                when (filterType) {
+                    "Rocket" -> {
+                        enabledRocketFilters.clear()
+                        filterPreferences.saveEnabledCharacters(enabledRocketFilters)
+                        setupRocketFilters(parent)
+                    }
+                    "Quest" -> {
+                        enabledQuestFilters.clear()
+                        saveEnabledQuestFilters(enabledQuestFilters)
+                        setupQuestFilters(parent)
+                    }
+                }
+            }
+        }
+        parent.addView(resetButton, 0)
+    }
+
+    private fun addToggleAllButton(parent: LinearLayout, filterType: String) {
+        val toggleButton = MaterialButton(requireContext()).apply {
+            text = "Toggle All $filterType Filters"
+            setPadding(16, 8, 16, 8)
+            setOnClickListener {
+                when (filterType) {
+                    "Rocket" -> {
+                        // Check if all rocket filters are selected
+                        val allSelected = DataMappings.characterNamesMap.keys.all { it in enabledRocketFilters }
+                        if (allSelected) {
+                            enabledRocketFilters.clear()
+                        } else {
+                            enabledRocketFilters.addAll(DataMappings.characterNamesMap.keys)
+                        }
+                        filterPreferences.saveEnabledCharacters(enabledRocketFilters)
+                        setupRocketFilters(parent)
+                    }
+                    "Quest" -> {
+                        // For quest filters, iterate over all checkboxes
+                        // Assuming that each quest filter checkbox is added after a header, you might need to traverse your layout
+                        // Here, we'll simply rebuild the list by toggling the enabledQuestFilters set.
+                        val filtersJson = questPrefs.getString("quest_api_filters", null)
+                        if (filtersJson != null) {
+                            val filters = Gson().fromJson(filtersJson, Quests.Filters::class.java)
+                            // Gather all composite quest filter strings from all sections:
+                            val allFilters = mutableSetOf<String>()
+                            listOf(filters.t3, filters.t4, filters.t12, filters.t7, filters.t2).forEach { list ->
+                                list.forEach { rawValue ->
+                                    val section = when {
+                                        filters.t3.contains(rawValue) -> "Stardust"
+                                        filters.t12.contains(rawValue) -> "Mega Energy"
+                                        filters.t7.contains(rawValue) -> "Pokémon Encounter"
+                                        filters.t2.contains(rawValue) -> "Item"
+                                        else -> "Pokémon Candy"
+                                    }
+                                    allFilters.add(buildQuestFilterString(section, rawValue))
+                                }
+                            }
+                            // Toggle logic: if all are selected, clear; otherwise select all.
+                            if (enabledQuestFilters.containsAll(allFilters)) {
+                                enabledQuestFilters.clear()
+                            } else {
+                                enabledQuestFilters.clear()
+                                enabledQuestFilters.addAll(allFilters)
+                            }
+                            saveEnabledQuestFilters(enabledQuestFilters)
+                            setupQuestFilters(parent)
+                        }
+                    }
+                }
+            }
+        }
+        // Add the toggle button at the top (or wherever you prefer)
+        parent.addView(toggleButton, 0)
+    }
+
+
+
+
     // Setup Quest Filters using dynamic API data.
     private fun setupQuestFilters(parent: LinearLayout) {
         parent.removeAllViews()
+        // Add Reset and Toggle All buttons for Quest Filters
+        addResetButton(parent, "Quest")
+        addToggleAllButton(parent, "Quest")
         addSectionHeader(parent, "Quest Filters")
-        // Try to get the stored API filters JSON.
         val filtersJson = questPrefs.getString("quest_api_filters", null)
         if (filtersJson != null) {
-            // Parse the JSON into the Filters data class.
-            val filters = Gson().fromJson(filtersJson, Filters::class.java)
-            // Build the sections in the desired order:
-            // Stardust (t3), Pokémon Candy (t4), Mega Energy (t12),
-            // Pokémon Encounter (t7), and Item (t2)
+            val filters = Gson().fromJson(filtersJson, Quests.Filters::class.java)
             addFilterSection(parent, "Stardust", filters.t3)
             addFilterSection(parent, "Pokémon Candy", filters.t4)
             addFilterSection(parent, "Mega Energy", filters.t12)
             addFilterSection(parent, "Pokémon Encounter", filters.t7)
             addFilterSection(parent, "Item", filters.t2)
         } else {
-            addSectionHeader(parent, "No quest filters available from API")
+            questsViewModel.fetchQuests()
+            addSectionHeader(parent, "Please open quests tab to update data")
         }
     }
+
+
 
     private fun addSectionHeader(parent: LinearLayout, text: String) {
         TextView(context).apply {

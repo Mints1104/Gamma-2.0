@@ -12,24 +12,7 @@
 
 
 
-        <!-- Existing Buttons -->
-        <Button
-            android:id="@+id/resetVisitedButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Reset Visited Invasions" />
 
-        <Button
-            android:id="@+id/resetFiltersButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Reset Invasion Filters" />
-
-        <Button
-            android:id="@+id/wipeFiltersButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Wipe Invasion Filters" />
 
         <!-- Data Source Checkboxes -->
         <TextView
@@ -111,7 +94,7 @@
             android:id="@+id/discordInvite"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="8dp"
             android:text="@string/discord_link"
             android:textAlignment="center"
             android:focusable="true"

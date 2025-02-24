@@ -15,7 +15,9 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
-import com.mints.projectgammatwo.ui.Quest
+import com.mints.projectgammatwo.data.Quests
+import com.mints.projectgammatwo.data.Quests.Quest
+
 
 class QuestsAdapter(
     private val onDeleteQuest: (Quest) -> Unit
