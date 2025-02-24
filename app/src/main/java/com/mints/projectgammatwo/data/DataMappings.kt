@@ -188,7 +188,10 @@ object DataMappings {
         "759" to "Stufful",
         "767" to "Wimpod",
         "775" to "Komala",
-        "915" to "Lechonk"
+        "915" to "Lechonk",
+        "532" to "Timburr",
+        "588" to "Karrablast",
+        "616" to "Shelmet"
     )
 
     val megaEnergyMap: Map<String, String> = mapOf(
