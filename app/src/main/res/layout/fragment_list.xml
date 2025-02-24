@@ -38,6 +38,10 @@
             android:orientation="vertical"
             android:layout_marginTop="16dp" />
 
+
+
+
+
         <!-- Container for Quest Filters -->
         <LinearLayout
             android:id="@+id/questFiltersLayout"

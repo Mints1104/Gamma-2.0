@@ -88,6 +88,8 @@ class FilterFragment : Fragment() {
         }
     }
 
+
+
     // Setup Quest Filters using dynamic API data.
     private fun setupQuestFilters(parent: LinearLayout) {
         parent.removeAllViews()

@@ -6,8 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
+import android.text.method.LinkMovementMethod
 import android.view.*
 import android.widget.*
+import androidx.core.text.HtmlCompat
 import androidx.fragment.app.Fragment
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -17,6 +19,7 @@ import com.mints.projectgammatwo.data.DeletedInvasionsRepository
 import com.mints.projectgammatwo.data.DeletedEntry
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.FavoriteLocation
+import com.mints.projectgammatwo.data.QuestFilterPreferences
 
 class SettingsFragment : Fragment() {
 
@@ -37,6 +40,8 @@ class SettingsFragment : Fragment() {
     private lateinit var dataSourcePreferences: DataSourcePreferences
     private lateinit var filterPreferences: FilterPreferences
     private lateinit var deletedRepo: DeletedInvasionsRepository
+    private lateinit var questFilterPreferences: QuestFilterPreferences
+    private lateinit var discordTextView:TextView
 
     private val gson = Gson()
 
@@ -52,6 +57,7 @@ class SettingsFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         dataSourcePreferences = DataSourcePreferences(requireContext())
         filterPreferences = FilterPreferences(requireContext())
+        questFilterPreferences = QuestFilterPreferences(requireContext())
         deletedRepo = DeletedInvasionsRepository(requireContext())
 
         resetVisitedButton = view.findViewById(R.id.resetVisitedButton)
@@ -67,6 +73,15 @@ class SettingsFragment : Fragment() {
         radioGroupTeleport = view.findViewById(R.id.radioGroupTeleport)
         radioIpogo = view.findViewById(R.id.radio_ipogo)
         radioJoystick = view.findViewById(R.id.radio_joystick)
+         discordTextView = view.findViewById(R.id.discordInvite)
+        discordTextView.text = HtmlCompat.fromHtml(getString(R.string.discord_link), HtmlCompat.FROM_HTML_MODE_LEGACY)
+        discordTextView.movementMethod = LinkMovementMethod.getInstance()
+        discordTextView.setOnFocusChangeListener { v, hasFocus ->
+            if (hasFocus) {
+                v.clearFocus()
+            }
+        }
+
 
         // Load data source selections.
         val selectedSources = dataSourcePreferences.getSelectedSources()
@@ -141,7 +156,8 @@ class SettingsFragment : Fragment() {
         val dataSources: Set<String>,
         val enabledCharacters: Set<Int>,
         val favorites: List<FavoriteLocation>,
-        val deletedEntries: Set<DeletedEntry>
+        val deletedEntries: Set<DeletedEntry>,
+        val enabledQuests: Set<String>
     )
 
     /**
@@ -154,13 +170,15 @@ class SettingsFragment : Fragment() {
         val favoritesJson = favoritesPrefs.getString(KEY_FAVORITES, "[]")
         val favoritesType = object : TypeToken<List<FavoriteLocation>>() {}.type
         val favorites: List<FavoriteLocation> = gson.fromJson(favoritesJson, favoritesType)
+        val enabledQuests = questFilterPreferences.getEnabledFilters()
         val deletedEntries = deletedRepo.getDeletedEntries()
 
         val exportData = ExportData(
             dataSources = dataSources,
             enabledCharacters = enabledCharacters,
             favorites = favorites,
-            deletedEntries = deletedEntries
+            deletedEntries = deletedEntries,
+            enabledQuests = enabledQuests
         )
         val exportJson = gson.toJson(exportData)
 
@@ -203,6 +221,7 @@ class SettingsFragment : Fragment() {
             val importData = gson.fromJson(jsonString, ExportData::class.java)
             dataSourcePreferences.setSelectedSources(importData.dataSources)
             filterPreferences.saveEnabledCharacters(importData.enabledCharacters)
+            questFilterPreferences.saveEnabledFilters(importData.enabledQuests)
             val favoritesPrefs = requireContext().getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
             favoritesPrefs.edit().putString(KEY_FAVORITES, gson.toJson(importData.favorites)).apply()
             deletedRepo.setDeletedEntries(importData.deletedEntries)
