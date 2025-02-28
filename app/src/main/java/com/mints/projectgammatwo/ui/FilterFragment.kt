@@ -290,15 +290,18 @@ class FilterFragment : Fragment() {
                 parent.addView(this)
             }
         } else {
-            filterList.forEach { rawValue ->
-                // Map raw values to friendly names when appropriate.
+            val sortedList = when (sectionName) {
+                "Pokémon Encounter" -> filterList.sortedBy { DataMappings.pokemonEncounterMapNew[it] ?: it }
+                "Mega Energy" -> filterList.sortedBy { DataMappings.megaEnergyMap[it] ?: it }
+                else -> filterList
+            }
+            sortedList.forEach { rawValue ->
                 val displayText = when (sectionName) {
                     "Pokémon Encounter" -> DataMappings.pokemonEncounterMapNew[rawValue] ?: rawValue
                     "Item" -> DataMappings.itemMap["item$rawValue"] ?: rawValue
                     "Mega Energy" -> DataMappings.megaEnergyMap[rawValue] ?: rawValue
                     else -> rawValue
                 }
-                // Build the full composite filter string.
                 val compositeValue = buildQuestFilterString(sectionName, rawValue)
                 addQuestCheckBox(parent, displayText, compositeValue, enabledQuestFilters) { checked ->
                     if (checked) enabledQuestFilters.add(compositeValue)
@@ -308,6 +311,8 @@ class FilterFragment : Fragment() {
             }
         }
     }
+
+
 
     // Save quest filters using a dedicated key.
     private fun saveEnabledQuestFilters(filters: Set<String>) {

@@ -8,13 +8,13 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.mints.projectgammatwo.data.ApiClient
 import com.mints.projectgammatwo.data.DataSourcePreferences
 import com.mints.projectgammatwo.data.QuestFilterPreferences
 import com.mints.projectgammatwo.data.VisitedQuestsPreferences
 import com.mints.projectgammatwo.data.Quests
 import com.mints.projectgammatwo.data.Quests.Quest
-
 import com.mints.projectgammatwo.data.QuestsApiService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -23,11 +23,54 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.min
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 class QuestsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _questsLiveData = MutableLiveData<List<Quest>>()
     val questsLiveData: LiveData<List<Quest>> = _questsLiveData
+
+    // Calculate the distance between two quests using the Haversine formula.
+    private fun haversineDistance(a: Quest, b: Quest): Double {
+        val R = 6371e3 // Earth's radius in meters
+        val lat1 = Math.toRadians(a.lat)
+        val lat2 = Math.toRadians(b.lat)
+        val deltaLat = Math.toRadians(b.lat - a.lat)
+        val deltaLon = Math.toRadians(b.lng - a.lng)
+
+        val aVal = sin(deltaLat / 2).pow(2.0) +
+                cos(lat1) * cos(lat2) *
+                sin(deltaLon / 2).pow(2.0)
+        val c = 2 * atan2(sqrt(aVal), sqrt(1 - aVal))
+        return R * c
+    }
+
+    // Sort the list of quests by repeatedly choosing the nearest unvisited quest.
+    private fun sortQuestsByNearestNeighbor(quests: List<Quest>): List<Quest> {
+        if (quests.isEmpty()) return quests
+
+        val sorted = mutableListOf<Quest>()
+        val remaining = quests.toMutableList()
+
+        // Use the first quest as the starting point.
+        var current = remaining.removeAt(0)
+        sorted.add(current)
+
+        while (remaining.isNotEmpty()) {
+            val next = remaining.minByOrNull { haversineDistance(current, it) }!!
+            sorted.add(next)
+            remaining.remove(next)
+            current = next
+        }
+
+        return sorted
+    }
 
     fun fetchQuests() {
         val context = getApplication<Application>().applicationContext
@@ -78,7 +121,10 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                     val id = "${quest.name}|${quest.lat}|${quest.lng}"
                     !visited.contains(id)
                 }
-                _questsLiveData.postValue(filteredQuests)
+
+                // Sort the filtered quests by nearest neighbor using the first quest as the basis.
+                val sortedQuests = sortQuestsByNearestNeighbor(filteredQuests)
+                _questsLiveData.postValue(sortedQuests)
             } catch (e: Exception) {
                 Log.e("QuestsViewModel", "Error fetching quests", e)
             }
