@@ -3,6 +3,7 @@ package com.mints.projectgammatwo.ui
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -20,6 +21,7 @@ import com.google.gson.Gson
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.DataMappings
 import com.mints.projectgammatwo.data.FilterPreferences
+import com.mints.projectgammatwo.data.PokemonRepository
 import com.mints.projectgammatwo.data.Quests
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
 
@@ -50,6 +52,10 @@ class FilterFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         filterPreferences = FilterPreferences(requireContext())
 
+
+
+
+
         // Load saved rocket filters from preferences.
         enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
         // Load saved quest filters from our dedicated SharedPreferences.
@@ -62,6 +68,13 @@ class FilterFragment : Fragment() {
         val rbQuest = view.findViewById<RadioButton>(R.id.rbQuest)
         val rocketLayout = view.findViewById<LinearLayout>(R.id.rocketFiltersLayout)
          questLayout = view.findViewById(R.id.questFiltersLayout)
+
+        DataMappings.initializePokemonData(requireContext()) {
+            Log.d("App", "Pokemon data loaded with ${DataMappings.pokemonEncounterMapNew.size} entries")
+
+            // Refresh UI (if needed)
+            setupQuestFilters(questLayout)
+        }
 
         // Set up radio group listener to toggle between filter UIs.
         radioGroup.setOnCheckedChangeListener { _, checkedId ->
@@ -80,7 +93,7 @@ class FilterFragment : Fragment() {
         // Populate the rocket filters UI.
         setupRocketFilters(rocketLayout)
         // Populate the quest filters UI using dynamic API data.
-        setupQuestFilters(questLayout)
+      //  setupQuestFilters(questLayout)
     }
 
     // Setup Rocket Filters (using your DataMappings.characterNamesMap).
@@ -280,7 +293,7 @@ class FilterFragment : Fragment() {
             filterList.forEach { rawValue ->
                 // Map raw values to friendly names when appropriate.
                 val displayText = when (sectionName) {
-                    "Pokémon Encounter" -> DataMappings.pokemonEncounterMap[rawValue] ?: rawValue
+                    "Pokémon Encounter" -> DataMappings.pokemonEncounterMapNew[rawValue] ?: rawValue
                     "Item" -> DataMappings.itemMap["item$rawValue"] ?: rawValue
                     "Mega Energy" -> DataMappings.megaEnergyMap[rawValue] ?: rawValue
                     else -> rawValue
