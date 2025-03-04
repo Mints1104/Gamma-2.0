@@ -8,7 +8,6 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
-import com.google.gson.annotations.SerializedName
 import com.mints.projectgammatwo.data.ApiClient
 import com.mints.projectgammatwo.data.DataSourcePreferences
 import com.mints.projectgammatwo.data.QuestFilterPreferences
@@ -25,8 +24,6 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import kotlin.math.atan2
 import kotlin.math.cos
-import kotlin.math.hypot
-import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -51,17 +48,44 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         return R * c
     }
 
+    // Calculate the distance from a given point (lat, lng) to a quest.
+    private fun haversineDistanceFromPoint(lat: Double, lng: Double, quest: Quest): Double {
+        val R = 6371e3 // Earth's radius in meters
+        val lat1 = Math.toRadians(lat)
+        val lat2 = Math.toRadians(quest.lat)
+        val deltaLat = Math.toRadians(quest.lat - lat)
+        val deltaLon = Math.toRadians(quest.lng - lng)
+        val aVal = sin(deltaLat / 2).pow(2.0) +
+                cos(lat1) * cos(lat2) * sin(deltaLon / 2).pow(2.0)
+        val c = 2 * atan2(sqrt(aVal), sqrt(1 - aVal))
+        return R * c
+    }
+
     // Sort the list of quests by repeatedly choosing the nearest unvisited quest.
-    private fun sortQuestsByNearestNeighbor(quests: List<Quest>): List<Quest> {
+    // If startLat and startLng are provided, use them as the reference point.
+    private fun sortQuestsByNearestNeighbor(
+        quests: List<Quest>,
+        startLat: Double? = null,
+        startLng: Double? = null
+    ): List<Quest> {
         if (quests.isEmpty()) return quests
 
         val sorted = mutableListOf<Quest>()
         val remaining = quests.toMutableList()
 
-        // Use the first quest as the starting point.
-        var current = remaining.removeAt(0)
-        sorted.add(current)
+        // Determine the starting quest using the provided coordinates if available.
+        val startingQuest = if (startLat != null && startLng != null) {
+            remaining.minByOrNull { quest ->
+                haversineDistanceFromPoint(startLat, startLng, quest)
+            } ?: remaining.first()
+        } else {
+            remaining.first()
+        }
 
+        sorted.add(startingQuest)
+        remaining.remove(startingQuest)
+
+        var current = startingQuest
         while (remaining.isNotEmpty()) {
             val next = remaining.minByOrNull { haversineDistance(current, it) }!!
             sorted.add(next)
@@ -70,6 +94,17 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         return sorted
+    }
+
+    // Save the coordinates of the last visited quest to shared preferences.
+    fun saveLastVisitedCoordinates(quest: Quest) {
+        val context = getApplication<Application>().applicationContext
+        val prefs = context.getSharedPreferences("last_visited_pref", Context.MODE_PRIVATE)
+        prefs.edit().apply {
+            putFloat("lastVisitedLat", quest.lat.toFloat())
+            putFloat("lastVisitedLng", quest.lng.toFloat())
+            apply()
+        }
     }
 
     fun fetchQuests() {
@@ -122,8 +157,15 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                     !visited.contains(id)
                 }
 
-                // Sort the filtered quests by nearest neighbor using the first quest as the basis.
-                val sortedQuests = sortQuestsByNearestNeighbor(filteredQuests)
+                // Load last visited coordinates from shared preferences.
+                val prefs = context.getSharedPreferences("last_visited_pref", Context.MODE_PRIVATE)
+                val lastVisitedLat = prefs.getFloat("lastVisitedLat", Float.NaN)
+                val lastVisitedLng = prefs.getFloat("lastVisitedLng", Float.NaN)
+                val startLat = if (!lastVisitedLat.isNaN()) lastVisitedLat.toDouble() else null
+                val startLng = if (!lastVisitedLng.isNaN()) lastVisitedLng.toDouble() else null
+
+                // Sort the filtered quests using the last visited coordinates (if available) as the starting point.
+                val sortedQuests = sortQuestsByNearestNeighbor(filteredQuests, startLat, startLng)
                 _questsLiveData.postValue(sortedQuests)
             } catch (e: Exception) {
                 Log.e("QuestsViewModel", "Error fetching quests", e)

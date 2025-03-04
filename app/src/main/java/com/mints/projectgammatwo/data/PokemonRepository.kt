@@ -16,8 +16,8 @@ class PokemonRepository(private val context: Context) {
     private val POKEMON_DATA_KEY = "pokemon_map"
     private val LAST_UPDATED_KEY = "last_updated"
 
-    // Cache expiration time (24 hours in milliseconds)
-    private val CACHE_EXPIRATION = 24 * 60 * 60 * 1000L
+    // Cache expiration time (30 days in milliseconds)
+    private val CACHE_EXPIRATION = 30L * 24 * 60 * 60 * 1000
 
     private val sharedPrefs: SharedPreferences by lazy {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

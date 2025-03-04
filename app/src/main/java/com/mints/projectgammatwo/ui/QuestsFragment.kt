@@ -39,6 +39,8 @@ class QuestsFragment : Fragment() {
 
         // Initialize adapter with onDelete callback preserving your exact deletion logic.
         questsAdapter = QuestsAdapter { quest: Quests.Quest ->
+            questsViewModel.saveLastVisitedCoordinates(quest)
+
             // Create a unique identifier for the quest.
             val questId = "${quest.name}|${quest.lat}|${quest.lng}"
             // Save as visited.

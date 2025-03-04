@@ -15,18 +15,16 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
-import com.mints.projectgammatwo.data.Quests
 import com.mints.projectgammatwo.data.Quests.Quest
 
-
 class QuestsAdapter(
-    private val onDeleteQuest: (Quest) -> Unit
+    private val onQuestVisited: (Quest) -> Unit
 ) : ListAdapter<Quest, QuestsAdapter.QuestViewHolder>(QuestDiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): QuestViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_quest, parent, false)
-        return QuestViewHolder(view, onDeleteQuest)
+        return QuestViewHolder(view, onQuestVisited)
     }
 
     override fun onBindViewHolder(holder: QuestViewHolder, position: Int) {
@@ -35,13 +33,13 @@ class QuestsAdapter(
 
     class QuestViewHolder(
         itemView: View,
-        private val onDeleteQuest: (Quest) -> Unit
+        private val onQuestVisited: (Quest) -> Unit
     ) : RecyclerView.ViewHolder(itemView) {
         private val questNameText: TextView = itemView.findViewById(R.id.questNameText)
         private val rewardText: TextView = itemView.findViewById(R.id.rewardText)
         private val conditionsText: TextView = itemView.findViewById(R.id.conditionsText)
         private val coordinatesText: TextView = itemView.findViewById(R.id.coordinatesText)
-        private val sourceText: TextView = itemView.findViewById(R.id.sourceText) // New TextView for source
+        private val sourceText: TextView = itemView.findViewById(R.id.sourceText)
         private val teleportButton: Button = itemView.findViewById(R.id.teleportButton)
         private val copyButton: Button = itemView.findViewById(R.id.copyButton)
         private val deleteButton: Button = itemView.findViewById(R.id.deleteButton)
@@ -52,25 +50,26 @@ class QuestsAdapter(
             conditionsText.text = "Condition: ${quest.conditionsString}"
             val coordsFormatted = String.format("%.5f, %.5f", quest.lat, quest.lng)
             coordinatesText.text = "Location: $coordsFormatted"
-            sourceText.text = "Source: ${quest.source}"  // Display the source
+            sourceText.text = "Source: ${quest.source}"
 
             teleportButton.setOnClickListener {
                 val url = "https://ipogo.app/?coords=${quest.lat},${quest.lng}"
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                 itemView.context.startActivity(intent)
-                onDeleteQuest(quest)
+                // Notify that this quest was visited
+                onQuestVisited(quest)
             }
 
             copyButton.setOnClickListener {
-                val textToCopy = "Quest: ${quest.name}\nReward: ${quest.rewardsString}\nLocation: $coordsFormatted"
                 val clipboard = itemView.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val clip = ClipData.newPlainText("Quest Info", textToCopy)
+                val clip = ClipData.newPlainText("Coordinates", coordsFormatted)
                 clipboard.setPrimaryClip(clip)
                 Toast.makeText(itemView.context, "Quest info copied", Toast.LENGTH_SHORT).show()
             }
 
             deleteButton.setOnClickListener {
-                onDeleteQuest(quest)
+                // Notify that this quest was visited (e.g., for deletion and saving coordinates)
+                onQuestVisited(quest)
             }
         }
     }

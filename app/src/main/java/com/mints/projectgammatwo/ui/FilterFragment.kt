@@ -32,10 +32,8 @@ class FilterFragment : Fragment() {
     private val enabledRocketFilters = mutableSetOf<Int>()
     private lateinit var questsViewModel: QuestsViewModel
 
-    // For Quest filters we use a separate SharedPreferences instance.
-    private val questPrefs: SharedPreferences by lazy {
-        requireContext().getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
-    }
+    private lateinit var questPrefs: SharedPreferences
+
     // We'll now store the full composite quest filter strings.
     private val enabledQuestFilters = mutableSetOf<String>()
     private lateinit var questLayout: LinearLayout
@@ -51,6 +49,7 @@ class FilterFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         filterPreferences = FilterPreferences(requireContext())
+        questPrefs = requireContext().getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
 
 
 
@@ -70,11 +69,11 @@ class FilterFragment : Fragment() {
          questLayout = view.findViewById(R.id.questFiltersLayout)
 
         DataMappings.initializePokemonData(requireContext()) {
+            if (!isAdded) return@initializePokemonData  // Fragment is no longer attached, so exit early.
             Log.d("App", "Pokemon data loaded with ${DataMappings.pokemonEncounterMapNew.size} entries")
-
-            // Refresh UI (if needed)
             setupQuestFilters(questLayout)
         }
+
 
         // Set up radio group listener to toggle between filter UIs.
         radioGroup.setOnCheckedChangeListener { _, checkedId ->
@@ -292,14 +291,16 @@ class FilterFragment : Fragment() {
         } else {
             val sortedList = when (sectionName) {
                 "Pokémon Encounter" -> filterList.sortedBy { DataMappings.pokemonEncounterMapNew[it] ?: it }
-                "Mega Energy" -> filterList.sortedBy { DataMappings.megaEnergyMap[it] ?: it }
+                "Mega Energy" -> filterList.sortedBy { DataMappings.pokemonEncounterMapNew[it] ?: it }
+                "Pokémon Candy" -> filterList.sortedBy { DataMappings.pokemonEncounterMapNew[it] ?: it }
                 else -> filterList
             }
             sortedList.forEach { rawValue ->
                 val displayText = when (sectionName) {
                     "Pokémon Encounter" -> DataMappings.pokemonEncounterMapNew[rawValue] ?: rawValue
                     "Item" -> DataMappings.itemMap["item$rawValue"] ?: rawValue
-                    "Mega Energy" -> DataMappings.megaEnergyMap[rawValue] ?: rawValue
+                    "Mega Energy" -> DataMappings.pokemonEncounterMapNew[rawValue] ?: rawValue
+                    "Pokémon Candy" -> DataMappings.pokemonEncounterMapNew[rawValue] ?: rawValue
                     else -> rawValue
                 }
                 val compositeValue = buildQuestFilterString(sectionName, rawValue)

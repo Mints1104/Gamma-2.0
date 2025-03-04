@@ -86,7 +86,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Gamma 2.0 by Mints&#10;Version: 1.6"
+            android:text="Gamma 2.0 by Mints&#10;Version: 1.7"
             android:textAlignment="center"
             android:textSize="14sp" />
 
