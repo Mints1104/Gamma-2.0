@@ -276,6 +276,7 @@ class FilterFragment : Fragment() {
             "Mega Energy" -> "12,0,$rawValue"
             "Pokémon Encounter" -> "7,0,$rawValue"
             "Item" -> "2,0,$rawValue"  // Updated for item filters.
+            "Pokémon Candy" -> "4,0,$rawValue"
             else -> rawValue // For "Pokémon Candy" (or any other), no extra formatting.
         }
     }
