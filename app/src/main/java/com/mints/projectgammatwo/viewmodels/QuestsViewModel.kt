@@ -110,7 +110,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
     fun fetchQuests() {
         val context = getApplication<Application>().applicationContext
         val interceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = HttpLoggingInterceptor.Level.NONE
         }
         val client = OkHttpClient.Builder().addInterceptor(interceptor).build()
 
@@ -152,10 +152,11 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                     } ?: emptyList()
                 }
                 val visited = visitedPreferences.getVisitedQuests()
-                val filteredQuests = allQuests.filter { quest ->
+                var filteredQuests = allQuests.filter { quest ->
                     val id = "${quest.name}|${quest.lat}|${quest.lng}"
                     !visited.contains(id)
                 }
+               filteredQuests =  filteredQuests.take(500)
 
                 // Load last visited coordinates from shared preferences.
                 val prefs = context.getSharedPreferences("last_visited_pref", Context.MODE_PRIVATE)
