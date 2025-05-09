@@ -56,4 +56,14 @@
         android:contentDescription="Previous location"
         android:src="@drawable/arrow_left_24px" />
 
+    <ImageButton
+        android:id="@+id/home_button"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="200dp"
+        android:padding="8dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Home Coordinates"
+        android:src="@drawable/home_24px"/>
+
 </FrameLayout>

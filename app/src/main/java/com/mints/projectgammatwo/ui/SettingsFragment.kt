@@ -1,11 +1,12 @@
 package com.mints.projectgammatwo.ui
 
 import android.app.AlertDialog
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.text.InputFilter
 import android.text.InputType
+import android.text.Spanned
 import android.text.method.LinkMovementMethod
 import android.view.*
 import android.widget.*
@@ -15,10 +16,11 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.DataSourcePreferences
-import com.mints.projectgammatwo.data.DeletedInvasionsRepository
 import com.mints.projectgammatwo.data.DeletedEntry
-import com.mints.projectgammatwo.data.FilterPreferences
+import com.mints.projectgammatwo.data.DeletedInvasionsRepository
 import com.mints.projectgammatwo.data.FavoriteLocation
+import com.mints.projectgammatwo.data.FilterPreferences
+import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.data.QuestFilterPreferences
 
 class SettingsFragment : Fragment() {
@@ -38,7 +40,9 @@ class SettingsFragment : Fragment() {
     private lateinit var filterPreferences: FilterPreferences
     private lateinit var deletedRepo: DeletedInvasionsRepository
     private lateinit var questFilterPreferences: QuestFilterPreferences
-    private lateinit var discordTextView:TextView
+    private lateinit var discordTextView: TextView
+    private lateinit var homeCoordinates: EditText
+    private lateinit var homeCoordinatesManager: HomeCoordinatesManager
 
     private val gson = Gson()
 
@@ -56,7 +60,7 @@ class SettingsFragment : Fragment() {
         filterPreferences = FilterPreferences(requireContext())
         questFilterPreferences = QuestFilterPreferences(requireContext())
         deletedRepo = DeletedInvasionsRepository(requireContext())
-
+        homeCoordinatesManager = HomeCoordinatesManager.getInstance(requireContext())
 
         checkboxNYC = view.findViewById(R.id.checkbox_nyc)
         checkboxLondon = view.findViewById(R.id.checkbox_london)
@@ -68,7 +72,17 @@ class SettingsFragment : Fragment() {
         radioGroupTeleport = view.findViewById(R.id.radioGroupTeleport)
         radioIpogo = view.findViewById(R.id.radio_ipogo)
         radioJoystick = view.findViewById(R.id.radio_joystick)
-         discordTextView = view.findViewById(R.id.discordInvite)
+        discordTextView = view.findViewById(R.id.discordInvite)
+        homeCoordinates = view.findViewById(R.id.homeCoordinates)
+
+        setupDiscordText()
+        setupDataSourceCheckboxes()
+        setupExportImportButtons()
+        setupTeleportMethod()
+        setupHomeCoordinatesField()
+    }
+
+    private fun setupDiscordText() {
         discordTextView.text = HtmlCompat.fromHtml(getString(R.string.discord_link), HtmlCompat.FROM_HTML_MODE_LEGACY)
         discordTextView.movementMethod = LinkMovementMethod.getInstance()
         discordTextView.setOnFocusChangeListener { v, hasFocus ->
@@ -76,8 +90,9 @@ class SettingsFragment : Fragment() {
                 v.clearFocus()
             }
         }
+    }
 
-
+    private fun setupDataSourceCheckboxes() {
         // Load data source selections.
         val selectedSources = dataSourcePreferences.getSelectedSources()
         checkboxNYC.isChecked = selectedSources.contains("NYC")
@@ -105,9 +120,9 @@ class SettingsFragment : Fragment() {
         checkboxSG.setOnClickListener(checkListener)
         checkboxVancouver.setOnClickListener(checkListener)
         checkboxSydney.setOnClickListener(checkListener)
+    }
 
-
-
+    private fun setupExportImportButtons() {
         // Export settings.
         btnExportSettings.setOnClickListener {
             exportSettings()
@@ -117,7 +132,9 @@ class SettingsFragment : Fragment() {
         btnImportSettings.setOnClickListener {
             importSettingsDialog()
         }
+    }
 
+    private fun setupTeleportMethod() {
         // Teleport method: load saved method.
         val teleportPrefs = requireContext().getSharedPreferences(TELEPORT_PREFS_NAME, Context.MODE_PRIVATE)
         val savedMethod = teleportPrefs.getString(KEY_TELEPORT_METHOD, "ipogo") ?: "ipogo"
@@ -132,6 +149,76 @@ class SettingsFragment : Fragment() {
         }
     }
 
+    private fun setupHomeCoordinatesField() {
+        // Load saved coordinates
+        val savedCoords = homeCoordinatesManager.getHomeCoordinatesString()
+        homeCoordinates.setText(savedCoords)
+
+        // Set input hint
+        homeCoordinates.hint = "40.7128, -74.0060"
+
+        // Set input type for decimal numbers and comma
+        homeCoordinates.inputType = InputType.TYPE_CLASS_TEXT
+
+        // Apply input filter for validation
+        homeCoordinates.filters = arrayOf(CoordinatesInputFilter())
+
+        // Save coordinates when focus changes
+        homeCoordinates.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                val coords = homeCoordinates.text.toString().trim()
+                if (homeCoordinatesManager.validateCoordinates(coords)) {
+                    homeCoordinatesManager.saveHomeCoordinates(coords)
+                    Toast.makeText(requireContext(), "Coordinates saved: $coords", Toast.LENGTH_SHORT).show()
+                } else if (coords.isNotEmpty()) {
+                    Toast.makeText(
+                        requireContext(),
+                        "Invalid coordinates format. Use: Lat, Long (e.g., 40.7128, -74.0060)",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    // Keep previous valid value if available
+                    if (savedCoords.isNotEmpty() && homeCoordinatesManager.validateCoordinates(savedCoords)) {
+                        homeCoordinates.setText(savedCoords)
+                    } else {
+                        homeCoordinates.text.clear()
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Custom input filter for coordinates validation
+     */
+    inner class CoordinatesInputFilter : InputFilter {
+        override fun filter(
+            source: CharSequence,
+            start: Int,
+            end: Int,
+            dest: Spanned,
+            dstart: Int,
+            dend: Int
+        ): CharSequence? {
+            val input = dest.toString().substring(0, dstart) +
+                    source.toString().substring(start, end) +
+                    dest.toString().substring(dend)
+
+            // Allow empty field for clearing
+            if (input.isEmpty()) return null
+
+            // Allow partial valid input for coordinates
+            // Valid chars: digits, minus sign, period, comma, space
+            val validChars = "0123456789-., "
+            for (i in start until end) {
+                if (!validChars.contains(source[i])) {
+                    return ""
+                }
+            }
+
+            return null
+        }
+    }
+
     /**
      * Data class representing all settings to be exported/imported.
      */
@@ -140,7 +227,8 @@ class SettingsFragment : Fragment() {
         val enabledCharacters: Set<Int>,
         val favorites: List<FavoriteLocation>,
         val deletedEntries: Set<DeletedEntry>,
-        val enabledQuests: Set<String>
+        val enabledQuests: Set<String>,
+        val homeCoordinates: String
     )
 
     /**
@@ -156,12 +244,16 @@ class SettingsFragment : Fragment() {
         val enabledQuests = questFilterPreferences.getEnabledFilters()
         val deletedEntries = deletedRepo.getDeletedEntries()
 
+        // Get home coordinates from manager
+        val homeCoords = homeCoordinatesManager.getHomeCoordinatesString()
+
         val exportData = ExportData(
             dataSources = dataSources,
             enabledCharacters = enabledCharacters,
             favorites = favorites,
             deletedEntries = deletedEntries,
-            enabledQuests = enabledQuests
+            enabledQuests = enabledQuests,
+            homeCoordinates = homeCoords
         )
         val exportJson = gson.toJson(exportData)
 
@@ -208,6 +300,13 @@ class SettingsFragment : Fragment() {
             val favoritesPrefs = requireContext().getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
             favoritesPrefs.edit().putString(KEY_FAVORITES, gson.toJson(importData.favorites)).apply()
             deletedRepo.setDeletedEntries(importData.deletedEntries)
+
+            // Import home coordinates if available and valid
+            if (importData.homeCoordinates.isNotEmpty() &&
+                homeCoordinatesManager.validateCoordinates(importData.homeCoordinates)) {
+                homeCoordinatesManager.saveHomeCoordinates(importData.homeCoordinates)
+                homeCoordinates.setText(importData.homeCoordinates)
+            }
 
             // Update UI checkboxes.
             checkboxNYC.isChecked = importData.dataSources.contains("NYC")

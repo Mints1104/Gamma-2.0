@@ -24,6 +24,8 @@ import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.CurrentInvasionData
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.CurrentQuestData
+import com.mints.projectgammatwo.data.CurrentQuestData.currentQuests
+import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.helpers.DragTouchListener
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
@@ -36,6 +38,7 @@ class OverlayService : AccessibilityService() {
     private var viewModel: HomeViewModel? = null
     private var invasionsObserver: Observer<List<Invasion>>? = null
     private var errorObserver: Observer<String>? = null
+    private lateinit var homeCoordinatesManager: HomeCoordinatesManager
 
     override fun onCreate() {
         super.onCreate()
@@ -50,6 +53,8 @@ class OverlayService : AccessibilityService() {
             val notificationManager = getSystemService(NotificationManager::class.java)
             notificationManager.createNotificationChannel(channel)
         }
+        homeCoordinatesManager = HomeCoordinatesManager.getInstance(this)
+
         val notification = NotificationCompat.Builder(this, "overlay_service_channel")
             .setContentTitle("Invasion Overlay")
             .setContentText("Overlay service is running")
@@ -70,7 +75,6 @@ class OverlayService : AccessibilityService() {
             flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
         serviceInfo = info
-        // Default to invasions if no intent extra passed
         addOverlay("invasions")
     }
 
@@ -110,7 +114,6 @@ class OverlayService : AccessibilityService() {
             return
         }
         setupButtons(mode, params)
-        // Depending on the mode, trigger the corresponding data fetch if necessary.
         if (mode == "quests") {
             if (CurrentQuestData.currentQuests.isEmpty())
                 fetchQuests()
@@ -126,11 +129,15 @@ class OverlayService : AccessibilityService() {
         val closeBtn = overlayView?.findViewById<ImageButton>(R.id.close_button)
         val rightBtn = overlayView?.findViewById<ImageButton>(R.id.right_button)
         val leftBtn = overlayView?.findViewById<ImageButton>(R.id.left_button)
+        val homeBtn = overlayView?.findViewById<ImageButton>(R.id.home_button)
 
-        if (dragHandle == null || closeBtn == null || rightBtn == null || leftBtn == null) {
+        if (dragHandle == null || closeBtn == null || rightBtn == null || leftBtn == null || homeBtn == null) {
             Log.e(TAG, "One or more buttons not found in layout")
             return
         }
+
+
+
         dragHandle.setOnTouchListener(DragTouchListener(params, windowManager, overlayView!!))
         closeBtn.setOnClickListener {
             Log.d(TAG, "Close button clicked")
@@ -145,6 +152,17 @@ class OverlayService : AccessibilityService() {
             }
             stopSelf()
         }
+        homeBtn.setOnClickListener {
+            val coordinates = homeCoordinatesManager.getHomeCoordinates()
+            if(coordinates != null) {
+                val(latitude, longitude) = coordinates
+                launchHome(latitude,longitude)
+            } else {
+                Log.d(TAG, "Home coordinates not set")
+                showOverlayMessage("Home coordinates not set")
+            }
+        }
+
         rightBtn.setOnClickListener {
             if (mode == "quests") {
                 val currentQuests = CurrentQuestData.currentQuests
@@ -156,7 +174,8 @@ class OverlayService : AccessibilityService() {
                 }
                 currentIndex = (currentIndex + 1) % currentQuests.size
                 Log.d(TAG, "Navigating to quest at index $currentIndex: ${currentQuests[currentIndex].lat}, ${currentQuests[currentIndex].lng}")
-                showOverlayMessage("Quest ${currentIndex + 1}/${currentQuests.size}")
+           //     showOverlayMessage("Quest ${currentIndex + 1}/${currentQuests.size}")
+                Toast.makeText(this, "Teleporting to ${currentQuests[currentIndex].name}", Toast.LENGTH_SHORT).show()
                 launchQuest(currentQuests[currentIndex])
             } else {
                 val currentInvasions = CurrentInvasionData.currentInvasions
@@ -168,7 +187,9 @@ class OverlayService : AccessibilityService() {
                 }
                 currentIndex = (currentIndex + 1) % currentInvasions.size
                 Log.d(TAG, "Navigating to invasion at index $currentIndex: ${currentInvasions[currentIndex].lat}, ${currentInvasions[currentIndex].lng}")
-                showOverlayMessage("Invasion ${currentIndex + 1}/${currentInvasions.size}")
+             //   showOverlayMessage("Invasion ${currentIndex + 1}/${currentInvasions.size}")
+                Toast.makeText(this, "Teleporting to ${currentInvasions[currentIndex].characterName}", Toast.LENGTH_SHORT).show()
+
                 launchMap(currentInvasions[currentIndex])
             }
         }
@@ -183,7 +204,10 @@ class OverlayService : AccessibilityService() {
                     return@setOnClickListener
                 }
                 currentIndex = if (currentIndex - 1 < 0) currentQuests.size - 1 else currentIndex - 1
-                showOverlayMessage("Quest ${currentIndex + 1}/${currentQuests.size}")
+             //   showOverlayMessage("Quest ${currentIndex + 1}/${currentQuests.size}")
+
+                Toast.makeText(this, "Teleporting to ${currentQuests[currentIndex].name}", Toast.LENGTH_SHORT).show()
+
                 launchQuest(currentQuests[currentIndex])
             } else {
                 val currentInvasions = CurrentInvasionData.currentInvasions
@@ -194,14 +218,14 @@ class OverlayService : AccessibilityService() {
                     return@setOnClickListener
                 }
                 currentIndex = if (currentIndex - 1 < 0) currentInvasions.size - 1 else currentIndex - 1
-                showOverlayMessage("Invasion ${currentIndex + 1}/${currentInvasions.size}")
+              //  showOverlayMessage("Invasion ${currentIndex + 1}/${currentInvasions.size}")
+                Toast.makeText(this, "Teleporting to ${currentInvasions[currentIndex].characterName}", Toast.LENGTH_SHORT).show()
                 launchMap(currentInvasions[currentIndex])
             }
         }
     }
 
     private fun updateOverlayBasedOnMode(mode: String) {
-        // Implement dynamic changes if needed. For now, we simply refresh the overlay message.
         if (mode == "quests") {
             showOverlayMessage("Updated: Quests mode")
         } else {
@@ -248,17 +272,22 @@ class OverlayService : AccessibilityService() {
         viewModel?.fetchInvasions()
     }
 
-    // New method to fetch quests; you can implement similar logic to fetchInvasions()
-    // File: src/main/java/com/mints/projectgammatwo/services/OverlayService.kt
+
     private fun fetchQuests() {
         Log.d(TAG, "Fetching quests...")
         showOverlayMessage("Fetching quests...")
-        // Create an instance of QuestsViewModel.
-        // Note: This is a simple example; for a more robust solution use a shared ViewModel.
+
         val questsViewModel = QuestsViewModel(application)
         questsViewModel.fetchQuests()
-        // Optionally, observe the questsLiveData to know when the data is ready to update the overlay.
-        // For example, once data is fetched, you might call updateOverlayBasedOnMode("quests").
+
+    }
+
+    private fun launchHome(lat: Double, lng: Double) {
+        Log.d(TAG, "Launching home with coords: $lat, $lng")
+        val url = "https://ipogo.app/?coords=$lat,$lng"
+        Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+            .also(::startActivity)
     }
 
     private fun launchMap(inv: Invasion) {
@@ -269,7 +298,6 @@ class OverlayService : AccessibilityService() {
             .also(::startActivity)
     }
 
-    // New helper to launch quest navigation
     private fun launchQuest(quest: com.mints.projectgammatwo.data.Quests.Quest) {
         Log.d(TAG, "Launching quest map with coords: ${quest.lat}, ${quest.lng}")
         val url = "https://ipogo.app/?coords=${quest.lat},${quest.lng}"
@@ -279,7 +307,6 @@ class OverlayService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Pokémon GO detection commented out temporarily.
     }
 
     private fun cleanupObservers() {

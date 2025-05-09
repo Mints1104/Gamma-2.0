@@ -50,6 +50,19 @@
             android:layout_height="wrap_content"
             android:text="Sydney" />
 
+        <!-- Data Source Checkboxes -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Home Coordinates" />
+
+        <EditText
+            android:id="@+id/homeCoordinates"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Enter home coordinates" />
+
+
         <!-- Export/Import Buttons -->
         <View
             android:layout_width="match_parent"
@@ -86,7 +99,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Gamma 2.0 by Mints&#10;Version: 1.8"
+            android:text="Gamma by Mints&#10;Version: 2.0"
             android:textAlignment="center"
             android:textSize="14sp" />
 
