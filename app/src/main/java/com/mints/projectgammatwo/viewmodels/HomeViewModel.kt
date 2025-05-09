@@ -5,6 +5,7 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.*
 import com.mints.projectgammatwo.data.ApiClient
+import com.mints.projectgammatwo.data.CurrentInvasionData
 import com.mints.projectgammatwo.data.DataSourcePreferences
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.Invasion
@@ -72,6 +73,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     .reversed()
 
                 _invasions.value = filteredAndSorted
+                CurrentInvasionData.currentInvasions = filteredAndSorted.toMutableList()
                 _deletedCount.value = deletedRepo.getDeletionCountLast24Hours()
 
                 Log.d(TAG, "Fetched invasions from ${selectedSources.size} sources. Total items: ${filteredAndSorted.size}")
@@ -80,6 +82,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 _error.value = "Failed to fetch invasions: ${e.message}"
             }
         }
+    }
+
+    fun getInvasions(): List<Invasion>? {
+        return _invasions.value
     }
 
 

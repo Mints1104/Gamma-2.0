@@ -1,9 +1,6 @@
 package com.mints.projectgammatwo.ui
 
 import android.os.Bundle
-import android.util.Log
-import android.view.View
-import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -17,23 +14,15 @@ import androidx.navigation.ui.setupWithNavController
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.mints.projectgammatwo.R
 import androidx.appcompat.widget.Toolbar
-import com.mints.projectgammatwo.data.DataMappings
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
-import com.mints.projectgammatwo.data.DataMappings.PokemonResponse
-import com.mints.projectgammatwo.data.PokemonRepository
 
 class MainActivity : AppCompatActivity() {
     private lateinit var navController: NavController
     private lateinit var appBarConfiguration: AppBarConfiguration
-    private lateinit var repository: PokemonRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_main)
-
 
         // Set up Toolbar
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
@@ -45,31 +34,30 @@ class MainActivity : AppCompatActivity() {
         navController = navHostFragment.navController
 
         // Set up Bottom Navigation
-        val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNav)
-        bottomNav.setupWithNavController(navController)
+        findViewById<BottomNavigationView>(R.id.bottomNav)
+            .setupWithNavController(navController)
 
         // Configure AppBar
         appBarConfiguration = AppBarConfiguration(
-            setOf(R.id.homeFragment, R.id.filterFragment, R.id.settingsFragment, R.id.favoritesFragment, R.id.questsFragment) // top-level destinations
+            setOf(R.id.homeFragment, R.id.filterFragment,
+                R.id.settingsFragment, R.id.favoritesFragment,
+                R.id.questsFragment)
         )
         setupActionBarWithNavController(navController, appBarConfiguration)
 
-        // Handle edge-to-edge display
+        // Edge-to-edge
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            v.setPadding(systemBars.left, systemBars.top,
+                systemBars.right, systemBars.bottom)
             insets
         }
 
-
-
+        // No longer auto-checking permissions - user will control this from fragment
     }
 
-
-
-
-
     override fun onSupportNavigateUp(): Boolean {
-        return navController.navigateUp(appBarConfiguration) || super.onSupportNavigateUp()
+        return navController.navigateUp(appBarConfiguration)
+                || super.onSupportNavigateUp()
     }
 }

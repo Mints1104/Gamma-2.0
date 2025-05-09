@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="#44000000">  <!-- Semi-transparent background -->
+
+
+    <!-- Add this to your overlay_layout.xml -->
+    <TextView
+        android:id="@+id/status_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="#80000000"
+        android:padding="8dp"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:visibility="gone"/>
+
+
+    <ImageButton
+        android:id="@+id/drag_handle"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:padding="8dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Drag handle"
+        android:src="@drawable/ic_drag_handle" />
+
+    <ImageButton
+        android:id="@+id/close_button"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="50dp"
+        android:padding="8dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Close overlay"
+        android:src="@drawable/close_24px" />
+
+    <ImageButton
+        android:id="@+id/right_button"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="100dp"
+        android:padding="8dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Next location"
+        android:src="@drawable/arrow_right_24px" />
+
+    <ImageButton
+        android:id="@+id/left_button"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="150dp"
+        android:padding="8dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Previous location"
+        android:src="@drawable/arrow_left_24px" />
+
+</FrameLayout>

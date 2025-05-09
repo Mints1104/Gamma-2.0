@@ -27,6 +27,8 @@ import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
+import com.mints.projectgammatwo.data.CurrentQuestData
+
 
 class QuestsViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -138,7 +140,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                         }
                     }
                 }
-                val responses = deferredList.mapNotNull { it.await() }
+                val responses = deferredList.map { it.await() }
 
                 responses.firstOrNull()?.second?.body()?.filters?.let { filters ->
                     val filtersJson = Gson().toJson(filters)
@@ -168,6 +170,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                 // Sort the filtered quests using the last visited coordinates (if available) as the starting point.
                 val sortedQuests = sortQuestsByNearestNeighbor(filteredQuests, startLat, startLng)
                 _questsLiveData.postValue(sortedQuests)
+                CurrentQuestData.currentQuests = sortedQuests.toMutableList()
             } catch (e: Exception) {
                 Log.e("QuestsViewModel", "Error fetching quests", e)
             }

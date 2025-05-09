@@ -2,5 +2,7 @@
     <string name="app_name">Gamma</string>
     <string name="edit_favorite">Edit Favorite\n</string>
     <string name="discord_link"><![CDATA[<a href="https://discord.gg/VP4mRsvXec">Join our discord</a>]]></string>
+    <string name="overlay_icon">Overlay icon\n</string>
+    <string name="accessibility_service_description">Enables  overlay features</string>
 
 </resources>
