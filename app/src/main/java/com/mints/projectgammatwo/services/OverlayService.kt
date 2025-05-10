@@ -24,7 +24,6 @@ import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.CurrentInvasionData
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.CurrentQuestData
-import com.mints.projectgammatwo.data.CurrentQuestData.currentQuests
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.helpers.DragTouchListener
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
@@ -130,8 +129,10 @@ class OverlayService : AccessibilityService() {
         val rightBtn = overlayView?.findViewById<ImageButton>(R.id.right_button)
         val leftBtn = overlayView?.findViewById<ImageButton>(R.id.left_button)
         val homeBtn = overlayView?.findViewById<ImageButton>(R.id.home_button)
-
-        if (dragHandle == null || closeBtn == null || rightBtn == null || leftBtn == null || homeBtn == null) {
+        val refreshBtn = overlayView?.findViewById<ImageButton>(R.id.refresh_button)
+        val switchModesBtn = overlayView?.findViewById<ImageButton>(R.id.switch_modes)
+        switchModesBtn?.setImageResource(if (mode == "quests") R.drawable.binoculars else R.drawable.team_rocket_logo)
+        if (dragHandle == null || closeBtn == null || rightBtn == null || leftBtn == null || homeBtn == null || refreshBtn == null || switchModesBtn == null) {
             Log.e(TAG, "One or more buttons not found in layout")
             return
         }
@@ -141,7 +142,7 @@ class OverlayService : AccessibilityService() {
         dragHandle.setOnTouchListener(DragTouchListener(params, windowManager, overlayView!!))
         closeBtn.setOnClickListener {
             Log.d(TAG, "Close button clicked")
-            showOverlayMessage("Closing overlay")
+            showOverlayToast("Closing overlay")
             try {
                 if (overlayView != null) {
                     windowManager.removeView(overlayView)
@@ -159,7 +160,40 @@ class OverlayService : AccessibilityService() {
                 launchHome(latitude,longitude)
             } else {
                 Log.d(TAG, "Home coordinates not set")
-                showOverlayMessage("Home coordinates not set")
+                showOverlayToast("Home coordinates not set")
+            }
+        }
+
+        refreshBtn.setOnClickListener {
+            if (mode == "quests") {
+                Log.d(TAG, "Refresh button clicked in quests mode")
+                showOverlayToast("Refreshing quests...")
+                fetchQuests()
+            } else {
+                Log.d(TAG, "Refresh button clicked in invasions mode")
+                showOverlayToast("Refreshing invasions...")
+                fetchInvasions()
+            }
+        }
+
+        switchModesBtn.setOnClickListener {
+            if (mode == "quests") {
+                Log.d(TAG, "Switching to invasions mode")
+
+                cleanupObservers()
+                if (overlayView != null) {
+                    windowManager.removeView(overlayView)
+                    overlayView = null
+                }
+                addOverlay("invasions")
+            } else {
+                Log.d(TAG, "Switching to quests mode")
+                cleanupObservers()
+                if (overlayView != null) {
+                    windowManager.removeView(overlayView)
+                    overlayView = null
+                }
+                addOverlay("quests")
             }
         }
 
@@ -168,28 +202,24 @@ class OverlayService : AccessibilityService() {
                 val currentQuests = CurrentQuestData.currentQuests
                 if (currentQuests.isEmpty()) {
                     Log.d(TAG, "No quests available, attempting to fetch...")
-                    showOverlayMessage("No quests available, fetching...")
+                    showOverlayToast("No quests available, fetching...")
                     fetchQuests()
                     return@setOnClickListener
                 }
                 currentIndex = (currentIndex + 1) % currentQuests.size
                 Log.d(TAG, "Navigating to quest at index $currentIndex: ${currentQuests[currentIndex].lat}, ${currentQuests[currentIndex].lng}")
-           //     showOverlayMessage("Quest ${currentIndex + 1}/${currentQuests.size}")
-                Toast.makeText(this, "Teleporting to ${currentQuests[currentIndex].name}", Toast.LENGTH_SHORT).show()
+                showOverlayToast( "Teleporting to ${currentQuests[currentIndex].rewardsString}")
                 launchQuest(currentQuests[currentIndex])
             } else {
                 val currentInvasions = CurrentInvasionData.currentInvasions
                 if (currentInvasions.isEmpty()) {
                     Log.d(TAG, "No invasions available, attempting to fetch...")
-                    showOverlayMessage("No invasions available, fetching...")
                     fetchInvasions()
                     return@setOnClickListener
                 }
                 currentIndex = (currentIndex + 1) % currentInvasions.size
                 Log.d(TAG, "Navigating to invasion at index $currentIndex: ${currentInvasions[currentIndex].lat}, ${currentInvasions[currentIndex].lng}")
-             //   showOverlayMessage("Invasion ${currentIndex + 1}/${currentInvasions.size}")
-                Toast.makeText(this, "Teleporting to ${currentInvasions[currentIndex].characterName}", Toast.LENGTH_SHORT).show()
-
+                showOverlayToast("Teleporting to ${currentInvasions[currentIndex].characterName}")
                 launchMap(currentInvasions[currentIndex])
             }
         }
@@ -199,27 +229,23 @@ class OverlayService : AccessibilityService() {
                 val currentQuests = CurrentQuestData.currentQuests
                 if (currentQuests.isEmpty()) {
                     Log.d(TAG, "No quests available, attempting to fetch...")
-                    showOverlayMessage("No quests available, fetching...")
+                    showOverlayToast("No quests available, fetching...")
                     fetchQuests()
                     return@setOnClickListener
                 }
                 currentIndex = if (currentIndex - 1 < 0) currentQuests.size - 1 else currentIndex - 1
-             //   showOverlayMessage("Quest ${currentIndex + 1}/${currentQuests.size}")
-
-                Toast.makeText(this, "Teleporting to ${currentQuests[currentIndex].name}", Toast.LENGTH_SHORT).show()
-
+                showOverlayToast("Teleporting to ${currentQuests[currentIndex].name}")
                 launchQuest(currentQuests[currentIndex])
             } else {
                 val currentInvasions = CurrentInvasionData.currentInvasions
                 if (currentInvasions.isEmpty()) {
                     Log.d(TAG, "No invasions available, attempting to fetch...")
-                    showOverlayMessage("No invasions available, fetching...")
+                    showOverlayToast("No invasions available, fetching...")
                     fetchInvasions()
                     return@setOnClickListener
                 }
                 currentIndex = if (currentIndex - 1 < 0) currentInvasions.size - 1 else currentIndex - 1
-              //  showOverlayMessage("Invasion ${currentIndex + 1}/${currentInvasions.size}")
-                Toast.makeText(this, "Teleporting to ${currentInvasions[currentIndex].characterName}", Toast.LENGTH_SHORT).show()
+                showOverlayToast("Teleporting to ${currentInvasions[currentIndex].characterName}")
                 launchMap(currentInvasions[currentIndex])
             }
         }
@@ -227,9 +253,9 @@ class OverlayService : AccessibilityService() {
 
     private fun updateOverlayBasedOnMode(mode: String) {
         if (mode == "quests") {
-            showOverlayMessage("Updated: Quests mode")
+            showOverlayToast("Updated: Quests mode")
         } else {
-            showOverlayMessage("Updated: Invasions mode")
+            showOverlayToast("Updated: Invasions mode")
         }
     }
 
@@ -249,23 +275,23 @@ class OverlayService : AccessibilityService() {
 
     private fun fetchInvasions() {
         Log.d(TAG, "Fetching invasions...")
-        showOverlayMessage("Fetching invasions...")
+        showOverlayToast("Fetching invasions...")
         cleanupObservers()
         viewModel = HomeViewModel(application)
         invasionsObserver = Observer { invasions ->
             Log.d(TAG, "Received ${invasions.size} invasions")
             CurrentInvasionData.currentInvasions = invasions.toMutableList()
             if (invasions.isNotEmpty()) {
-                showOverlayMessage("Found ${invasions.size} invasions")
+                showOverlayToast("Found ${invasions.size} invasions")
                 currentIndex = 0
             } else {
-                showOverlayMessage("No invasions found")
+                showOverlayToast("No invasions found")
             }
             updateOverlayBasedOnMode("invasions")
         }
         errorObserver = Observer { errorMsg ->
             Log.e(TAG, "Error fetching invasions: $errorMsg")
-            showOverlayMessage("Error: $errorMsg")
+            showOverlayToast("Error: $errorMsg")
         }
         viewModel?.invasions?.observeForever(invasionsObserver!!)
         viewModel?.error?.observeForever(errorObserver!!)
@@ -275,7 +301,7 @@ class OverlayService : AccessibilityService() {
 
     private fun fetchQuests() {
         Log.d(TAG, "Fetching quests...")
-        showOverlayMessage("Fetching quests...")
+        showOverlayToast("Fetching quests...")
 
         val questsViewModel = QuestsViewModel(application)
         questsViewModel.fetchQuests()
@@ -323,6 +349,39 @@ class OverlayService : AccessibilityService() {
 
     override fun onInterrupt() {
         // No-op
+    }
+
+    private fun showOverlayToast(message: String) {
+        val toastOverlayView = LayoutInflater.from(this).inflate(R.layout.overlay_toast, null)
+        val toastText = toastOverlayView.findViewById<TextView>(R.id.toast_text)
+        toastText.text = message
+
+        val params = WindowManager.LayoutParams().apply {
+            width = WindowManager.LayoutParams.WRAP_CONTENT
+            height = WindowManager.LayoutParams.WRAP_CONTENT
+            type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
+            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            format = PixelFormat.TRANSLUCENT
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = 100  // Distance from bottom
+        }
+
+        try {
+            windowManager.addView(toastOverlayView, params)
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    windowManager.removeView(toastOverlayView)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error removing toast overlay: ${e.message}")
+                }
+            }, 3000)  // Show for 3 seconds
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing toast overlay: ${e.message}")
+        }
     }
 
     override fun onDestroy() {

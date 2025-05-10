@@ -66,4 +66,25 @@
         android:contentDescription="Home Coordinates"
         android:src="@drawable/home_24px"/>
 
+
+    <ImageButton
+        android:id="@+id/refresh_button"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="250dp"
+        android:padding="8dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Switch modes"
+        android:src="@drawable/refresh_24px"/>
+
+    <ImageButton
+        android:id="@+id/switch_modes"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="300dp"
+        android:padding="8dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Switch modes" />
+
+
 </FrameLayout>
