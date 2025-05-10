@@ -86,5 +86,16 @@
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="Switch modes" />
 
+    <ImageButton
+        android:id="@+id/favorites_tab"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="350dp"
+        android:padding="8dp"
+        android:src="@drawable/ic_favorite"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Switch modes" />
+
+
 
 </FrameLayout>

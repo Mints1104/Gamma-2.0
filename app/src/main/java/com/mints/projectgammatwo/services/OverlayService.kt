@@ -5,6 +5,9 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.net.Uri
@@ -15,17 +18,23 @@ import android.util.Log
 import android.view.*
 import android.view.WindowManager.LayoutParams.*
 import android.view.accessibility.AccessibilityEvent
+import android.widget.Button
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Observer
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.CurrentInvasionData
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.CurrentQuestData
+import com.mints.projectgammatwo.data.FavoritesManager
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.helpers.DragTouchListener
+import com.mints.projectgammatwo.recyclerviews.FavoritesAdapter
+import com.mints.projectgammatwo.recyclerviews.OverlayFavoritesAdapter
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
 
@@ -38,6 +47,9 @@ class OverlayService : AccessibilityService() {
     private var invasionsObserver: Observer<List<Invasion>>? = null
     private var errorObserver: Observer<String>? = null
     private lateinit var homeCoordinatesManager: HomeCoordinatesManager
+    private var favoritesOverlayView: View? = null
+    private var isFavoritesVisible = false
+    private lateinit var favoritesAdapter: OverlayFavoritesAdapter
 
     override fun onCreate() {
         super.onCreate()
@@ -62,6 +74,13 @@ class OverlayService : AccessibilityService() {
             .build()
         startForeground(1001, notification)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        val favorites = FavoritesManager.getFavorites(this)
+        if (favorites.isNotEmpty()) {
+            Log.d(TAG, "Favorites loaded: ${favorites.size} items")
+        } else {
+            Log.d(TAG, "No favorites found")
+        }
+
     }
 
     override fun onServiceConnected() {
@@ -131,8 +150,9 @@ class OverlayService : AccessibilityService() {
         val homeBtn = overlayView?.findViewById<ImageButton>(R.id.home_button)
         val refreshBtn = overlayView?.findViewById<ImageButton>(R.id.refresh_button)
         val switchModesBtn = overlayView?.findViewById<ImageButton>(R.id.switch_modes)
+        val favoritesButton = overlayView?.findViewById<ImageButton>(R.id.favorites_tab)
         switchModesBtn?.setImageResource(if (mode == "quests") R.drawable.binoculars else R.drawable.team_rocket_logo)
-        if (dragHandle == null || closeBtn == null || rightBtn == null || leftBtn == null || homeBtn == null || refreshBtn == null || switchModesBtn == null) {
+        if (dragHandle == null || closeBtn == null || rightBtn == null || leftBtn == null || homeBtn == null || refreshBtn == null || switchModesBtn == null || favoritesButton == null) {
             Log.e(TAG, "One or more buttons not found in layout")
             return
         }
@@ -196,6 +216,11 @@ class OverlayService : AccessibilityService() {
                 addOverlay("quests")
             }
         }
+
+        favoritesButton?.setOnClickListener {
+            showFavoritesOverlay()
+        }
+
 
         rightBtn.setOnClickListener {
             if (mode == "quests") {
@@ -397,4 +422,94 @@ class OverlayService : AccessibilityService() {
             Log.e(TAG, "Error on destroy: ${e.message}")
         }
     }
+
+
+
+    // Add this function to your OverlayService
+    private fun setupFavoritesOverlay() {
+        // Inflate the favorites overlay layout
+        val contextThemeWrapper = ContextThemeWrapper(this, R.style.Theme_ProjectGamma2)
+
+        favoritesOverlayView = LayoutInflater.from(contextThemeWrapper)
+            .inflate(R.layout.favorites_overlay_layout, null)
+        // Set up RecyclerView
+        val recyclerView = favoritesOverlayView?.findViewById<RecyclerView>(R.id.favorites_recycler_view)
+        recyclerView?.layoutManager = LinearLayoutManager(this)
+
+        // Initialize adapter
+        favoritesAdapter = OverlayFavoritesAdapter(
+            onTeleportFavorite = { favorite ->
+                // Teleport to location
+                hideFavoritesOverlay()
+                val url = "https://ipogo.app/?coords=${favorite.lat},${favorite.lng}"
+                showOverlayToast("Teleporting to ${favorite.name}")
+                Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                    .also(::startActivity)
+            }
+        )
+
+        recyclerView?.adapter = favoritesAdapter
+
+        // Set up close button
+        favoritesOverlayView?.findViewById<ImageButton>(R.id.close_favorites_button)?.setOnClickListener {
+            hideFavoritesOverlay()
+        }
+
+
+
+        // Load favorites
+        val favorites = FavoritesManager.getFavorites(this)
+        favoritesAdapter.submitList(favorites)
+    }
+
+    private fun showFavoritesOverlay() {
+        if (favoritesOverlayView == null) {
+            setupFavoritesOverlay()
+        }
+
+        // Hide main overlay first
+        overlayView?.visibility = View.GONE
+
+        // Add favorites overlay to window manager if not already added
+        if (favoritesOverlayView?.parent == null) {
+            val params = WindowManager.LayoutParams().apply {
+                width = WindowManager.LayoutParams.WRAP_CONTENT
+                height = WindowManager.LayoutParams.WRAP_CONTENT
+                type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                else
+                    WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
+                flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                format = PixelFormat.TRANSLUCENT
+                gravity = Gravity.TOP
+            }
+            val dragHandle = favoritesOverlayView?.findViewById<ImageButton>(R.id.drag_handle)
+            dragHandle?.setOnTouchListener(DragTouchListener(params, windowManager, favoritesOverlayView!!))
+
+            try {
+                windowManager.addView(favoritesOverlayView, params)
+                isFavoritesVisible = true
+            } catch (e: Exception) {
+                Log.e(TAG, "Error showing favorites overlay: ${e.message}")
+            }
+        } else {
+            // Just make it visible if already added
+            favoritesOverlayView?.visibility = View.VISIBLE
+            isFavoritesVisible = true
+        }
+
+        // Refresh the favorites list
+        val favorites = FavoritesManager.getFavorites(this)
+        favoritesAdapter.submitList(favorites)
+    }
+
+    private fun hideFavoritesOverlay() {
+        favoritesOverlayView?.visibility = View.GONE
+        isFavoritesVisible = false
+
+        // Show main overlay again
+        overlayView?.visibility = View.VISIBLE
+    }
+
 }
