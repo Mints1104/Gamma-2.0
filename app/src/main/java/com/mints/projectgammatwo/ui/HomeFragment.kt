@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -95,10 +96,12 @@ class HomeFragment : Fragment() {
         }
     }
 
+
     private fun handleStartServiceClick() {
         // Check if we already have all permissions
         if (Settings.canDrawOverlays(requireContext()) &&
-            serviceManager.isOverlayServiceEnabled()) {
+            serviceManager.isOverlayServiceEnabled()
+        ) {
             // We have all permissions, start service directly
             serviceManager.startOverlayService()
             return
@@ -128,7 +131,23 @@ class HomeFragment : Fragment() {
 
         // Then check accessibility service
         if (!serviceManager.isOverlayServiceEnabled()) {
-            openAccessibilitySettings()
+            AlertDialog.Builder(requireContext())
+                .setTitle("Accessibility Permission Required")
+                .setMessage(
+                    "This app needs Accessibility Service permission to function correctly. Please enable '${
+                        getString(
+                            R.string.app_name
+                        )
+                    } Overlay Service' in the Accessibility settings."
+                )
+                .setPositiveButton("Open Settings") { _, _ ->
+                    openAccessibilitySettings()
+                }
+                .setNegativeButton("Not Now") { dialog, _ ->
+                    dialog.dismiss()
+                }
+                .setCancelable(false)
+                .show()
             return
         }
     }
@@ -138,7 +157,7 @@ class HomeFragment : Fragment() {
         startActivity(intent)
         Toast.makeText(
             requireContext(),
-            "Please enable '${getString(R.string.app_name)} Overlay Service'",
+            "Please enable '${getString(R.string.app_name)} Overlay Service' in the list",
             Toast.LENGTH_LONG
         ).show()
     }
@@ -147,16 +166,23 @@ class HomeFragment : Fragment() {
         val overlayPermission = Settings.canDrawOverlays(requireContext())
         val accessibilityEnabled = serviceManager.isOverlayServiceEnabled()
 
+        // Add logging to debug permission issues
+        Log.d("PermissionStatus", "Overlay permission: $overlayPermission")
+        Log.d("PermissionStatus", "Accessibility enabled: $accessibilityEnabled")
+
         when {
             !overlayPermission && !accessibilityEnabled -> {
                 button.text = "Enable Permissions"
             }
+
             !overlayPermission -> {
                 button.text = "Enable Overlay"
             }
+
             !accessibilityEnabled -> {
                 button.text = "Enable Accessibility"
             }
+
             else -> {
                 button.text = "Start Service"
             }
