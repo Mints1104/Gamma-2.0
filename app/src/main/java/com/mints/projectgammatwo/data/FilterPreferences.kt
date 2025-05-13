@@ -2,12 +2,14 @@ package com.mints.projectgammatwo.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 
 class FilterPreferences(context: Context) {
 
-    // Initialize SharedPreferences with a specific file name ("invasion_filters") and private access mode.
-    // The context is used to access the preferences file.
+
     private val prefs: SharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    private val KEY_ALL_FILTERS = "all_filters"
+    private val KEY_FILTER_PREFIX = "filter_"
 
     /**
      * Saves the set of enabled character IDs into SharedPreferences.
@@ -24,11 +26,56 @@ class FilterPreferences(context: Context) {
         // Convert the Set<Int> to a Set<String> because SharedPreferences supports string sets.
         val stringSet = characters.map { it.toString() }.toSet()
 
-        // Begin editing SharedPreferences, store the converted set, and apply the changes.
         prefs.edit()
             .putStringSet(KEY_CHARACTERS, stringSet)
-            .apply() // Asynchronously saves the changes without blocking the main thread.
+            .apply()
     }
+
+    fun saveCurrentAsFilter(name: String) {
+        // 1. Snapshot the current IDs
+        val current = getEnabledCharacters()
+        Log.d("FilterPreferences", "Saving filter $name with characters: $current")
+        // 2. Convert to Set<String>
+        val stringSet = current.map { it.toString() }.toSet()
+        Log.d("FilterPreferences", "Converted to string set: $stringSet")
+        // 3. Save under "filter_<name>"
+        prefs.edit()
+            .putStringSet("$KEY_FILTER_PREFIX$name", stringSet)
+            .apply()
+        // 4. Register this filter name
+        val all = prefs.getStringSet(KEY_ALL_FILTERS, emptySet())!!.toMutableSet()
+        all.add(name)
+        Log.d("FilterPreferences", "All filters after adding: $all")
+        prefs.edit()
+            .putStringSet(KEY_ALL_FILTERS, all)
+            .apply()
+    }
+
+    fun getFilter(name: String): Set<Int> {
+        val saved = prefs.getStringSet("$KEY_FILTER_PREFIX$name", emptySet())!!
+        val ints = saved.mapNotNull { it.toIntOrNull() }.toSet()
+        Log.d("FilterPreferences", "Loaded filter $name with characters: $ints")
+        return ints
+    }
+
+
+    fun loadFilter(name: String) {
+        val saved = prefs.getStringSet("$KEY_FILTER_PREFIX$name", emptySet())!!
+        val ints = saved.mapNotNull { it.toIntOrNull() }.toSet()
+        saveEnabledCharacters(ints)
+    }
+    fun listFilterNames(): Set<String> =
+        prefs.getStringSet(KEY_ALL_FILTERS, emptySet())!!
+
+    /** Delete a saved filter (does not touch current enabled set). */
+    fun deleteFilter(name: String) {
+        prefs.edit().remove("$KEY_FILTER_PREFIX$name").apply()
+        val all = prefs.getStringSet(KEY_ALL_FILTERS, emptySet())!!.toMutableSet()
+        all.remove(name)
+        prefs.edit().putStringSet(KEY_ALL_FILTERS, all).apply()
+    }
+
+
 
     /**
      * Retrieves the set of enabled character IDs from SharedPreferences.

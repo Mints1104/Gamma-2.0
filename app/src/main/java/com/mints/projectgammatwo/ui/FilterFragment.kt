@@ -1,18 +1,25 @@
 package com.mints.projectgammatwo.ui
 
+import android.app.AlertDialog
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.text.InputType
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.view.setPadding
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
@@ -27,7 +34,6 @@ import com.mints.projectgammatwo.viewmodels.QuestsViewModel
 
 class FilterFragment : Fragment() {
 
-    // For Rocket filters we use your existing FilterPreferences.
     private lateinit var filterPreferences: FilterPreferences
     private val enabledRocketFilters = mutableSetOf<Int>()
     private lateinit var questsViewModel: QuestsViewModel
@@ -37,6 +43,14 @@ class FilterFragment : Fragment() {
     // We'll now store the full composite quest filter strings.
     private val enabledQuestFilters = mutableSetOf<String>()
     private lateinit var questLayout: LinearLayout
+
+
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setHasOptionsMenu(true)
+    }
+
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -95,7 +109,51 @@ class FilterFragment : Fragment() {
       //  setupQuestFilters(questLayout)
     }
 
-    // Setup Rocket Filters (using your DataMappings.characterNamesMap).
+    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
+        inflater.inflate(R.menu.filter_nav_menu, menu)
+        super.onCreateOptionsMenu(menu, inflater)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_save_rocket -> {
+
+                showSaveFilterDialog(true)
+                true
+            }
+            R.id.action_save_quest -> {
+
+                showSaveFilterDialog(false)
+
+
+                true
+
+            }
+
+            else -> false
+        }
+    }
+
+    private fun showSaveFilterDialog(isRocket:Boolean) {
+        val builder = AlertDialog.Builder(requireContext())
+        builder.setTitle("Enter a name for the filter!")
+        val input = EditText(requireContext())
+        input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        input.hint = "Filter name"
+        builder.setView(input)
+        builder.setPositiveButton("Save") { dialog, _ ->
+            if(isRocket) {
+                filterPreferences.saveCurrentAsFilter(input.text.toString())
+
+            }
+            dialog.dismiss()
+        }
+        builder.setNegativeButton("Cancel") { dialog, _ -> dialog.cancel() }
+        builder.show()
+    }
+
+
+
     private fun setupRocketFilters(parent: LinearLayout) {
         parent.removeAllViews()
         // Add Reset and Toggle All buttons for Rocket Filters

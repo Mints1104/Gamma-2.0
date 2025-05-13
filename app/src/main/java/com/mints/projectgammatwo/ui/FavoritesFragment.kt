@@ -33,7 +33,7 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
 
     private lateinit var recyclerView: RecyclerView
     private lateinit var adapter: FavoritesAdapter
-    private lateinit var addFavoriteFab: View  // For example, a FloatingActionButton
+    private lateinit var addFavoriteFab: View
     private var favoritesList = mutableListOf<FavoriteLocation>()
     private val gson = Gson()
 
