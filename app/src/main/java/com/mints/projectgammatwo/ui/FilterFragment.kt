@@ -136,17 +136,26 @@ class FilterFragment : Fragment() {
 
     private fun showSaveFilterDialog(isRocket:Boolean) {
         val builder = AlertDialog.Builder(requireContext())
+        var success = false
         builder.setTitle("Enter a name for the filter!")
         val input = EditText(requireContext())
         input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
         input.hint = "Filter name"
         builder.setView(input)
         builder.setPositiveButton("Save") { dialog, _ ->
+            if(input.text.isEmpty()) {
+                Toast.makeText(requireContext(), "Please enter a name", Toast.LENGTH_SHORT).show()
+                return@setPositiveButton
+            }
+
             if(isRocket) {
                 filterPreferences.saveCurrentAsFilter(input.text.toString())
+                success = true
+            }
+            if(success) {
+                dialog.dismiss()
 
             }
-            dialog.dismiss()
         }
         builder.setNegativeButton("Cancel") { dialog, _ -> dialog.cancel() }
         builder.show()
