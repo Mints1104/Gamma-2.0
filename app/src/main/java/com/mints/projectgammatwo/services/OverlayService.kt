@@ -26,10 +26,13 @@ import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Observer
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.room.Delete
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.CurrentInvasionData
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.CurrentQuestData
+import com.mints.projectgammatwo.data.DeletedEntry
+import com.mints.projectgammatwo.data.DeletedInvasionsRepository
 import com.mints.projectgammatwo.data.FavoritesManager
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
@@ -56,6 +59,7 @@ class OverlayService : AccessibilityService() {
     private lateinit var favoritesAdapter: OverlayFavoritesAdapter
     private lateinit var filtersAdapter: FiltersRecyclerView
     private lateinit var filterPreferences: FilterPreferences
+    private lateinit var deletedInvasionsRepository: DeletedInvasionsRepository
     private var currentMode = "invasions" // Default mode
 
 
@@ -74,6 +78,7 @@ class OverlayService : AccessibilityService() {
         }
         homeCoordinatesManager = HomeCoordinatesManager.getInstance(this)
         filterPreferences = FilterPreferences(this)
+        deletedInvasionsRepository = DeletedInvasionsRepository(this)
 
         val notification = NotificationCompat.Builder(this, "overlay_service_channel")
             .setContentTitle("Invasion Overlay")
@@ -264,6 +269,7 @@ class OverlayService : AccessibilityService() {
                 currentIndex = (currentIndex + 1) % currentInvasions.size
                 Log.d(TAG, "Navigating to invasion at index $currentIndex: ${currentInvasions[currentIndex].lat}, ${currentInvasions[currentIndex].lng}")
                 showOverlayToast("Teleporting to ${currentInvasions[currentIndex].characterName}")
+                deletedInvasionsRepository.addDeletedInvasion(currentInvasions[currentIndex])
                 launchMap(currentInvasions[currentIndex])
             }
         }
@@ -361,6 +367,7 @@ class OverlayService : AccessibilityService() {
     }
 
     private fun launchMap(inv: Invasion) {
+
         Log.d(TAG, "Launching map with coords: ${inv.lat}, ${inv.lng}")
         val url = "https://ipogo.app/?coords=${inv.lat},${inv.lng}"
         Intent(Intent.ACTION_VIEW, Uri.parse(url))
@@ -472,7 +479,7 @@ class OverlayService : AccessibilityService() {
 
         // Set up close button
         favoritesOverlayView?.findViewById<ImageButton>(R.id.close_favorites_button)?.setOnClickListener {
-            hideFilterOverlay()
+            hideFavoritesOverlay()
         }
 
 
