@@ -31,9 +31,11 @@ import com.mints.projectgammatwo.data.CurrentInvasionData
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.CurrentQuestData
 import com.mints.projectgammatwo.data.FavoritesManager
+import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.helpers.DragTouchListener
 import com.mints.projectgammatwo.recyclerviews.FavoritesAdapter
+import com.mints.projectgammatwo.recyclerviews.FiltersRecyclerView
 import com.mints.projectgammatwo.recyclerviews.OverlayFavoritesAdapter
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
@@ -48,8 +50,14 @@ class OverlayService : AccessibilityService() {
     private var errorObserver: Observer<String>? = null
     private lateinit var homeCoordinatesManager: HomeCoordinatesManager
     private var favoritesOverlayView: View? = null
+    private var filterOverlayView: View? = null
     private var isFavoritesVisible = false
+    private var isFilterVisible = false
     private lateinit var favoritesAdapter: OverlayFavoritesAdapter
+    private lateinit var filtersAdapter: FiltersRecyclerView
+    private lateinit var filterPreferences: FilterPreferences
+    private var currentMode = "invasions" // Default mode
+
 
     override fun onCreate() {
         super.onCreate()
@@ -65,6 +73,7 @@ class OverlayService : AccessibilityService() {
             notificationManager.createNotificationChannel(channel)
         }
         homeCoordinatesManager = HomeCoordinatesManager.getInstance(this)
+        filterPreferences = FilterPreferences(this)
 
         val notification = NotificationCompat.Builder(this, "overlay_service_channel")
             .setContentTitle("Invasion Overlay")
@@ -151,8 +160,11 @@ class OverlayService : AccessibilityService() {
         val refreshBtn = overlayView?.findViewById<ImageButton>(R.id.refresh_button)
         val switchModesBtn = overlayView?.findViewById<ImageButton>(R.id.switch_modes)
         val favoritesButton = overlayView?.findViewById<ImageButton>(R.id.favorites_tab)
+        val filtersButton = overlayView?.findViewById<ImageButton>(R.id.filter_tab)
         switchModesBtn?.setImageResource(if (mode == "quests") R.drawable.binoculars else R.drawable.team_rocket_logo)
-        if (dragHandle == null || closeBtn == null || rightBtn == null || leftBtn == null || homeBtn == null || refreshBtn == null || switchModesBtn == null || favoritesButton == null) {
+        if (dragHandle == null || closeBtn == null || rightBtn == null || leftBtn == null
+            || homeBtn == null || refreshBtn == null ||
+            switchModesBtn == null || favoritesButton == null || filtersButton == null) {
             Log.e(TAG, "One or more buttons not found in layout")
             return
         }
@@ -199,6 +211,7 @@ class OverlayService : AccessibilityService() {
         switchModesBtn.setOnClickListener {
             if (mode == "quests") {
                 Log.d(TAG, "Switching to invasions mode")
+                currentMode = "invasions"
 
                 cleanupObservers()
                 if (overlayView != null) {
@@ -208,6 +221,8 @@ class OverlayService : AccessibilityService() {
                 addOverlay("invasions")
             } else {
                 Log.d(TAG, "Switching to quests mode")
+                currentMode = "quests"
+
                 cleanupObservers()
                 if (overlayView != null) {
                     windowManager.removeView(overlayView)
@@ -215,6 +230,10 @@ class OverlayService : AccessibilityService() {
                 }
                 addOverlay("quests")
             }
+        }
+
+        filtersButton.setOnClickListener {
+            showFiltersOverlay()
         }
 
         favoritesButton?.setOnClickListener {
@@ -440,7 +459,7 @@ class OverlayService : AccessibilityService() {
         favoritesAdapter = OverlayFavoritesAdapter(
             onTeleportFavorite = { favorite ->
                 // Teleport to location
-                hideFavoritesOverlay()
+                hideFilterOverlay()
                 val url = "https://ipogo.app/?coords=${favorite.lat},${favorite.lng}"
                 showOverlayToast("Teleporting to ${favorite.name}")
                 Intent(Intent.ACTION_VIEW, Uri.parse(url))
@@ -453,7 +472,7 @@ class OverlayService : AccessibilityService() {
 
         // Set up close button
         favoritesOverlayView?.findViewById<ImageButton>(R.id.close_favorites_button)?.setOnClickListener {
-            hideFavoritesOverlay()
+            hideFilterOverlay()
         }
 
 
@@ -461,6 +480,115 @@ class OverlayService : AccessibilityService() {
         // Load favorites
         val favorites = FavoritesManager.getFavorites(this)
         favoritesAdapter.submitList(favorites)
+    }
+
+    private fun setupFiltersOverlay() {
+        // Inflate the filter overlay layout
+        val contextThemeWrapper = ContextThemeWrapper(this, R.style.Theme_ProjectGamma2)
+        filterOverlayView = LayoutInflater.from(contextThemeWrapper)
+            .inflate(R.layout.item_filters_overlay, null)
+
+        // Set up RecyclerView
+        val recyclerView = filterOverlayView?.findViewById<RecyclerView>(R.id.filters_recycler_view)
+        recyclerView?.layoutManager = LinearLayoutManager(this)
+
+        // Initialize the adapter with a filter selection callback
+        filtersAdapter = FiltersRecyclerView { filterName ->
+            // Apply the selected filter based on current mode
+            applyFilter(filterName)
+        }
+
+        recyclerView?.adapter = filtersAdapter
+
+        // Set up close button
+        filterOverlayView?.findViewById<ImageButton>(R.id.close_filter_button)?.setOnClickListener {
+            hideFiltersOverlay()
+        }
+
+        // Add any other UI elements you might need for the filters overlay
+    }
+
+
+
+    private fun showFiltersOverlay() {
+        if (filterOverlayView == null) {
+            setupFiltersOverlay()
+        }
+
+        // Hide main overlay first
+        overlayView?.visibility = View.GONE
+
+        // Add filters overlay to window manager if not already added
+        if (filterOverlayView?.parent == null) {
+            val params = WindowManager.LayoutParams().apply {
+                width = WindowManager.LayoutParams.WRAP_CONTENT
+                height = WindowManager.LayoutParams.WRAP_CONTENT
+                type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                else
+                    WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
+                flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                format = PixelFormat.TRANSLUCENT
+                gravity = Gravity.TOP
+            }
+
+            val dragHandle = filterOverlayView?.findViewById<ImageButton>(R.id.drag_handle)
+            dragHandle?.setOnTouchListener(DragTouchListener(params, windowManager, filterOverlayView!!))
+
+            try {
+                windowManager.addView(filterOverlayView, params)
+                isFilterVisible = true
+            } catch (e: Exception) {
+                Log.e(TAG, "Error showing filters overlay: ${e.message}")
+            }
+        } else {
+            // Just make it visible if already added
+            filterOverlayView?.visibility = View.VISIBLE
+            isFilterVisible = true
+        }
+
+        // Load the appropriate filter list based on current mode
+        loadFiltersByMode()
+    }
+    private fun loadFiltersByMode() {
+        val filterNames = if (currentMode == "quests") {
+            // Load quest filter names
+            filterPreferences.listQuestFilterNames()
+        } else {
+            // Load invasion/rocket filter names
+            filterPreferences.listFilterNames()
+        }
+
+        // Update the adapter with the filter names
+        filtersAdapter.submitList(filterNames.toList())
+    }
+
+    private fun applyFilter(filterName: String) {
+        val filterType = if (currentMode == "quests") "Quest" else "Rocket"
+
+        // Apply the filter using the FilterPreferences
+        filterPreferences.loadFilter(filterName, filterType)
+
+        // Show a toast message
+        showOverlayToast("Applied filter: $filterName")
+
+        // Hide the filter overlay
+        hideFiltersOverlay()
+
+        // Refresh data based on selected filter
+        if (currentMode == "quests") {
+            fetchQuests()
+        } else {
+            fetchInvasions()
+        }
+    }
+
+    private fun hideFiltersOverlay() {
+        filterOverlayView?.visibility = View.GONE
+        isFilterVisible = false
+
+        // Show main overlay again
+        overlayView?.visibility = View.VISIBLE
     }
 
     private fun showFavoritesOverlay() {
@@ -511,5 +639,13 @@ class OverlayService : AccessibilityService() {
         // Show main overlay again
         overlayView?.visibility = View.VISIBLE
     }
+
+        private fun hideFilterOverlay() {
+            filterOverlayView?.visibility = View.GONE
+            isFilterVisible = false
+
+            // Show main overlay again
+            overlayView?.visibility = View.VISIBLE
+        }
 
 }

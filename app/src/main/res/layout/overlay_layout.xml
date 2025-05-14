@@ -87,14 +87,25 @@
         android:contentDescription="Switch modes" />
 
     <ImageButton
-        android:id="@+id/favorites_tab"
+        android:id="@+id/filter_tab"
         android:layout_width="48dp"
         android:layout_height="48dp"
         android:layout_marginTop="350dp"
         android:padding="8dp"
+        android:src="@drawable/tune_24px"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Switch filters" />
+
+    <ImageButton
+        android:id="@+id/favorites_tab"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="400dp"
+        android:padding="8dp"
         android:src="@drawable/ic_favorite"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="Switch modes" />
+
 
 
 

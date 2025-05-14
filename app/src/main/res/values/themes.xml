@@ -1,10 +1,18 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
     <style name="Base.Theme.ProjectGamma2" parent="Theme.Material3.DayNight.NoActionBar">
-
-        <item name="android:colorPrimary">@color/black</item>
         <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+        <!-- Use the app bar theme reference for toolbar styling -->
+        <item name="actionBarTheme">@style/ThemeOverlay.AppCompat.Dark.ActionBar</item>
+        <item name="popupTheme">@style/OverflowMenuTheme</item>
+    </style>
+
+    <style name="OverflowMenuTheme" parent="ThemeOverlay.Material3">
+        <item name="popupMenuBackground">@color/white</item>
+        <item name="android:textColor">@color/black</item>
+        <item name="subtitleTextColor">@color/black</item>
+        <item name="navigationIconTint">@color/black</item>
+
     </style>
 
     <style name="Theme.ProjectGamma2" parent="Base.Theme.ProjectGamma2" />

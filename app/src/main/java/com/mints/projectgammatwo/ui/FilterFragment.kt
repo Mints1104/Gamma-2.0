@@ -110,7 +110,6 @@ class FilterFragment : Fragment() {
         // Populate the quest filters UI using dynamic API data.
       //  setupQuestFilters(questLayout)
 
-        addSelectFilterButton(questLayout, "Quest")
     }
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
@@ -140,7 +139,6 @@ class FilterFragment : Fragment() {
 
     private fun showSaveFilterDialog(isRocket:Boolean) {
         val builder = AlertDialog.Builder(requireContext())
-        var success = false
         builder.setTitle("Enter a name for the filter!")
         val input = EditText(requireContext())
         input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
@@ -151,15 +149,16 @@ class FilterFragment : Fragment() {
                 Toast.makeText(requireContext(), "Please enter a name", Toast.LENGTH_SHORT).show()
                 return@setPositiveButton
             }
+            val filterName = input.text.toString()
 
             if(isRocket) {
-                filterPreferences.saveCurrentAsFilter(input.text.toString())
-                success = true
+                filterPreferences.saveCurrentAsFilter(filterName)
+            } else {
+                filterPreferences.saveCurrentQuestFilter(filterName)
             }
-            if(success) {
+            Toast.makeText(requireContext(), "Filter $filterName saved", Toast.LENGTH_SHORT).show()
                 dialog.dismiss()
 
-            }
         }
         builder.setNegativeButton("Cancel") { dialog, _ -> dialog.cancel() }
         builder.show()
@@ -219,33 +218,118 @@ class FilterFragment : Fragment() {
                         showSelectFilterDialog(parent, "Rocket")
                     }
                     "Quest" -> {
-                        // Logic to select a specific quest filter
+                        showSelectFilterDialog(parent, "Quest")
                     }
                 }
             }
         }
         parent.addView(selectButton, 0)
     }
-    private fun showSelectFilterDialog(parent: LinearLayout, filterType:String) {
+
+    private fun showSelectFilterDialog(parent: LinearLayout, filterType: String) {
         val builder = AlertDialog.Builder(requireContext())
         builder.setTitle("Select a $filterType filter")
-        val filterNames = filterPreferences.listFilterNames().toTypedArray()
-        builder.setItems(filterNames) { _, which ->
-            val selectedFilterName = filterNames[which]
-            if (filterType == "Rocket") {
-                filterPreferences.loadFilter(selectedFilterName)
-                enabledRocketFilters.clear()
-                enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
-                setupRocketFilters(parent)
-                Toast.makeText(requireContext(), "Filter '$selectedFilterName' applied", Toast.LENGTH_SHORT).show()
 
+        // Create a dialog with dynamic content that can be refreshed
+        val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_filter_list, null)
+        val listContainer = dialogView.findViewById<LinearLayout>(R.id.filterListContainer)
+
+        // Create and show the dialog first so we can reference it
+        builder.setView(dialogView)
+        builder.setNegativeButton("Cancel", null)
+        val dialog = builder.create()
+
+        // Function to update the dialog content
+        fun updateDialogContent() {
+            listContainer.removeAllViews() // Clear existing views
+
+            val filterNames: Array<String> = if(filterType == "Rocket") {
+                filterPreferences.listFilterNames().toTypedArray()
             } else {
-                // Logic to load quest filters
+                filterPreferences.listQuestFilterNames().toTypedArray()
+            }
+
+            if (filterNames.isEmpty()) {
+                val emptyView = TextView(requireContext()).apply {
+                    text = "No saved filters available"
+                    setPadding(16, 16, 16, 16)
+                    gravity = android.view.Gravity.CENTER
+                }
+                listContainer.addView(emptyView)
+                return
+            }
+
+            filterNames.forEach { filterName ->
+                val itemView = LayoutInflater.from(requireContext()).inflate(R.layout.filter_list_item, null)
+                val nameTextView = itemView.findViewById<TextView>(R.id.filterNameText)
+                val deleteButton = itemView.findViewById<Button>(R.id.deleteFilterButton)
+                val selectButton = itemView.findViewById<Button>(R.id.selectFilterButton)
+
+                nameTextView.text = filterName
+
+                // Select filter action
+                selectButton.setOnClickListener {
+                    if (filterType == "Rocket") {
+                        filterPreferences.loadFilter(filterName, "Rocket")
+                        enabledRocketFilters.clear()
+                        enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
+                        setupRocketFilters(parent)
+                    } else {
+                        filterPreferences.loadFilter(filterName, "Quest")
+                        enabledQuestFilters.clear()
+                        enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters())
+                        setupQuestFilters(parent)
+                    }
+                    Toast.makeText(requireContext(), "Filter '$filterName' applied", Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
+                }
+
+                // Delete filter action
+                deleteButton.setOnClickListener {
+                    showDeleteConfirmationDialog(filterName, filterType, parent) {
+                        // This callback runs after successful deletion
+                        // Refresh the UI
+                        if (filterType == "Rocket") {
+                            setupRocketFilters(parent)
+                        } else {
+                            setupQuestFilters(parent)
+                        }
+
+                        // Update the dialog content
+                        updateDialogContent()
+                    }
+                }
+
+                listContainer.addView(itemView)
             }
         }
-        builder.setNegativeButton("Cancel", null)
-        builder.show()
 
+        // Initial population of the dialog
+        updateDialogContent()
+
+        // Show the dialog
+        dialog.show()
+    }
+
+    private fun showDeleteConfirmationDialog(
+        filterName: String,
+        filterType: String,
+        parent: LinearLayout,
+        onDeleted: () -> Unit
+    ) {
+        val confirmBuilder = AlertDialog.Builder(requireContext())
+        confirmBuilder.setTitle("Delete Filter")
+        confirmBuilder.setMessage("Are you sure you want to delete the filter '$filterName'?")
+        confirmBuilder.setPositiveButton("Delete") { _, _ ->
+            // Delete the filter
+            filterPreferences.deleteFilter(filterName, filterType)
+            Toast.makeText(requireContext(), "Filter '$filterName' deleted", Toast.LENGTH_SHORT).show()
+
+            // Call the callback after successful deletion
+            onDeleted()
+        }
+        confirmBuilder.setNegativeButton("Cancel", null)
+        confirmBuilder.show()
     }
 
     private fun addToggleAllButton(parent: LinearLayout, filterType: String) {
@@ -314,6 +398,7 @@ class FilterFragment : Fragment() {
         addResetButton(parent, "Quest")
         addToggleAllButton(parent, "Quest")
         addSectionHeader(parent, "Quest Filters")
+        addSelectFilterButton(questLayout, "Quest")
         val filtersJson = questPrefs.getString("quest_api_filters", null)
         if (filtersJson != null) {
             val filters = Gson().fromJson(filtersJson, Quests.Filters::class.java)
