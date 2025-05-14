@@ -51,6 +51,20 @@ class FilterPreferences(context: Context) {
             .apply()
     }
 
+    fun getAllSavedFilters(): Map<String, Set<Int>> {
+        val all = prefs.getStringSet(KEY_ALL_FILTERS, emptySet())!!
+        val filters = mutableMapOf<String, Set<Int>>()
+        for (name in all) {
+            Log.d("FilterPreferences", "Loading filter $name")
+            val saved = prefs.getStringSet("$KEY_FILTER_PREFIX$name", emptySet())!!
+            val ints = saved.mapNotNull { it.toIntOrNull() }.toSet()
+            filters[name] = ints
+            Log.d("FilterPreferences", "Loaded filter $name with characters: $ints")
+        }
+        return filters
+    }
+
+
     fun getFilter(name: String): Set<Int> {
         val saved = prefs.getStringSet("$KEY_FILTER_PREFIX$name", emptySet())!!
         val ints = saved.mapNotNull { it.toIntOrNull() }.toSet()

@@ -89,6 +89,7 @@ class FilterFragment : Fragment() {
         }
 
 
+
         // Set up radio group listener to toggle between filter UIs.
         radioGroup.setOnCheckedChangeListener { _, checkedId ->
             when (checkedId) {
@@ -103,10 +104,13 @@ class FilterFragment : Fragment() {
             }
         }
 
+
         // Populate the rocket filters UI.
         setupRocketFilters(rocketLayout)
         // Populate the quest filters UI using dynamic API data.
       //  setupQuestFilters(questLayout)
+
+        addSelectFilterButton(questLayout, "Quest")
     }
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
@@ -169,6 +173,7 @@ class FilterFragment : Fragment() {
         addResetButton(parent, "Rocket")
         addToggleAllButton(parent, "Rocket")
         addSectionHeader(parent, "Rocket Filters")
+        addSelectFilterButton(parent, "Rocket")
         DataMappings.characterNamesMap.forEach { (id, name) ->
             addCheckBox(parent, name, id, enabledRocketFilters) { checked ->
                 if (checked) enabledRocketFilters.add(id) else enabledRocketFilters.remove(id)
@@ -200,6 +205,47 @@ class FilterFragment : Fragment() {
             }
         }
         parent.addView(resetButton, 0)
+    }
+
+
+    private fun addSelectFilterButton(parent: LinearLayout, filterType: String) {
+        val selectButton = MaterialButton(requireContext()).apply {
+            text = "Select $filterType Filter"
+            setPadding(16, 8, 16, 8)
+            setOnClickListener {
+                when (filterType) {
+                    "Rocket" -> {
+
+                        showSelectFilterDialog(parent, "Rocket")
+                    }
+                    "Quest" -> {
+                        // Logic to select a specific quest filter
+                    }
+                }
+            }
+        }
+        parent.addView(selectButton, 0)
+    }
+    private fun showSelectFilterDialog(parent: LinearLayout, filterType:String) {
+        val builder = AlertDialog.Builder(requireContext())
+        builder.setTitle("Select a $filterType filter")
+        val filterNames = filterPreferences.listFilterNames().toTypedArray()
+        builder.setItems(filterNames) { _, which ->
+            val selectedFilterName = filterNames[which]
+            if (filterType == "Rocket") {
+                filterPreferences.loadFilter(selectedFilterName)
+                enabledRocketFilters.clear()
+                enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
+                setupRocketFilters(parent)
+                Toast.makeText(requireContext(), "Filter '$selectedFilterName' applied", Toast.LENGTH_SHORT).show()
+
+            } else {
+                // Logic to load quest filters
+            }
+        }
+        builder.setNegativeButton("Cancel", null)
+        builder.show()
+
     }
 
     private fun addToggleAllButton(parent: LinearLayout, filterType: String) {
@@ -292,6 +338,8 @@ class FilterFragment : Fragment() {
             parent.addView(this)
         }
     }
+
+
 
     // Existing addCheckBox for rocket filters.
     private fun addCheckBox(
