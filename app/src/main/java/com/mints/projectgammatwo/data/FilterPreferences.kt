@@ -6,7 +6,6 @@ import android.util.Log
 
 class FilterPreferences(context: Context) {
 
-
     private val prefs: SharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
     private val questPrefs: SharedPreferences = context.getSharedPreferences(QUEST_PREF_NAME, Context.MODE_PRIVATE)
 
@@ -14,6 +13,10 @@ class FilterPreferences(context: Context) {
     private val KEY_FILTER_PREFIX = "filter_"
     private val QUEST_FILTER_PREFIX = "quest_"
     private val KEY_QUEST_FILTERS = "quest_filters"
+    private val KEY_ACTIVE_ROCKET_FILTER = "active_rocket_filter"
+    private val KEY_ACTIVE_QUEST_FILTER = "active_quest_filter"
+    private var currentRocketFilterName: String = "Default" // Or some initial value, or load last active
+
 
 
     /**
@@ -34,6 +37,12 @@ class FilterPreferences(context: Context) {
         prefs.edit()
             .putStringSet(KEY_CHARACTERS, stringSet)
             .apply()
+
+        // If there's an active filter, update it with the new values
+        val activeFilter = getActiveRocketFilter()
+        if (activeFilter.isNotEmpty()) {
+            updateFilter(activeFilter, characters)
+        }
     }
 
     fun saveCurrentAsFilter(name: String) {
@@ -54,8 +63,11 @@ class FilterPreferences(context: Context) {
         prefs.edit()
             .putStringSet(KEY_ALL_FILTERS, all)
             .apply()
-    }
 
+        // Don't automatically set this as the active filter
+        // If we want to set this as active after saving:
+        // setActiveRocketFilter(name)
+    }
 
     // Returns a set of filters (each filter is a string like "2,0,708")
     fun getEnabledQuestFilters(): Set<String> {
@@ -64,6 +76,12 @@ class FilterPreferences(context: Context) {
 
     fun saveEnabledQuestFilters(filters: Set<String>) {
         questPrefs.edit().putStringSet("enabled_quest_filters", filters).apply()
+
+        // If there's an active filter, update it with the new values
+        val activeFilter = getActiveQuestFilter()
+        if (activeFilter.isNotEmpty()) {
+            updateQuestFilter(activeFilter, filters)
+        }
     }
 
     fun saveCurrentQuestFilter(name: String) {
@@ -84,6 +102,10 @@ class FilterPreferences(context: Context) {
         questPrefs.edit()
             .putStringSet(KEY_QUEST_FILTERS, all)
             .apply()
+
+        // Don't automatically set this as the active filter
+        // If we want to set this as active after saving:
+        // setActiveQuestFilter(name)
     }
 
     fun getSavedQuestFilters(): Map<String, Set<Int>> {
@@ -102,7 +124,6 @@ class FilterPreferences(context: Context) {
     fun listQuestFilterNames(): Set<String> =
         questPrefs.getStringSet(KEY_QUEST_FILTERS, emptySet())!!
 
-
     fun getAllSavedFilters(): Map<String, Set<Int>> {
         val all = prefs.getStringSet(KEY_ALL_FILTERS, emptySet())!!
         val filters = mutableMapOf<String, Set<Int>>()
@@ -116,7 +137,6 @@ class FilterPreferences(context: Context) {
         return filters
     }
 
-
     fun getFilter(name: String): Set<Int> {
         val saved = prefs.getStringSet("$KEY_FILTER_PREFIX$name", emptySet())!!
         val ints = saved.mapNotNull { it.toIntOrNull() }.toSet()
@@ -124,35 +144,72 @@ class FilterPreferences(context: Context) {
         return ints
     }
 
+    fun getQuestFilter(name: String): Set<String> {
+        val saved = questPrefs.getStringSet("$QUEST_FILTER_PREFIX$name", emptySet())!!
+        Log.d("FilterPreferences", "Loaded quest filter $name with values: $saved")
+        return saved
+    }
 
-    fun loadFilter(name: String, type:String) {
+    fun loadFilter(name: String, type: String) {
+        if (type == "Quest") {
+            Log.d("FilterPreferences", "Loading QUEST filter $name (Prior Active Quest: ${getActiveQuestFilter()})")
+            val savedFilterData = questPrefs.getStringSet("$QUEST_FILTER_PREFIX$name", emptySet())!! // Renamed for clarity
+            Log.d("FilterPreferences", "Data for $name: $savedFilterData")
 
-        if(type == "Quest") {
-            Log.d("FilterPreferences", "Loading QUEST filter $name")
-            val saved = questPrefs.getStringSet("$QUEST_FILTER_PREFIX$name", emptySet())!!
-            saveEnabledQuestFilters(saved)
-            Log.d("FilterPreferences", "Loaded filter $name with quests: $saved")
+
+            // --- SOLUTION FOR QUEST FILTERS ---
+            // 1. Set this filter name as the ACTIVE quest filter FIRST.
+            setActiveQuestFilter(name)
+            // Log.d("FilterPreferences", "Active quest filter set to: $name")
+
+            // 2. Now call saveEnabledQuestFilters.
+            // This will:
+            //    a. Update "enabled_quest_filters" (the current working set for quests) with `savedFilterData`.
+            //    b. Inside saveEnabledQuestFilters, getActiveQuestFilter() will correctly return `name`.
+            //    c. It will then call updateQuestFilter(`name`, `savedFilterData`), effectively re-saving
+            //       the loaded filter under its own name. This is okay and prevents corrupting other filters.
+            saveEnabledQuestFilters(savedFilterData)
+            Log.d("FilterPreferences", "Loaded and applied quest filter $name. Active quest is now: ${getActiveQuestFilter()}")
             return
         }
 
-        Log.d("FilterPreferences", "Loading ROCKET filter $name")
-        val saved = prefs.getStringSet("$KEY_FILTER_PREFIX$name", emptySet())!!
-        val ints = saved.mapNotNull { it.toIntOrNull() }.toSet()
-        Log.d("FilterPreferences", "Loaded filter $name with characters: $ints")
-        saveEnabledCharacters(ints)
+        // ROCKET filter logic:
+        Log.d("FilterPreferences", "Loading ROCKET filter $name (Prior Active Rocket: ${getActiveRocketFilter()})")
+        val savedFilterDataSet = prefs.getStringSet("$KEY_FILTER_PREFIX$name", emptySet())!! // Renamed for clarity
+        val charactersToLoad = savedFilterDataSet.mapNotNull { it.toIntOrNull() }.toSet() // Renamed for clarity
+        Log.d("FilterPreferences", "Data for $name: $charactersToLoad")
+
+        // --- SOLUTION FOR ROCKET FILTERS ---
+        // 1. Set this filter name as the ACTIVE rocket filter FIRST.
+        setActiveRocketFilter(name)
+        // Log.d("FilterPreferences", "Active rocket filter set to: $name")
+
+        // 2. Now call saveEnabledCharacters.
+        // This will:
+        //    a. Update KEY_CHARACTERS (the current working set for rocket filters) with `charactersToLoad`.
+        //    b. Inside saveEnabledCharacters, getActiveRocketFilter() will correctly return `name`.
+        //    c. It will then call updateFilter(`name`, `charactersToLoad`), effectively re-saving
+        //       the loaded filter under its own name. This is okay and prevents corrupting other filters.
+        saveEnabledCharacters(charactersToLoad)
+        Log.d("FilterPreferences", "Loaded and applied rocket filter $name. Active rocket is now: ${getActiveRocketFilter()}")
     }
+
     fun listFilterNames(): Set<String> =
         prefs.getStringSet(KEY_ALL_FILTERS, emptySet())!!
 
     /** Delete a saved filter (does not touch current enabled set). */
-    fun deleteFilter(name: String, filterType:String) {
-
+    fun deleteFilter(name: String, filterType: String) {
         if(filterType == "Quest") {
             Log.d("FilterPreferences", "Deleting QUEST filter $name")
             questPrefs.edit().remove("$QUEST_FILTER_PREFIX$name").apply()
             val all = questPrefs.getStringSet(KEY_QUEST_FILTERS, emptySet())!!.toMutableSet()
             all.remove(name)
             questPrefs.edit().putStringSet(KEY_QUEST_FILTERS, all).apply()
+
+            // If this was the active filter, clear it
+            if (name == getActiveQuestFilter()) {
+                clearActiveQuestFilter()
+            }
             return
         }
 
@@ -160,10 +217,86 @@ class FilterPreferences(context: Context) {
         val all = prefs.getStringSet(KEY_ALL_FILTERS, emptySet())!!.toMutableSet()
         all.remove(name)
         prefs.edit().putStringSet(KEY_ALL_FILTERS, all).apply()
+
+        // If this was the active filter, clear it
+        if (name == getActiveRocketFilter()) {
+            clearActiveRocketFilter()
+        }
+    }
+
+    fun getCurrentRocketFilterName(): String {
+        val all = prefs.getStringSet(KEY_ALL_FILTERS, emptySet())!!
+        val current = getEnabledCharacters()
+        for (name in all) {
+            val saved = prefs.getStringSet("$KEY_FILTER_PREFIX$name", emptySet())!!
+            val ints = saved.mapNotNull { it.toIntOrNull() }.toSet()
+            if (ints == current) {
+                return name
+            }
+        }
+        return ""
+    }
+
+    fun getCurrentQuestFilterName(): String {
+        val all = questPrefs.getStringSet(KEY_QUEST_FILTERS, emptySet())!!
+        val current = getEnabledCharacters()
+        for (name in all) {
+            val saved = questPrefs.getStringSet("$QUEST_FILTER_PREFIX$name", emptySet())!!
+            val ints = saved.mapNotNull { it.toIntOrNull() }.toSet()
+            if (ints == current) {
+                return name
+            }
+        }
+        return ""
     }
 
 
+    // Set the active rocket filter name
+    fun setActiveRocketFilter(name: String) {
+        prefs.edit().putString(KEY_ACTIVE_ROCKET_FILTER, name).apply()
+    }
 
+    // Get the active rocket filter name
+    fun getActiveRocketFilter(): String {
+        return prefs.getString(KEY_ACTIVE_ROCKET_FILTER, "") ?: ""
+    }
+
+    // Clear the active rocket filter
+    fun clearActiveRocketFilter() {
+        prefs.edit().remove(KEY_ACTIVE_ROCKET_FILTER).apply()
+    }
+
+    // Set the active quest filter name
+    fun setActiveQuestFilter(name: String) {
+        questPrefs.edit().putString(KEY_ACTIVE_QUEST_FILTER, name).apply()
+    }
+
+    // Get the active quest filter name
+    fun getActiveQuestFilter(): String {
+        return questPrefs.getString(KEY_ACTIVE_QUEST_FILTER, "") ?: ""
+    }
+
+    // Clear the active quest filter
+    fun clearActiveQuestFilter() {
+        questPrefs.edit().remove(KEY_ACTIVE_QUEST_FILTER).apply()
+    }
+
+    // Update a specific rocket filter with new values
+    fun updateFilter(name: String, characters: Set<Int>) {
+        val stringSet = characters.map { it.toString() }.toSet()
+        prefs.edit()
+            .putStringSet("$KEY_FILTER_PREFIX$name", stringSet)
+            .apply()
+        Log.d("FilterPreferences", "Updated filter $name with characters: $characters")
+    }
+
+    // Update a specific quest filter with new values
+    fun updateQuestFilter(name: String, filters: Set<String>) {
+        questPrefs.edit()
+            .putStringSet("$QUEST_FILTER_PREFIX$name", filters)
+            .apply()
+        Log.d("FilterPreferences", "Updated filter $name with quests: $filters")
+    }
 
     /**
      * Retrieves the set of enabled character IDs from SharedPreferences.
@@ -198,6 +331,8 @@ class FilterPreferences(context: Context) {
      */
     fun resetToDefault() {
         prefs.edit().remove(KEY_CHARACTERS).apply()
+        // Clear any active filter
+        clearActiveRocketFilter()
     }
 
     /**
@@ -206,6 +341,8 @@ class FilterPreferences(context: Context) {
      */
     fun wipeFilters() {
         prefs.edit().putStringSet(KEY_CHARACTERS, emptySet()).apply()
+        // Clear any active filter
+        clearActiveRocketFilter()
     }
 
     companion object {

@@ -98,94 +98,41 @@ class HomeFragment : Fragment() {
 
 
     private fun handleStartServiceClick() {
-        // Check if we already have all permissions
-        if (Settings.canDrawOverlays(requireContext()) &&
-            serviceManager.isOverlayServiceEnabled()
-        ) {
-            // We have all permissions, start service directly
+        // Check if we have overlay permission
+        if (Settings.canDrawOverlays(requireContext())) {
+            // We have permission, start service directly
             serviceManager.startOverlayService()
             return
         }
 
-        // We need to request permissions
-        // Check overlay permission first
-        if (!Settings.canDrawOverlays(requireContext())) {
-            // Show overlay permission dialog and request
-            AlertDialog.Builder(requireContext())
-                .setTitle("Overlay Permission Required")
-                .setMessage("This app needs the 'Display over other apps' permission to show overlays with Pokémon GO. Please enable this in the settings.")
-                .setPositiveButton("Open Settings") { _, _ ->
-                    val intent = Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:${requireContext().packageName}")
-                    )
-                    startActivity(intent)
-                }
-                .setNegativeButton("Not Now") { dialog, _ ->
-                    dialog.dismiss()
-                }
-                .setCancelable(false)
-                .show()
-            return
-        }
-
-        // Then check accessibility service
-        if (!serviceManager.isOverlayServiceEnabled()) {
-            AlertDialog.Builder(requireContext())
-                .setTitle("Accessibility Permission Required")
-                .setMessage(
-                    "This app needs Accessibility Service permission to function correctly. Please enable '${
-                        getString(
-                            R.string.app_name
-                        )
-                    } Overlay Service' in the Accessibility settings."
+        // We need to request overlay permission
+        AlertDialog.Builder(requireContext())
+            .setTitle("Overlay Permission Required")
+            .setMessage("This app needs the 'Display over other apps' permission to show overlays with Pokémon GO. Please enable this in the settings.")
+            .setPositiveButton("Open Settings") { _, _ ->
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:${requireContext().packageName}")
                 )
-                .setPositiveButton("Open Settings") { _, _ ->
-                    openAccessibilitySettings()
-                }
-                .setNegativeButton("Not Now") { dialog, _ ->
-                    dialog.dismiss()
-                }
-                .setCancelable(false)
-                .show()
-            return
-        }
-    }
-
-    private fun openAccessibilitySettings() {
-        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-        startActivity(intent)
-        Toast.makeText(
-            requireContext(),
-            "Please enable '${getString(R.string.app_name)} Overlay Service' in the list",
-            Toast.LENGTH_LONG
-        ).show()
+                startActivity(intent)
+            }
+            .setNegativeButton("Not Now") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .setCancelable(false)
+            .show()
     }
 
     private fun updateServiceButtonState(button: Button) {
         val overlayPermission = Settings.canDrawOverlays(requireContext())
-        val accessibilityEnabled = serviceManager.isOverlayServiceEnabled()
 
         // Add logging to debug permission issues
         Log.d("PermissionStatus", "Overlay permission: $overlayPermission")
-        Log.d("PermissionStatus", "Accessibility enabled: $accessibilityEnabled")
 
-        when {
-            !overlayPermission && !accessibilityEnabled -> {
-                button.text = "Enable Permissions"
-            }
-
-            !overlayPermission -> {
-                button.text = "Enable Overlay"
-            }
-
-            !accessibilityEnabled -> {
-                button.text = "Enable Accessibility"
-            }
-
-            else -> {
-                button.text = "Start Service"
-            }
+        if (!overlayPermission) {
+            button.text = "Enable Overlay"
+        } else {
+            button.text = "Start Service"
         }
     }
 }

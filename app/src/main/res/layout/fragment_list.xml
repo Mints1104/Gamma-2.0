@@ -28,7 +28,21 @@
                 android:layout_height="wrap_content"
                 android:text="Quest Filters"
                 android:layout_marginStart="16dp"/>
+
+
         </RadioGroup>
+
+        <TextView
+            android:id="@+id/currentFilterText"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:text="Current selected filter: %s"
+            android:layout_marginTop="16dp"
+            android:textSize="16sp"
+            android:visibility="gone">
+
+        </TextView>
+
 
         <!-- Container for Rocket Filters -->
         <LinearLayout

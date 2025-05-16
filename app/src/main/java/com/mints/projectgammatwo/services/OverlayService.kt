@@ -1,10 +1,8 @@
-// File: src/main/java/com/mints/projectgammatwo/services/OverlayService.kt
 package com.mints.projectgammatwo.services
 
-import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.Service
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -13,37 +11,41 @@ import android.graphics.PixelFormat
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
+import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import android.view.*
 import android.view.WindowManager.LayoutParams.*
-import android.view.accessibility.AccessibilityEvent
 import android.widget.Button
 import android.widget.ImageButton
+import android.widget.PopupMenu  // Add this import
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Observer
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import androidx.room.Delete
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.CurrentInvasionData
-import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.CurrentQuestData
-import com.mints.projectgammatwo.data.DeletedEntry
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
 import com.mints.projectgammatwo.data.FavoritesManager
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
+import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.helpers.DragTouchListener
-import com.mints.projectgammatwo.recyclerviews.FavoritesAdapter
-import com.mints.projectgammatwo.recyclerviews.FiltersRecyclerView
 import com.mints.projectgammatwo.recyclerviews.OverlayFavoritesAdapter
+import com.mints.projectgammatwo.recyclerviews.FiltersRecyclerView
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
 
-class OverlayService : AccessibilityService() {
+enum class FilterSortOrder {
+    DEFAULT,
+    NAME
+}
+private const val PREF_FILTER_SORT_ORDER = "filter_sort_order"
+
+class OverlayService : Service() {
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
     private var currentIndex = 0
@@ -61,7 +63,12 @@ class OverlayService : AccessibilityService() {
     private lateinit var filterPreferences: FilterPreferences
     private lateinit var deletedInvasionsRepository: DeletedInvasionsRepository
     private var currentMode = "invasions" // Default mode
+    private var currentSortOrder = FilterSortOrder.DEFAULT
 
+
+    override fun onBind(intent: Intent?): IBinder? {
+        return null // Not a bound service
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -95,18 +102,7 @@ class OverlayService : AccessibilityService() {
             Log.d(TAG, "No favorites found")
         }
 
-    }
-
-    override fun onServiceConnected() {
-        super.onServiceConnected()
-        Log.d(TAG, "AccessibilityService connected")
-        val info = AccessibilityServiceInfo().apply {
-            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-            feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            notificationTimeout = 100
-            flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-        }
-        serviceInfo = info
+        // Add the overlay immediately when service starts
         addOverlay("invasions")
     }
 
@@ -119,7 +115,7 @@ class OverlayService : AccessibilityService() {
             updateOverlayBasedOnMode(mode)
             Log.d(TAG, "Overlay updated in onStartCommand with mode: $mode")
         }
-        return super.onStartCommand(intent, flags, startId)
+        return START_STICKY
     }
 
     private fun addOverlay(mode: String) {
@@ -173,8 +169,6 @@ class OverlayService : AccessibilityService() {
             Log.e(TAG, "One or more buttons not found in layout")
             return
         }
-
-
 
         dragHandle.setOnTouchListener(DragTouchListener(params, windowManager, overlayView!!))
         closeBtn.setOnClickListener {
@@ -244,7 +238,6 @@ class OverlayService : AccessibilityService() {
         favoritesButton?.setOnClickListener {
             showFavoritesOverlay()
         }
-
 
         rightBtn.setOnClickListener {
             if (mode == "quests") {
@@ -348,14 +341,12 @@ class OverlayService : AccessibilityService() {
         viewModel?.fetchInvasions()
     }
 
-
     private fun fetchQuests() {
         Log.d(TAG, "Fetching quests...")
         showOverlayToast("Fetching quests...")
 
         val questsViewModel = QuestsViewModel(application)
         questsViewModel.fetchQuests()
-
     }
 
     private fun launchHome(lat: Double, lng: Double) {
@@ -367,7 +358,6 @@ class OverlayService : AccessibilityService() {
     }
 
     private fun launchMap(inv: Invasion) {
-
         Log.d(TAG, "Launching map with coords: ${inv.lat}, ${inv.lng}")
         val url = "https://ipogo.app/?coords=${inv.lat},${inv.lng}"
         Intent(Intent.ACTION_VIEW, Uri.parse(url))
@@ -383,9 +373,6 @@ class OverlayService : AccessibilityService() {
             .also(::startActivity)
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-    }
-
     private fun cleanupObservers() {
         invasionsObserver?.let { observer ->
             viewModel?.invasions?.removeObserver(observer)
@@ -396,10 +383,6 @@ class OverlayService : AccessibilityService() {
         invasionsObserver = null
         errorObserver = null
         viewModel = null
-    }
-
-    override fun onInterrupt() {
-        // No-op
     }
 
     private fun showOverlayToast(message: String) {
@@ -449,9 +432,6 @@ class OverlayService : AccessibilityService() {
         }
     }
 
-
-
-    // Add this function to your OverlayService
     private fun setupFavoritesOverlay() {
         // Inflate the favorites overlay layout
         val contextThemeWrapper = ContextThemeWrapper(this, R.style.Theme_ProjectGamma2)
@@ -482,8 +462,6 @@ class OverlayService : AccessibilityService() {
             hideFavoritesOverlay()
         }
 
-
-
         // Load favorites
         val favorites = FavoritesManager.getFavorites(this)
         favoritesAdapter.submitList(favorites)
@@ -511,16 +489,73 @@ class OverlayService : AccessibilityService() {
         filterOverlayView?.findViewById<ImageButton>(R.id.close_filter_button)?.setOnClickListener {
             hideFiltersOverlay()
         }
-
-        // Add any other UI elements you might need for the filters overlay
     }
 
+    private fun setupOverflowMenu() {
+        val overflowButton = filterOverlayView?.findViewById<ImageButton>(R.id.overflow_menu_button)
+
+        overflowButton?.setOnClickListener { view ->
+            val popupMenu = PopupMenu(this, view)
+            popupMenu.menuInflater.inflate(R.menu.menu_filters_sort, popupMenu.menu)
+
+            // Check the currently active sort method
+            when (currentSortOrder) {
+                FilterSortOrder.DEFAULT -> popupMenu.menu.findItem(R.id.sort_default).isChecked = true
+                FilterSortOrder.NAME -> popupMenu.menu.findItem(R.id.sort_by_name).isChecked = true
+            }
+
+            popupMenu.setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    R.id.sort_default -> {
+                        if (currentSortOrder != FilterSortOrder.DEFAULT) {
+                            currentSortOrder = FilterSortOrder.DEFAULT
+                            saveSortOrderPreference(FilterSortOrder.DEFAULT)
+                            loadFiltersByMode() // Reload filters with new sort order
+                        }
+                        true
+                    }
+                    R.id.sort_by_name -> {
+                        if (currentSortOrder != FilterSortOrder.NAME) {
+                            currentSortOrder = FilterSortOrder.NAME
+                            saveSortOrderPreference(FilterSortOrder.NAME)
+                            loadFiltersByMode() // Reload filters with new sort order
+                        }
+                        true
+                    }
+                    else -> false
+                }
+            }
+
+            popupMenu.show()
+        }
+    }
+
+    private fun saveSortOrderPreference(sortOrder: FilterSortOrder) {
+        val sharedPrefs = getSharedPreferences("app_preferences", Context.MODE_PRIVATE)
+        sharedPrefs.edit().putString(PREF_FILTER_SORT_ORDER, sortOrder.name).apply()
+    }
+
+    private fun loadSortOrderPreference() {
+        val sharedPrefs = getSharedPreferences("app_preferences", Context.MODE_PRIVATE)
+        val savedSortOrder = sharedPrefs.getString(PREF_FILTER_SORT_ORDER, FilterSortOrder.DEFAULT.name)
+        currentSortOrder = try {
+            FilterSortOrder.valueOf(savedSortOrder ?: FilterSortOrder.DEFAULT.name)
+        } catch (e: IllegalArgumentException) {
+            FilterSortOrder.DEFAULT
+        }
+    }
 
 
     private fun showFiltersOverlay() {
         if (filterOverlayView == null) {
             setupFiltersOverlay()
         }
+
+        // Load saved sort order preferences
+        loadSortOrderPreference()
+
+        // Setup the overflow menu
+        setupOverflowMenu()
 
         // Hide main overlay first
         overlayView?.visibility = View.GONE
@@ -557,6 +592,7 @@ class OverlayService : AccessibilityService() {
         // Load the appropriate filter list based on current mode
         loadFiltersByMode()
     }
+
     private fun loadFiltersByMode() {
         val filterNames = if (currentMode == "quests") {
             // Load quest filter names
@@ -566,8 +602,14 @@ class OverlayService : AccessibilityService() {
             filterPreferences.listFilterNames()
         }
 
+        // Apply sorting based on current sort order preference
+        val sortedFilters = when (currentSortOrder) {
+            FilterSortOrder.DEFAULT -> filterNames.toMutableList()  // Convert to MutableList
+            FilterSortOrder.NAME -> filterNames.sortedBy { it.lowercase() }.toMutableList()  // Sort and convert to MutableList
+        }
+
         // Update the adapter with the filter names
-        filtersAdapter.submitList(filterNames.toList())
+        filtersAdapter.submitList(sortedFilters)
     }
 
     private fun applyFilter(filterName: String) {
@@ -647,12 +689,11 @@ class OverlayService : AccessibilityService() {
         overlayView?.visibility = View.VISIBLE
     }
 
-        private fun hideFilterOverlay() {
-            filterOverlayView?.visibility = View.GONE
-            isFilterVisible = false
+    private fun hideFilterOverlay() {
+        filterOverlayView?.visibility = View.GONE
+        isFilterVisible = false
 
-            // Show main overlay again
-            overlayView?.visibility = View.VISIBLE
-        }
-
+        // Show main overlay again
+        overlayView?.visibility = View.VISIBLE
+    }
 }
