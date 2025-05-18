@@ -169,8 +169,10 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
      */
     private fun importFavorites(jsonString: String) {
         try {
-            val type = object : TypeToken<List<FavoriteLocation>>() {}.type
-            val importedFavorites: List<FavoriteLocation> = gson.fromJson(jsonString, type)
+            val importType = TypeToken
+                .getParameterized(List::class.java, FavoriteLocation::class.java)
+                .type
+            val importedFavorites: List<FavoriteLocation> = gson.fromJson(jsonString, importType)
             // Merge imported favorites with the current list, avoiding duplicates.
             for (fav in importedFavorites) {
                 if (!favoritesList.any { it.lat == fav.lat && it.lng == fav.lng && it.name == fav.name }) {
@@ -192,14 +194,21 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         val prefs = requireContext().getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
 
         // Load the full favorites list
-        val json = prefs.getString(KEY_FAVORITES, "[]")
-        val type = object : TypeToken<List<FavoriteLocation>>() {}.type
-        val loadedFavorites: List<FavoriteLocation> = gson.fromJson(json, type) ?: mutableListOf()
+        val json = prefs.getString(KEY_FAVORITES, "[]") ?: "[]"
+        val type = TypeToken
+            .getParameterized(List::class.java, FavoriteLocation::class.java)
+            .type
+        val listType = TypeToken
+            .getParameterized(List::class.java, FavoriteLocation::class.java)
+            .type
+        val loadedFavorites: List<FavoriteLocation> = gson.fromJson(json, listType)
 
         // Load the original order of names
         val orderJson = prefs.getString("favorites_order", "[]")
-        val orderType = object : TypeToken<List<String>>() {}.type
-        val originalOrder: List<String> = gson.fromJson(orderJson, orderType) ?: emptyList()
+        val orderType = TypeToken
+            .getParameterized(List::class.java, String::class.java)
+            .type
+        val originalOrder: List<String> = gson.fromJson(orderJson, orderType)
 
         // Reorder the loadedFavorites to match the original order
         favoritesList = if (originalOrder.isNotEmpty()) {
