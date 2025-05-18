@@ -2,7 +2,7 @@
     <!-- Base application theme. -->
     <style name="Base.Theme.ProjectGamma2" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Customize your dark theme here. -->
-        <!-- Use the app bar theme reference for toolbar styling -->
+        <item name="colorOnSurface">@color/white</item>
         <item name="actionBarTheme">@style/ThemeOverlay.AppCompat.Dark.ActionBar</item>
     </style>
 

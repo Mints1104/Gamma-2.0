@@ -28,22 +28,22 @@
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginTop="8dp" />
 
-    <!-- Save Button -->
-    <Button
-        android:id="@+id/saveFavoriteButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Save"
-        app:layout_constraintTop_toBottomOf="@id/editFavoriteCoordinates"
-        app:layout_constraintStart_toStartOf="parent"
-        android:layout_marginTop="16dp" />
-
-    <!-- Cancel Button -->
+    <!-- Cancel Button (now on left) -->
     <Button
         android:id="@+id/cancelFavoriteButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Cancel"
-        app:layout_constraintTop_toTopOf="@id/saveFavoriteButton"
+        app:layout_constraintTop_toBottomOf="@id/editFavoriteCoordinates"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginTop="16dp" />
+
+    <!-- Save Button (now on right) -->
+    <Button
+        android:id="@+id/saveFavoriteButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Save"
+        app:layout_constraintTop_toTopOf="@id/cancelFavoriteButton"
         app:layout_constraintEnd_toEndOf="parent" />
 </androidx.constraintlayout.widget.ConstraintLayout>

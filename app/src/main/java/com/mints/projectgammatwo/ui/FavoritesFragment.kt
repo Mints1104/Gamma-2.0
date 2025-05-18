@@ -212,18 +212,15 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
 
 
     private fun saveFavorites() {
-        val prefs = requireContext().getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
+        val ctx = context ?: return
+        val prefs = ctx
+            .getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
         val editor = prefs.edit()
-
-        // Save the full favorites list as JSON
         editor.putString(KEY_FAVORITES, gson.toJson(favoritesList))
-
-        // Save the order separately
-        val originalOrder = favoritesList.map { it.name } // Store names as order reference
-        editor.putString("favorites_order", gson.toJson(originalOrder))
-
+        editor.putString("favorites_order", gson.toJson(favoritesList.map { it.name }))
         editor.apply()
     }
+
 
 
     private fun saveSortingOrder() {
@@ -233,31 +230,29 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     }
 
     private fun deleteFavorite(favorite: FavoriteLocation) {
-        // Use the activity's root view
+        // 1) Grab a parent view for the Snackbar
         val rootView = requireActivity().findViewById<View>(android.R.id.content)
 
-        // Get the index of the favorite and remove it from the list
-        val deletedIndex = favoritesList.indexOf(favorite)
+        // 2) Remove from your in-memory list and update the adapter
+        val deletedIndex = favoritesList.indexOf(favorite).takeIf { it != -1 } ?: return
         favoritesList.removeAt(deletedIndex)
         adapter.submitList(favoritesList.toList())
 
-        // Create the Snackbar using the root view as the parent
-        val snackbar = Snackbar.make(rootView, "Deleted: ${favorite.name}", Snackbar.LENGTH_LONG)
+        // 3) Persist the deletion right away
+        saveFavorites()
+
+        // 4) Show Snackbar with UNDO that restores + re‑saves
+        Snackbar.make(rootView, "Deleted: ${favorite.name}", Snackbar.LENGTH_LONG)
             .setAction("UNDO") {
-                // Reinsert the deleted item at its original position
+                // restore in RAM
                 favoritesList.add(deletedIndex, favorite)
                 adapter.submitList(favoritesList.toList())
+                // persist the restoration
+                saveFavorites()
             }
-            .addCallback(object : Snackbar.Callback() {
-                override fun onDismissed(transientBottomBar: Snackbar?, event: Int) {
-                    if (event != DISMISS_EVENT_ACTION) {
-                        saveFavorites()
-                    }
-                }
-            })
-
-        snackbar.show()
+            .show()
     }
+
 
 
 

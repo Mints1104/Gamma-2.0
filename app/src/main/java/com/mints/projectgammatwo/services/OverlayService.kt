@@ -43,6 +43,9 @@ enum class FilterSortOrder {
     DEFAULT,
     NAME
 }
+
+
+
 private const val PREF_FILTER_SORT_ORDER = "filter_sort_order"
 
 class OverlayService : Service() {
@@ -66,6 +69,12 @@ class OverlayService : Service() {
     private var currentSortOrder = FilterSortOrder.DEFAULT
 
 
+    companion object {
+        private const val TAG = "OverlayService"
+        private const val NOTIFICATION_ID = 1001
+        private const val CHANNEL_ID = "overlay_service_channel"
+    }
+
     override fun onBind(intent: Intent?): IBinder? {
         return null // Not a bound service
     }
@@ -75,7 +84,7 @@ class OverlayService : Service() {
         Log.d(TAG, "Service onCreate")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                "overlay_service_channel",
+                CHANNEL_ID,
                 "Overlay Service",
                 NotificationManager.IMPORTANCE_LOW
             )
@@ -87,13 +96,13 @@ class OverlayService : Service() {
         filterPreferences = FilterPreferences(this)
         deletedInvasionsRepository = DeletedInvasionsRepository(this)
 
-        val notification = NotificationCompat.Builder(this, "overlay_service_channel")
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Invasion Overlay")
             .setContentText("Overlay service is running")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
-        startForeground(1001, notification)
+        startForeground(NOTIFICATION_ID, notification)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val favorites = FavoritesManager.getFavorites(this)
         if (favorites.isNotEmpty()) {
@@ -106,6 +115,7 @@ class OverlayService : Service() {
         addOverlay("invasions")
     }
 
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val mode = intent?.getStringExtra("overlay_mode") ?: "invasions"
         if (overlayView == null) {
@@ -115,7 +125,7 @@ class OverlayService : Service() {
             updateOverlayBasedOnMode(mode)
             Log.d(TAG, "Overlay updated in onStartCommand with mode: $mode")
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun addOverlay(mode: String) {
@@ -179,11 +189,17 @@ class OverlayService : Service() {
                     windowManager.removeView(overlayView)
                     overlayView = null
                 }
+
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.cancel(NOTIFICATION_ID)
+
+                stopSelf()
             } catch (e: Exception) {
                 Log.e(TAG, "Error removing view: ${e.message}")
             }
-            stopSelf()
         }
+
         homeBtn.setOnClickListener {
             val coordinates = homeCoordinatesManager.getHomeCoordinates()
             if(coordinates != null) {
@@ -210,6 +226,7 @@ class OverlayService : Service() {
         switchModesBtn.setOnClickListener {
             if (mode == "quests") {
                 Log.d(TAG, "Switching to invasions mode")
+                showOverlayToast("Switching to invasions mode")
                 currentMode = "invasions"
 
                 cleanupObservers()
@@ -219,6 +236,7 @@ class OverlayService : Service() {
                 }
                 addOverlay("invasions")
             } else {
+                showOverlayToast("Switching to quests mode")
                 Log.d(TAG, "Switching to quests mode")
                 currentMode = "quests"
 
@@ -318,7 +336,6 @@ class OverlayService : Service() {
 
     private fun fetchInvasions() {
         Log.d(TAG, "Fetching invasions...")
-        showOverlayToast("Fetching invasions...")
         cleanupObservers()
         viewModel = HomeViewModel(application)
         invasionsObserver = Observer { invasions ->
@@ -343,7 +360,6 @@ class OverlayService : Service() {
 
     private fun fetchQuests() {
         Log.d(TAG, "Fetching quests...")
-        showOverlayToast("Fetching quests...")
 
         val questsViewModel = QuestsViewModel(application)
         questsViewModel.fetchQuests()
@@ -412,7 +428,7 @@ class OverlayService : Service() {
                 } catch (e: Exception) {
                     Log.e(TAG, "Error removing toast overlay: ${e.message}")
                 }
-            }, 3000)  // Show for 3 seconds
+            }, 1500)  // Show for 3 seconds
         } catch (e: Exception) {
             Log.e(TAG, "Error showing toast overlay: ${e.message}")
         }
@@ -420,7 +436,19 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.d(TAG, "Service destroyed")
+        Log.d(TAG, "Service onDestroy started")
+
+        // Properly stop foreground service
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            stopForeground(true)
+        }
+
+        // Cancel notification explicitly
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.cancel(NOTIFICATION_ID)
+
         cleanupObservers()
         try {
             if (overlayView != null) {
@@ -430,6 +458,7 @@ class OverlayService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Error on destroy: ${e.message}")
         }
+        Log.d(TAG, "Service destroyed completely")
     }
 
     private fun setupFavoritesOverlay() {
@@ -479,7 +508,8 @@ class OverlayService : Service() {
 
         // Initialize the adapter with a filter selection callback
         filtersAdapter = FiltersRecyclerView { filterName ->
-            // Apply the selected filter based on current mode
+            Log.d(TAG, "Filter selected: $filterName")
+            showOverlayToast("Applying filter: $filterName")
             applyFilter(filterName)
         }
 

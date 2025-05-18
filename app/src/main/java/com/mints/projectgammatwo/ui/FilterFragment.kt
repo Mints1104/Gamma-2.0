@@ -37,6 +37,7 @@ class FilterFragment : Fragment() {
     private lateinit var filterPreferences: FilterPreferences
     private val enabledRocketFilters = mutableSetOf<Int>()
     private lateinit var questsViewModel: QuestsViewModel // Assuming this is used elsewhere or for future
+    private var currentFilterType = "Rocket"
 
     private lateinit var questPrefs: SharedPreferences // Already have this for some specific quest ops
 
@@ -49,6 +50,7 @@ class FilterFragment : Fragment() {
     // ADDED: Snapshot of the filter state when it was initially loaded
     private var originalSettingsOfLoadedRocketFilter: Set<Int>? = null
     private var originalSettingsOfLoadedQuestFilter: Set<String>? = null
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,7 +87,60 @@ class FilterFragment : Fragment() {
         // Get references to UI containers.
         val radioGroup = view.findViewById<RadioGroup>(R.id.filterTypeRadioGroup)
         // val rbRocket = view.findViewById<RadioButton>(R.id.rbRocket) // Unused
-        // val rbQuest = view.findViewById<RadioButton>(R.id.rbQuest) // Unused
+
+        radioGroup.post {
+            // Now check which layout is actually visible after everything is settled
+            val isQuestVisible = questLayout.visibility == View.VISIBLE
+            val isRocketVisible = rocketLayoutGlobal.visibility == View.VISIBLE
+
+            // Sync radio button with the visible layout without triggering listener
+            when {
+                isQuestVisible -> {
+                    radioGroup.check(R.id.rbQuest)
+                    updateCurrentQuestFilter()
+                    currentFilterType = "Quest"
+                    Log.d("Test","Current filter type: $currentFilterType")
+                }
+                isRocketVisible -> {
+                    radioGroup.check(R.id.rbRocket)
+                    updateCurrentRocketFilter()
+                }
+                else -> {
+                    // Default case
+                    radioGroup.check(R.id.rbRocket)
+                    rocketLayoutGlobal.visibility = View.VISIBLE
+                    questLayout.visibility = View.GONE
+                    updateCurrentRocketFilter()
+                    currentFilterType = "Rocket"
+                    Log.d("Test","Current filter type: $currentFilterType")
+
+                }
+            }
+            activity?.invalidateOptionsMenu()
+
+
+            // NOW set up the listener after everything is properly synced
+            radioGroup.setOnCheckedChangeListener { _, checkedId ->
+                when (checkedId) {
+                    R.id.rbRocket -> {
+                        rocketLayoutGlobal.visibility = View.VISIBLE
+                        questLayout.visibility = View.GONE
+                        currentFilterType = "Rocket"
+                        updateCurrentRocketFilter()
+                    }
+                    R.id.rbQuest -> {
+                        rocketLayoutGlobal.visibility = View.GONE
+                        questLayout.visibility = View.VISIBLE
+                        currentFilterType = "Quest"
+
+                        updateCurrentQuestFilter()
+                    }
+                }
+                activity?.invalidateOptionsMenu()
+            }
+        }
+// MODIFIED: Update the current filter display based on which is visible
+
 
         DataMappings.initializePokemonData(requireContext()) {
             if (!isAdded) return@initializePokemonData
@@ -94,21 +149,7 @@ class FilterFragment : Fragment() {
             setupQuestFilters(questLayout)
         }
 
-        radioGroup.setOnCheckedChangeListener { _, checkedId ->
-            when (checkedId) {
-                R.id.rbRocket -> {
-                    rocketLayoutGlobal.visibility = View.VISIBLE
-                    questLayout.visibility = View.GONE
-                    updateCurrentRocketFilter()
 
-                }
-                R.id.rbQuest -> {
-                    rocketLayoutGlobal.visibility = View.GONE
-                    questLayout.visibility = View.VISIBLE
-                    updateCurrentQuestFilter()
-                }
-            }
-        }
 
         // ADDED: Snapshot initial active filters if any, upon fragment creation/recreation
         // This ensures that if a filter was active and the user rotates screen or comes back,
@@ -134,8 +175,20 @@ class FilterFragment : Fragment() {
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.filter_nav_menu, menu)
+
+
         super.onCreateOptionsMenu(menu, inflater)
     }
+
+    override fun onPrepareOptionsMenu(menu: Menu) {
+        super.onPrepareOptionsMenu(menu)
+        val saveRocketItem = menu.findItem(R.id.action_save_rocket)
+        val saveQuestItem  = menu.findItem(R.id.action_save_quest)
+
+        saveRocketItem?.isVisible = (currentFilterType == "Rocket")
+        saveQuestItem?.isVisible  = (currentFilterType == "Quest")
+    }
+
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
