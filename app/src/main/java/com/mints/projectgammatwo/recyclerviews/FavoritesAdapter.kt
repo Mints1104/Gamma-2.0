@@ -1,10 +1,5 @@
 package com.mints.projectgammatwo.recyclerviews
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
@@ -20,14 +15,6 @@ import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.FavoriteLocation
 
-/**
- * Adapter for displaying favorite locations.
- *
- * @param onDeleteFavorite Called when a favorite should be deleted.
- * @param onEditFavorite Called when a favorite should be edited.
- * @param onCopyFavorite Called when a favorite’s coordinates are to be copied.
- * @param onTeleportFavorite Called when teleport action is requested.
- */
 class FavoritesAdapter(
     private val onDeleteFavorite: (FavoriteLocation) -> Unit,
     private val onEditFavorite: (FavoriteLocation, Int) -> Unit,
@@ -38,21 +25,14 @@ class FavoritesAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): FavoriteViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_favorite, parent, false)
-        return FavoriteViewHolder(view, onDeleteFavorite, onEditFavorite, onCopyFavorite, onTeleportFavorite)
+        return FavoriteViewHolder(view)
     }
 
     override fun onBindViewHolder(holder: FavoriteViewHolder, position: Int) {
-        holder.bind(getItem(position))
+        holder.bind()
     }
 
-    class FavoriteViewHolder(
-        itemView: View,
-        private val onDeleteFavorite: (FavoriteLocation) -> Unit,
-        private val onEditFavorite: (FavoriteLocation, Int) -> Unit,
-        private val onCopyFavorite: (FavoriteLocation) -> Unit,
-        private val onTeleportFavorite: (FavoriteLocation) -> Unit
-    ) : RecyclerView.ViewHolder(itemView) {
-
+    inner class FavoriteViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val dragHandle: ImageView = itemView.findViewById(R.id.dragHandle)
         private val favoriteName: TextView = itemView.findViewById(R.id.favoriteName)
         private val favoriteLocation: TextView = itemView.findViewById(R.id.favoriteLocation)
@@ -61,45 +41,62 @@ class FavoritesAdapter(
         private val teleportButton: Button = itemView.findViewById(R.id.teleportButton)
         private val deleteButton: Button = itemView.findViewById(R.id.deleteButton)
 
+        fun bind() {
+            // Always look up the current adapter position
+            val pos = adapterPosition
+            if (pos == RecyclerView.NO_POSITION) return
 
-        fun bind(favorite: FavoriteLocation) {
+            val favorite = getItem(pos)
+
             favoriteName.text = favorite.name
             favoriteLocation.text = "${favorite.lat}, ${favorite.lng}"
 
-            // Copy button: copy coordinates to clipboard.
-            copyButton.setOnClickListener { onCopyFavorite(favorite) }
+            copyButton.setOnClickListener {
+                val currentPos = adapterPosition
+                if (currentPos != RecyclerView.NO_POSITION) {
+                    onCopyFavorite(getItem(currentPos))
+                }
+            }
 
-            // Teleport button: open a map app at the given coordinates.
-            teleportButton.setOnClickListener { onTeleportFavorite(favorite) }
+            teleportButton.setOnClickListener {
+                val currentPos = adapterPosition
+                if (currentPos != RecyclerView.NO_POSITION) {
+                    onTeleportFavorite(getItem(currentPos))
+                }
+            }
 
-            // Delete button.
-            deleteButton.setOnClickListener { onDeleteFavorite(favorite) }
+            deleteButton.setOnClickListener {
+                val currentPos = adapterPosition
+                if (currentPos != RecyclerView.NO_POSITION) {
+                    onDeleteFavorite(getItem(currentPos))
+                }
+            }
 
-            // Overflow menu for editing.
             overflowButton.setOnClickListener {
                 val popup = PopupMenu(itemView.context, overflowButton)
                 popup.inflate(R.menu.favorite_item_menu)
                 popup.setOnMenuItemClickListener { menuItem: MenuItem ->
-                    when (menuItem.itemId) {
-                        R.id.menu_edit -> {
-                            onEditFavorite(favorite, adapterPosition)
-                            true
+                    if (menuItem.itemId == R.id.menu_edit) {
+                        val currentPos = adapterPosition
+                        if (currentPos != RecyclerView.NO_POSITION) {
+                            onEditFavorite(getItem(currentPos), currentPos)
                         }
-                        else -> false
+                        true
+                    } else {
+                        false
                     }
                 }
                 popup.show()
             }
-            // The dragHandle view is used to indicate the draggable area.
         }
     }
 
-
-
     class FavoriteDiffCallback : DiffUtil.ItemCallback<FavoriteLocation>() {
         override fun areItemsTheSame(oldItem: FavoriteLocation, newItem: FavoriteLocation): Boolean {
-            // Compare using fields that uniquely identify the favorite.
-            return oldItem.name == newItem.name && oldItem.lat == newItem.lat && oldItem.lng == newItem.lng
+            // Still comparing by name+coords
+            return oldItem.name == newItem.name
+                    && oldItem.lat  == newItem.lat
+                    && oldItem.lng  == newItem.lng
         }
 
         override fun areContentsTheSame(oldItem: FavoriteLocation, newItem: FavoriteLocation): Boolean {

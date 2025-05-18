@@ -22,6 +22,7 @@ import com.google.gson.reflect.TypeToken
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.FavoriteLocation
 import com.mints.projectgammatwo.recyclerviews.FavoritesAdapter
+import java.util.Collections
 
 private const val PREFS_NAME = "FavoritesPrefs"
 private const val SORT_ORDER_KEY = "sort_order"
@@ -394,13 +395,19 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
             viewHolder: RecyclerView.ViewHolder,
             target: RecyclerView.ViewHolder
         ): Boolean {
-            val fromPos = viewHolder.adapterPosition
-            val toPos = target.adapterPosition
-            val movedItem = favoritesList.removeAt(fromPos)
-            favoritesList.add(toPos, movedItem)
-            adapter.notifyItemMoved(fromPos, toPos)
+            // Use adapterPosition everywhere
+            val from = viewHolder.adapterPosition
+            val to   = target.adapterPosition
+            if (from == RecyclerView.NO_POSITION || to == RecyclerView.NO_POSITION) return false
+
+            // Make a mutable copy, swap, and resubmit
+            val newList = adapter.currentList.toMutableList().apply {
+                Collections.swap(this, from, to)
+            }
+            adapter.submitList(newList)
             return true
         }
+
 
         override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
             // No swipe action.
