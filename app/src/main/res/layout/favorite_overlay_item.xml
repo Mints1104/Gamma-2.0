@@ -48,5 +48,5 @@
         android:padding="6dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="More options"
-        android:src="@drawable/ic_drag_handle" />
+        android:src="@drawable/ic_drag_handle_overlay" />
 </LinearLayout>

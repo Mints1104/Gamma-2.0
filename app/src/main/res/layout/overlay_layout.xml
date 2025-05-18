@@ -24,7 +24,7 @@
         android:padding="8dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="Drag handle"
-        android:src="@drawable/ic_drag_handle" />
+        android:src="@drawable/ic_drag_handle_overlay" />
 
     <ImageButton
         android:id="@+id/close_button"

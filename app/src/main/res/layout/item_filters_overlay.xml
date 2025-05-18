@@ -28,7 +28,7 @@
                 android:layout_centerVertical="true"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Drag handle"
-                android:src="@drawable/ic_drag_handle" />
+                android:src="@drawable/ic_drag_handle_overlay" />
 
             <!-- Favorites title -->
             <TextView
