@@ -8,7 +8,7 @@ data class ExportData(
     val enabledQuests: Set<String>,
     val homeCoordinates: String,
     val savedRocketFilters: Map<String, Set<Int>>,
-    val savedQuestFilters: Map<String, Set<Int>>,
+    val savedQuestFilters: Map<String, Set<String>>,
     val activeRocketFilter: String,
     val activeQuestFilter: String
 )

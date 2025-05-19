@@ -43,7 +43,6 @@ class SettingsFragment : Fragment() {
     private lateinit var dataSourcePreferences: DataSourcePreferences
     private lateinit var filterPreferences: FilterPreferences
     private lateinit var deletedRepo: DeletedInvasionsRepository
-    private lateinit var questFilterPreferences: QuestFilterPreferences
     private lateinit var discordTextView: TextView
     private lateinit var homeCoordinates: EditText
     private lateinit var homeCoordinatesManager: HomeCoordinatesManager
@@ -62,7 +61,6 @@ class SettingsFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         dataSourcePreferences = DataSourcePreferences(requireContext())
         filterPreferences = FilterPreferences(requireContext())
-        questFilterPreferences = QuestFilterPreferences(requireContext())
         deletedRepo = DeletedInvasionsRepository(requireContext())
         homeCoordinatesManager = HomeCoordinatesManager.getInstance(requireContext())
 
@@ -241,7 +239,7 @@ class SettingsFragment : Fragment() {
         val favorites: List<FavoriteLocation> = gson.fromJson(favoritesJson, favoritesType)
         Log.d("SettingsExport", "Favorites count: ${favorites.size}")
 
-        val enabledQuests = questFilterPreferences.getEnabledFilters()
+        val enabledQuests = filterPreferences.getEnabledQuestFilters()
         Log.d("SettingsExport", "Enabled quests: $enabledQuests")
 
         val deletedEntries = deletedRepo.getDeletedEntries()
@@ -336,7 +334,7 @@ class SettingsFragment : Fragment() {
             filterPreferences.saveEnabledCharacters(importData.enabledCharacters)
 
             Log.d("SettingsImport", "Importing enabled quests: ${importData.enabledQuests}")
-            questFilterPreferences.saveEnabledFilters(importData.enabledQuests)
+            filterPreferences.saveEnabledQuestFilters(importData.enabledQuests)
 
             val favoritesPrefs = requireContext().getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
             Log.d("SettingsImport", "Importing ${importData.favorites.size} favorites")

@@ -108,15 +108,14 @@ class FilterPreferences(context: Context) {
         // setActiveQuestFilter(name)
     }
 
-    fun getSavedQuestFilters(): Map<String, Set<Int>> {
+    fun getSavedQuestFilters(): Map<String, Set<String>> {
         val all = questPrefs.getStringSet(KEY_QUEST_FILTERS, emptySet())!!
-        val filters = mutableMapOf<String, Set<Int>>()
+        val filters = mutableMapOf<String, Set<String>>()
         for (name in all) {
             Log.d("FilterPreferences", "Loading filter $name")
             val saved = questPrefs.getStringSet("$QUEST_FILTER_PREFIX$name", emptySet())!!
-            val ints = saved.mapNotNull { it.toIntOrNull() }.toSet()
-            filters[name] = ints
-            Log.d("FilterPreferences", "Loaded filter $name with characters: $ints")
+            filters[name] = saved
+            Log.d("FilterPreferences", "Loaded filter $name with quests: $saved")
         }
         return filters
     }

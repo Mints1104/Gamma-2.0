@@ -410,10 +410,9 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
             if (from == RecyclerView.NO_POSITION || to == RecyclerView.NO_POSITION) return false
 
             // Make a mutable copy, swap, and resubmit
-            val newList = adapter.currentList.toMutableList().apply {
-                Collections.swap(this, from, to)
-            }
-            adapter.submitList(newList)
+            // Update BOTH the favorites list AND the adapter
+            Collections.swap(favoritesList, from, to)
+            adapter.submitList(favoritesList.toList())
             return true
         }
 
