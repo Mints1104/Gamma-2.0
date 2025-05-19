@@ -67,7 +67,8 @@ class OverlayService : Service() {
     private lateinit var deletedInvasionsRepository: DeletedInvasionsRepository
     private var currentMode = "invasions" // Default mode
     private var currentSortOrder = FilterSortOrder.DEFAULT
-
+    private var currentX = 0
+    private var currentY = 100
 
     companion object {
         private const val TAG = "OverlayService"

@@ -24,6 +24,8 @@ import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.data.QuestFilterPreferences
 import androidx.core.content.edit
+import com.mints.projectgammatwo.data.ExportData
+import kotlin.jvm.java
 
 class SettingsFragment : Fragment() {
 
@@ -221,21 +223,6 @@ class SettingsFragment : Fragment() {
         }
     }
 
-    /**
-     * Data class representing all settings to be exported/imported.
-     */
-    data class ExportData(
-        val dataSources: Set<String>,
-        val enabledCharacters: Set<Int>,
-        val favorites: List<FavoriteLocation>,
-        val deletedEntries: Set<DeletedEntry>,
-        val enabledQuests: Set<String>,
-        val homeCoordinates: String,
-        val savedRocketFilters: Map<String, Set<Int>>,
-        val savedQuestFilters: Map<String, Set<Int>>,
-        val activeRocketFilter: String,
-        val activeQuestFilter: String
-    )
 
     /**
      * Exports settings to a JSON string and launches a share intent.

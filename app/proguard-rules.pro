@@ -46,6 +46,11 @@
     @com.google.gson.annotations.SerializedName <fields>;
 }
 
+# Fix for TypeToken generic type information
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
+-keepattributes Signature
+
 #################################################
 # 6) OkHttp
 #################################################
