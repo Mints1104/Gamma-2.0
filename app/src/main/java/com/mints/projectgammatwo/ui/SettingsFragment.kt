@@ -99,7 +99,7 @@ class SettingsFragment : Fragment() {
         val selectedSources = dataSourcePreferences.getSelectedSources()
         checkboxNYC.isChecked = selectedSources.contains("NYC")
         checkboxLondon.isChecked = selectedSources.contains("LONDON")
-        checkboxSG.isChecked = selectedSources.contains("SG")
+        checkboxSG.isChecked = selectedSources.contains("Singapore")
         checkboxVancouver.isChecked = selectedSources.contains("VANCOUVER")
         checkboxSydney.isChecked = selectedSources.contains("SYDNEY")
 
@@ -108,7 +108,7 @@ class SettingsFragment : Fragment() {
             val newSelection = mutableSetOf<String>()
             if (checkboxNYC.isChecked) newSelection.add("NYC")
             if (checkboxLondon.isChecked) newSelection.add("LONDON")
-            if (checkboxSG.isChecked) newSelection.add("SG")
+            if (checkboxSG.isChecked) newSelection.add("Singapore")
             if (checkboxVancouver.isChecked) newSelection.add("VANCOUVER")
             if (checkboxSydney.isChecked) newSelection.add("SYDNEY")
             if (newSelection.isEmpty()) {
@@ -463,7 +463,7 @@ class SettingsFragment : Fragment() {
             // Update UI checkboxes.
             checkboxNYC.isChecked = importData.dataSources.contains("NYC")
             checkboxLondon.isChecked = importData.dataSources.contains("LONDON")
-            checkboxSG.isChecked = importData.dataSources.contains("SG")
+            checkboxSG.isChecked = importData.dataSources.contains("Singapore")
             checkboxVancouver.isChecked = importData.dataSources.contains("VANCOUVER")
             checkboxSydney.isChecked = importData.dataSources.contains("SYDNEY")
 

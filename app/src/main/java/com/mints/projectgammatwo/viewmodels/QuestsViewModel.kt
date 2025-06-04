@@ -3,11 +3,13 @@ package com.mints.projectgammatwo.viewmodels
 import android.app.Application
 import android.content.Context
 import android.util.Log
+import android.util.Log.e
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
+import com.google.gson.JsonSyntaxException
 import com.mints.projectgammatwo.data.ApiClient
 import com.mints.projectgammatwo.data.DataSourcePreferences
 import com.mints.projectgammatwo.data.QuestFilterPreferences
@@ -28,12 +30,19 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 import com.mints.projectgammatwo.data.CurrentQuestData
+import okio.IOException
+import retrofit2.HttpException
+import java.util.concurrent.TimeUnit
+import androidx.core.content.edit
 
 
 class QuestsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _questsLiveData = MutableLiveData<List<Quest>>()
     val questsLiveData: LiveData<List<Quest>> = _questsLiveData
+
+    private val _error = MutableLiveData<String>()
+    val error: LiveData<String> get() = _error
 
     // Calculate the distance between two quests using the Haversine formula.
     private fun haversineDistance(a: Quest, b: Quest): Double {
@@ -114,14 +123,19 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         val interceptor = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.NONE
         }
-        val client = OkHttpClient.Builder().addInterceptor(interceptor).build()
+        val client = OkHttpClient.Builder().addInterceptor(interceptor)
+            .connectTimeout(30,TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+
 
         val filterPreferences = QuestFilterPreferences(context)
         val visitedPreferences = VisitedQuestsPreferences(context)
         val dataSourcePreferences = DataSourcePreferences(context)
 
         val enabledFilters = filterPreferences.getEnabledFilters()
-        val filtersToUse = if (enabledFilters.isEmpty()) listOf("7,0,1") else enabledFilters.toList()
+        val filtersToUse = if (enabledFilters.isEmpty()) emptyList() else enabledFilters.toList()
         val selectedSources = dataSourcePreferences.getSelectedSources()
 
         viewModelScope.launch {
@@ -129,50 +143,121 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                 val deferredList = selectedSources.mapNotNull { source ->
                     ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
                         async(Dispatchers.IO) {
-                            val retrofit = Retrofit.Builder()
-                                .baseUrl(baseUrl)
-                                .addConverterFactory(GsonConverterFactory.create())
-                                .client(client)
-                                .build()
-                            val service = retrofit.create(QuestsApiService::class.java)
-                            val response = service.getQuests(filtersToUse, System.currentTimeMillis()).execute()
-                            Pair(source, response)
+                            try {
+                                val retrofit = Retrofit.Builder()
+                                    .baseUrl(baseUrl)
+                                    .addConverterFactory(GsonConverterFactory.create())
+                                    .client(client)
+                                    .build()
+                                val service = retrofit.create(QuestsApiService::class.java)
+
+                                val response = service.getQuests(filtersToUse, System.currentTimeMillis()).execute()
+
+                                // Check if the response is successful
+                                if (response.isSuccessful) {
+                                    Pair(source, Result.success(response))
+                                } else {
+                                    // Handle HTTP errors (4xx, 5xx)
+                                    val errorMsg = "HTTP ${response.code()}: ${response.message()}"
+                                    Log.w("QuestsViewModel", "API error for source $source: $errorMsg")
+                                    Pair(source, Result.failure<retrofit2.Response<Quests.QuestsResponse>>(
+                                        HttpException(response)
+                                    ))
+                                }
+                            } catch (e: IOException) {
+                                // Network connectivity issues, timeouts
+                                Log.e("QuestsViewModel", "Network error for source $source", e)
+                                Pair(source, Result.failure<retrofit2.Response<Quests.QuestsResponse>>(
+                                    IOException("Network error for source $source", e)
+                                ))
+
+                            } catch (e: HttpException) {
+                                // HTTP errors (if using suspend functions)
+                                Log.e("QuestsViewModel", "HTTP error for source $source: ${e.code()}", e)
+                                Pair(source, Result.failure<retrofit2.Response<Quests.QuestsResponse>>(
+                                    e
+                                ))
+                            } catch (e: JsonSyntaxException) {
+                                // JSON parsing errors
+                                Log.e("QuestsViewModel", "JSON parsing error for source $source", e)
+                                Pair(source, Result.failure<retrofit2.Response<Quests.QuestsResponse>>(
+                                    IOException("JSON parsing error for source $source", e)
+                                ))
+                            } catch (e: Exception) {
+                                // Any other unexpected errors
+                                Log.e("QuestsViewModel", "Unexpected error for source $source", e)
+                                Pair(source, Result.failure<retrofit2.Response<Quests.QuestsResponse>>(
+                                    Exception("Unexpected error for source $source", e)
+                                ))
+                            }
                         }
                     }
                 }
+
                 val responses = deferredList.map { it.await() }
 
-                responses.firstOrNull()?.second?.body()?.filters?.let { filters ->
-                    val filtersJson = Gson().toJson(filters)
-                    context.getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
-                        .edit().putString("quest_api_filters", filtersJson).apply()
+                // Filter successful responses
+                val successfulResponses = responses.mapNotNull { (source, result) ->
+                    result.getOrNull()?.let { response ->
+                        Pair(source, response)
+                    }
                 }
 
-                val allQuests = responses.flatMap { (source, response) ->
+                // If no successful responses, handle the error state
+                if (successfulResponses.isEmpty()) {
+                    Log.w("QuestsViewModel", "No successful API responses received")
+                    _questsLiveData.postValue(emptyList())
+                     _error.postValue("Unable to fetch quests. Please check your connection.")
+                    return@launch
+                }
+
+                // Process successful responses
+                successfulResponses.firstOrNull()?.second?.body()?.filters?.let { filters ->
+                    val filtersJson = Gson().toJson(filters)
+                    context.getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
+                        .edit { putString("quest_api_filters", filtersJson) }
+                }
+
+                val allQuests = successfulResponses.flatMap { (source, response) ->
                     response.body()?.quests?.map { quest ->
                         quest.copy(source = source)
                     } ?: emptyList()
                 }
+
                 val visited = visitedPreferences.getVisitedQuests()
                 var filteredQuests = allQuests.filter { quest ->
                     val id = "${quest.name}|${quest.lat}|${quest.lng}"
                     !visited.contains(id)
                 }
-               filteredQuests =  filteredQuests.take(500)
+                filteredQuests = filteredQuests.take(500)
 
-                // Load last visited coordinates from shared preferences.
+                filteredQuests.forEach { quest ->
+                    if (quest.rewardsIds == "327") {
+                        if (quest.rewardsString.contains("06")) {
+                            Log.d("Test", "Spinda with 06 found")
+                        }
+                        if (quest.rewardsString.contains("07")) {
+                            Log.d("Test", "Spinda with 07 found!")
+                        }
+                    }
+                }
+
+                // Load last visited coordinates from shared preferences
                 val prefs = context.getSharedPreferences("last_visited_pref", Context.MODE_PRIVATE)
                 val lastVisitedLat = prefs.getFloat("lastVisitedLat", Float.NaN)
                 val lastVisitedLng = prefs.getFloat("lastVisitedLng", Float.NaN)
                 val startLat = if (!lastVisitedLat.isNaN()) lastVisitedLat.toDouble() else null
                 val startLng = if (!lastVisitedLng.isNaN()) lastVisitedLng.toDouble() else null
 
-                // Sort the filtered quests using the last visited coordinates (if available) as the starting point.
+                // Sort the filtered quests using the last visited coordinates
                 val sortedQuests = sortQuestsByNearestNeighbor(filteredQuests, startLat, startLng)
                 _questsLiveData.postValue(sortedQuests)
                 CurrentQuestData.currentQuests = sortedQuests.toMutableList()
+
             } catch (e: Exception) {
-                Log.e("QuestsViewModel", "Error fetching quests", e)
+                Log.e("QuestsViewModel", "Error in fetchQuests", e)
+                _questsLiveData.postValue(emptyList())
+                 _error.postValue("An unexpected error occurred")
             }
         }
     }

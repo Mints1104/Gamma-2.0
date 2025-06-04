@@ -1,4 +1,4 @@
-package com.mints.projectgammatwo.ui
+package com.mints.projectgammatwo.recyclerviews
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -53,9 +53,10 @@ class InvasionsAdapter(
             characterNameText.text = invasion.characterName
             typeText.text = invasion.typeDescription
             locationNameText.text = "Pokestop: ${invasion.name}"
+            val invasionText = invasion.source.lowercase().replaceFirstChar { it.uppercase() }
 
             // Bind the source. (Assumes your Invasion data class has a "source" property.)
-            sourceText.text = "Source: ${invasion.source}"
+            sourceText.text = "Source: $invasionText"
 
             val coordsFormatted = String.format("%.5f, %.5f", invasion.lat, invasion.lng)
             coordinatesText.text = "Location: $coordsFormatted"

@@ -36,7 +36,7 @@
             android:id="@+id/checkbox_sg"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="SG" />
+            android:text="Singapore" />
 
         <CheckBox
             android:id="@+id/checkbox_vancouver"
@@ -99,7 +99,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Gamma by Mints&#10;Version: 2.8"
+            android:text="Gamma by Mints&#10;Version: 2.9"
             android:textAlignment="center"
             android:textSize="14sp" />
 

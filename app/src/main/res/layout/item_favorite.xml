@@ -33,7 +33,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:src="@drawable/ic_more_vert"
+        android:src="@drawable/ic_more_vert_inapp"
         android:contentDescription="@string/edit_favorite"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
@@ -62,18 +62,18 @@
 
         <!-- Copy Button -->
         <Button
-            android:id="@+id/copyButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Copy" />
-
-        <!-- Teleport Button -->
-        <Button
             android:id="@+id/teleportButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:text="TELEPORT" />
+
+        <!-- Teleport Button -->
+        <Button
+            android:id="@+id/copyButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
-            android:text="Teleport" />
+            android:text="COPY" />
 
         <!-- Delete Button -->
         <Button
@@ -81,6 +81,6 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
-            android:text="Delete" />
+            android:text="DELETE" />
     </LinearLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

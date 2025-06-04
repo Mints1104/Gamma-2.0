@@ -3,15 +3,21 @@ package com.mints.projectgammatwo.viewmodels
 
 import android.app.Application
 import android.util.Log
+import android.util.Log.e
 import androidx.lifecycle.*
+import com.google.gson.JsonSyntaxException
 import com.mints.projectgammatwo.data.ApiClient
 import com.mints.projectgammatwo.data.CurrentInvasionData
 import com.mints.projectgammatwo.data.DataSourcePreferences
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
+import com.mints.projectgammatwo.data.Quests
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import okio.`-DeprecatedOkio`.source
+import okio.IOException
+import retrofit2.HttpException
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val filterPreferences = FilterPreferences(application)
@@ -43,19 +49,43 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 val deferredList = selectedSources.mapNotNull { source ->
                     ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
                         async {
-                            // Fetch the invasions from the source
-                            ApiClient.getApiForBaseUrl(baseUrl)
-                                .getInvasions().invasions
-                                .map { invasion ->
-                                    // Add the source to each invasion
-                                    invasion.copy(source = source)
-                                }
+                            try {
+                                // Try to fetch invasions
+                                ApiClient.getApiForBaseUrl(baseUrl)
+                                    .getInvasions().invasions
+                                    .map { invasion -> invasion.copy(source = source) }
+                            }catch(e: IOException) {
+                                Log.e(TAG, "Network error: ${e.message}", e)
+                                _error.value = "Network error: ${e.message}"
+                                emptyList<Invasion>()
+                            } catch (e: HttpException) {
+                                Log.e(TAG, "HTTP error: ${e.code()} - ${e.message}", e)
+                                _error.value = "HTTP error: ${e.code()} - ${e.message}"
+                                emptyList<Invasion>()
+                            } catch (e: JsonSyntaxException) {
+                                Log.e(TAG, "JSON parsing error: ${e.message}", e)
+                                _error.value = "JSON parsing error: ${e.message}"
+                                emptyList<Invasion>()
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Source “$source” failed: ${e.message}", e)
+                                emptyList<Invasion>()
+                            }
                         }
                     }
                 }
 
-                val combinedInvasions = deferredList.flatMap { it.await() }.toMutableList()
 
+                val combinedInvasions = deferredList
+                    .mapNotNull {
+                        try {
+                            it.await()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to await result: ${e.message}", e)
+                            null
+                        }
+                    }
+                    .flatten()
+                    .toMutableList()
                 val enabledCharacters = filterPreferences.getEnabledCharacters()
                 val filteredAndSorted = combinedInvasions
                     .map { invasion ->
@@ -76,11 +106,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 CurrentInvasionData.currentInvasions = filteredAndSorted.toMutableList()
                 _deletedCount.value = deletedRepo.getDeletionCountLast24Hours()
 
-                Log.d(TAG, "Fetched invasions from ${selectedSources.size} sources. Total items: ${filteredAndSorted.size}")
+                Log.d(
+                    TAG,
+                    "Fetched invasions from ${selectedSources.size} sources. Total items: ${filteredAndSorted.size}"
+                )
+
+
             } catch (e: Exception) {
                 Log.e(TAG, "Error fetching invasions: ${e.message}", e)
                 _error.value = "Failed to fetch invasions: ${e.message}"
             }
+
         }
     }
 

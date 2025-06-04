@@ -26,6 +26,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.google.android.material.button.MaterialButton
 import com.google.gson.Gson
 import com.mints.projectgammatwo.R
+import com.mints.projectgammatwo.data.CurrentQuestData
 import com.mints.projectgammatwo.data.DataMappings
 import com.mints.projectgammatwo.data.FilterPreferences
 // Removed PokemonRepository as it's unused in this fragment
@@ -36,18 +37,13 @@ class FilterFragment : Fragment() {
 
     private lateinit var filterPreferences: FilterPreferences
     private val enabledRocketFilters = mutableSetOf<Int>()
-    private lateinit var questsViewModel: QuestsViewModel // Assuming this is used elsewhere or for future
+    private lateinit var questsViewModel: QuestsViewModel
     private var currentFilterType = "Rocket"
-
-    private lateinit var questPrefs: SharedPreferences // Already have this for some specific quest ops
-
-    // We'll now store the full composite quest filter strings.
+    private lateinit var questPrefs: SharedPreferences
     private val enabledQuestFilters = mutableSetOf<String>()
     private lateinit var questLayout: LinearLayout
-    private lateinit var rocketLayoutGlobal: LinearLayout // // ADDED: Make rocketLayout globally accessible in the fragment
+    private lateinit var rocketLayoutGlobal: LinearLayout
     private lateinit var currentFilterTextView: TextView
-
-    // ADDED: Snapshot of the filter state when it was initially loaded
     private var originalSettingsOfLoadedRocketFilter: Set<Int>? = null
     private var originalSettingsOfLoadedQuestFilter: Set<String>? = null
 
@@ -68,32 +64,52 @@ class FilterFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         filterPreferences = FilterPreferences(requireContext())
-        questPrefs = requireContext().getSharedPreferences("quest_filters", Context.MODE_PRIVATE) // This seems to be your dedicated SharedPreferences for quest_api_filters, distinct from FilterPreferences's quest storage.
+        questPrefs = requireContext().getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
         currentFilterTextView = view.findViewById(R.id.currentFilterText)
-
-        // MODIFIED: Initialize global layout variables
         rocketLayoutGlobal = view.findViewById(R.id.rocketFiltersLayout)
-        questLayout = view.findViewById(R.id.questFiltersLayout) // questLayout was already global
-
-        // Load initial enabled filters from FilterPreferences (which handles its own persistence)
-        enabledRocketFilters.clear() // Clear before adding to avoid duplicates if onViewCreated is called multiple times
+        questLayout = view.findViewById(R.id.questFiltersLayout)
+        enabledRocketFilters.clear()
         enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
 
         enabledQuestFilters.clear()
-        enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters()) // Using FilterPreferences for consistency
+        enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters())
 
         questsViewModel = ViewModelProvider(this)[QuestsViewModel::class.java]
 
-        // Get references to UI containers.
+        val testList = CurrentQuestData.currentQuests
+        Log.d("FilterFragment", "Current quests size: ${testList.size}")
+
+        val spindaQuests = testList.filter { quest ->
+            quest.rewardsIds.split(",").any { it == "327" }
+        }
+        val spindaType1 = spindaQuests.filter { quest ->
+            quest.rewardsString.contains("01")
+
+        }
+        val spindaType2 = spindaQuests.filter { quest ->
+            quest.rewardsString.contains("02")
+        }
+
+        Log.d("FilterFragment", "Spinda (01) quests: ${spindaType1.size}")
+        Log.d("FilterFragment", "Spinda (02) quests: ${spindaType2.size}")
+
+
+
+        questsViewModel.questsLiveData.observe(viewLifecycleOwner) { quests ->
+            val spindaQuests = quests.filter { quest ->
+                quest.rewardsIds.split(",").any { it == "327" }
+            }
+
+
+
+        }
+
         val radioGroup = view.findViewById<RadioGroup>(R.id.filterTypeRadioGroup)
-        // val rbRocket = view.findViewById<RadioButton>(R.id.rbRocket) // Unused
 
         radioGroup.post {
-            // Now check which layout is actually visible after everything is settled
             val isQuestVisible = questLayout.visibility == View.VISIBLE
             val isRocketVisible = rocketLayoutGlobal.visibility == View.VISIBLE
 
-            // Sync radio button with the visible layout without triggering listener
             when {
                 isQuestVisible -> {
                     radioGroup.check(R.id.rbQuest)
@@ -106,7 +122,6 @@ class FilterFragment : Fragment() {
                     updateCurrentRocketFilter()
                 }
                 else -> {
-                    // Default case
                     radioGroup.check(R.id.rbRocket)
                     rocketLayoutGlobal.visibility = View.VISIBLE
                     questLayout.visibility = View.GONE
@@ -119,7 +134,6 @@ class FilterFragment : Fragment() {
             activity?.invalidateOptionsMenu()
 
 
-            // NOW set up the listener after everything is properly synced
             radioGroup.setOnCheckedChangeListener { _, checkedId ->
                 when (checkedId) {
                     R.id.rbRocket -> {
@@ -139,38 +153,33 @@ class FilterFragment : Fragment() {
                 activity?.invalidateOptionsMenu()
             }
         }
-// MODIFIED: Update the current filter display based on which is visible
 
 
         DataMappings.initializePokemonData(requireContext()) {
             if (!isAdded) return@initializePokemonData
             Log.d("App", "Pokemon data loaded with ${DataMappings.pokemonEncounterMapNew.size} entries")
-            // MODIFIED: Pass the global questLayout
+
             setupQuestFilters(questLayout)
         }
 
 
 
-        // ADDED: Snapshot initial active filters if any, upon fragment creation/recreation
-        // This ensures that if a filter was active and the user rotates screen or comes back,
-        // we have a baseline to compare against for the "Save As" logic.
+
         val initialActiveRocketFilter = filterPreferences.getActiveRocketFilter()
         if (initialActiveRocketFilter.isNotEmpty()) {
-            if (originalSettingsOfLoadedRocketFilter == null) { // Only snapshot if not already set (e.g., by loading)
+            if (originalSettingsOfLoadedRocketFilter == null) {
                 originalSettingsOfLoadedRocketFilter = HashSet(filterPreferences.getEnabledCharacters())
             }
         }
 
         val initialActiveQuestFilter = filterPreferences.getActiveQuestFilter()
         if (initialActiveQuestFilter.isNotEmpty()) {
-            if (originalSettingsOfLoadedQuestFilter == null) { // Only snapshot if not already set
+            if (originalSettingsOfLoadedQuestFilter == null) {
                 originalSettingsOfLoadedQuestFilter = HashSet(filterPreferences.getEnabledQuestFilters())
             }
         }
 
-        // MODIFIED: Pass the global rocketLayoutGlobal
         setupRocketFilters(rocketLayoutGlobal)
-        // setupQuestFilters(questLayout) // Called inside initializePokemonData callback
     }
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
@@ -200,20 +209,19 @@ class FilterFragment : Fragment() {
                 showSaveFilterDialog(false)
                 true
             }
-            else -> super.onOptionsItemSelected(item) // MODIFIED: Use super for unhandled cases
+            else -> super.onOptionsItemSelected(item)
         }
     }
 
-    // MODIFIED: Complete overhaul of showSaveFilterDialog
     private fun showSaveFilterDialog(isRocket: Boolean) {
         val builder = AlertDialog.Builder(requireContext())
-        builder.setTitle("Enter a name for the new filter") // Clarified title
+        builder.setTitle("Enter a name for the new filter")
         val input = EditText(requireContext())
         input.inputType = InputType.TYPE_CLASS_TEXT
         input.hint = "New filter name"
         builder.setView(input)
 
-        builder.setPositiveButton("Save New") { dialog, _ -> // Clarified button text
+        builder.setPositiveButton("Save New") { dialog, _ ->
             val newFilterName = input.text.toString().trim()
             if (newFilterName.isEmpty()) {
                 Toast.makeText(requireContext(), "Please enter a name", Toast.LENGTH_SHORT).show()
@@ -221,46 +229,25 @@ class FilterFragment : Fragment() {
             }
 
             if (isRocket) {
-                // 1. Save current UI state (which is Fragment's enabledRocketFilters, reflecting A + live modifications)
-                //    as the new filter "B". filterPreferences.saveCurrentAsFilter uses getEnabledCharacters()
-                //    which should be in sync with fragment's enabledRocketFilters IF checkbox listeners update it.
-                //    Let's ensure fragment's `enabledRocketFilters` is the source for saving.
-                //    First, explicitly update the "current working set" in FilterPreferences with fragment's data.
+
                 filterPreferences.saveEnabledCharacters(enabledRocketFilters)
-                //    Then save this current working set as the new named filter.
                 filterPreferences.saveCurrentAsFilter(newFilterName)
                 Toast.makeText(requireContext(), "Filter '$newFilterName' saved", Toast.LENGTH_SHORT).show()
-
-                // 2. Revert the active filter ("Filter A") to its original loaded state
                 val activeFilterNameToRevert = filterPreferences.getActiveRocketFilter()
 
                 if (activeFilterNameToRevert.isNotEmpty() && originalSettingsOfLoadedRocketFilter != null) {
-                    // Restore fragment's working copy to A's original state
                     enabledRocketFilters.clear()
                     enabledRocketFilters.addAll(originalSettingsOfLoadedRocketFilter!!)
-
-                    // Save these original settings back. This will:
-                    // - Update the "current working set" in FilterPreferences.
-                    // - Crucially, because activeFilterNameToRevert is still active,
-                    //   FilterPreferences.updateFilter() will be called via saveEnabledCharacters,
-                    //   reverting "filter_A" in SharedPreferences.
                     filterPreferences.saveEnabledCharacters(enabledRocketFilters)
-                    // Active filter name remains `activeFilterNameToRevert`
                 } else {
-                    // No specific filter "A" was active when editing started, or its original state wasn't captured.
-                    // The new filter "B" is saved. The current UI reflects B's settings.
-                    // Make "B" the active named filter and snapshot its state as the new baseline.
+
                     filterPreferences.setActiveRocketFilter(newFilterName)
                     originalSettingsOfLoadedRocketFilter = HashSet(enabledRocketFilters) // B is now the baseline
                 }
-                // Refresh UI. It will show A's original settings (if A was loaded and reverted)
-                // or B's settings (if B was made active).
-                // Ensure rocketLayoutGlobal is not null here (it's initialized in onViewCreated)
                 setupRocketFilters(rocketLayoutGlobal)
 
-            } else { // Quest
-                // Similar logic for Quest filters
-                filterPreferences.saveEnabledQuestFilters(enabledQuestFilters) // Sync current state to working set
+            } else {
+                filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
                 filterPreferences.saveCurrentQuestFilter(newFilterName)
                 Toast.makeText(requireContext(), "Filter '$newFilterName' saved", Toast.LENGTH_SHORT).show()
 
@@ -268,12 +255,11 @@ class FilterFragment : Fragment() {
                 if (activeFilterNameToRevert.isNotEmpty() && originalSettingsOfLoadedQuestFilter != null) {
                     enabledQuestFilters.clear()
                     enabledQuestFilters.addAll(originalSettingsOfLoadedQuestFilter!!)
-                    filterPreferences.saveEnabledQuestFilters(enabledQuestFilters) // This will also update the active named quest filter
+                    filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
                 } else {
                     filterPreferences.setActiveQuestFilter(newFilterName)
                     originalSettingsOfLoadedQuestFilter = HashSet(enabledQuestFilters)
                 }
-                // Ensure questLayout is not null here
                 setupQuestFilters(questLayout)
             }
             dialog.dismiss()
@@ -295,9 +281,7 @@ class FilterFragment : Fragment() {
         DataMappings.characterNamesMap.forEach { (id, name) ->
             addCheckBox(parent, name, id, enabledRocketFilters) { checked ->
                 if (checked) enabledRocketFilters.add(id) else enabledRocketFilters.remove(id)
-                // This call is critical: it updates the "current working set" in FilterPreferences
-                // AND it updates the active named filter in SharedPreferences because your
-                // FilterPreferences.saveEnabledCharacters calls updateFilter().
+
                 filterPreferences.saveEnabledCharacters(enabledRocketFilters)
             }
         }
@@ -309,8 +293,8 @@ class FilterFragment : Fragment() {
             currentFilterTextView.visibility = View.VISIBLE
             currentFilterTextView.text = "Current selected filter: $currentFilterName"
         } else {
-            currentFilterTextView.visibility = View.VISIBLE // Or GONE if you prefer
-            currentFilterTextView.text = "Current selected filter: Unsaved" // Indicate no named filter is active
+            currentFilterTextView.visibility = View.VISIBLE
+            currentFilterTextView.text = "Current selected filter: Unsaved"
         }
     }
     private fun updateCurrentQuestFilter() {
@@ -319,13 +303,12 @@ class FilterFragment : Fragment() {
             currentFilterTextView.visibility = View.VISIBLE
             currentFilterTextView.text = "Current selected filter: $currentFilterName"
         } else {
-            currentFilterTextView.visibility = View.VISIBLE // Or GONE if you prefer
-            currentFilterTextView.text = "Current selected filter: Unsaved" // Indicate no named filter is active
+            currentFilterTextView.visibility = View.VISIBLE
+            currentFilterTextView.text = "Current selected filter: Unsaved"
         }
     }
 
 
-    // MODIFIED: addResetButton to clear snapshots
     private fun addResetButton(parent: LinearLayout, filterType: String) {
         val resetButton = MaterialButton(requireContext()).apply {
             text = "Reset $filterType Filters"
@@ -334,23 +317,18 @@ class FilterFragment : Fragment() {
                 when (filterType) {
                     "Rocket" -> {
                         enabledRocketFilters.clear()
-                        filterPreferences.saveEnabledCharacters(enabledRocketFilters) // Saves empty set
-                      //  filterPreferences.clearActiveRocketFilter() // Clears the active filter name in prefs
-                      //  originalSettingsOfLoadedRocketFilter = null // Clear snapshot
+                        filterPreferences.saveEnabledCharacters(enabledRocketFilters)
                         setupRocketFilters(parent)
                     }
                     "Quest" -> {
                         enabledQuestFilters.clear()
-                        // Using filterPreferences consistently for saving quest filters
                         filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                     //   filterPreferences.clearActiveQuestFilter()
-                     //   originalSettingsOfLoadedQuestFilter = null
                         setupQuestFilters(parent)
                     }
                 }
             }
         }
-        parent.addView(resetButton, 0) // Ensure it's added at the top
+        parent.addView(resetButton, 0)
     }
 
     private fun addSelectFilterButton(parent: LinearLayout, filterType: String) {
@@ -358,14 +336,12 @@ class FilterFragment : Fragment() {
             text = "Select $filterType Filter"
             setPadding(16, 8, 16, 8)
             setOnClickListener {
-                // This function will show the dialog to select a filter
                 showSelectFilterDialog(parent, filterType)
             }
         }
-        parent.addView(selectButton, 1) // Add after Reset button usually
+        parent.addView(selectButton, 1)
     }
 
-    // MODIFIED: showSelectFilterDialog takes snapshot on load
     private fun showSelectFilterDialog(parentLayoutForRefresh: LinearLayout, filterType: String) {
         val builder = AlertDialog.Builder(requireContext())
         builder.setTitle("Select a $filterType filter")
@@ -406,20 +382,18 @@ class FilterFragment : Fragment() {
 
                 selectButton.setOnClickListener {
                     if (filterType == "Rocket") {
-                        filterPreferences.loadFilter(filterName, "Rocket") // Loads, sets active, updates working set in prefs
+                        filterPreferences.loadFilter(filterName, "Rocket")
                         enabledRocketFilters.clear()
-                        enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters()) // Sync fragment's set
+                        enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
 
-                        // ADDED: Take a snapshot of the JUST LOADED filter's state
                         originalSettingsOfLoadedRocketFilter = HashSet(enabledRocketFilters)
 
-                        setupRocketFilters(parentLayoutForRefresh) // Rebuild UI
-                    } else { // Quest
+                        setupRocketFilters(parentLayoutForRefresh)
+                    } else {
                         filterPreferences.loadFilter(filterName, "Quest")
                         enabledQuestFilters.clear()
                         enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters())
 
-                        // ADDED: Take a snapshot for quest filter
                         originalSettingsOfLoadedQuestFilter = HashSet(enabledQuestFilters)
 
                         setupQuestFilters(parentLayoutForRefresh)
@@ -430,13 +404,11 @@ class FilterFragment : Fragment() {
 
                 deleteButton.setOnClickListener {
                     showDeleteConfirmationDialog(filterName, filterType, parentLayoutForRefresh) {
-                        // This callback runs after successful deletion
-                        // Refresh the UI based on what type was deleted and is currently visible
+
                         if (filterType == "Rocket") {
-                            // If deleted filter was active, current working set might be cleared by deleteFilter
                             enabledRocketFilters.clear()
                             enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
-                            originalSettingsOfLoadedRocketFilter = null // Clear snapshot as active filter might change
+                            originalSettingsOfLoadedRocketFilter = null
                             setupRocketFilters(parentLayoutForRefresh)
                         } else {
                             enabledQuestFilters.clear()
@@ -538,22 +510,24 @@ class FilterFragment : Fragment() {
                 }
             }
         }
-        parent.addView(toggleButton, 0) // Ensure it's at the top
+        parent.addView(toggleButton, 0)
     }
 
-    // MODIFIED: setupQuestFilters to use filterPreferences.getActiveQuestFilter()
     private fun setupQuestFilters(parent: LinearLayout) {
         parent.removeAllViews()
         addResetButton(parent, "Quest")
         addToggleAllButton(parent, "Quest")
         addSectionHeader(parent, "Quest Filters")
-        addSelectFilterButton(parent, "Quest") // MODIFIED: pass parent, not questLayout (which is parent here)
+        addSelectFilterButton(parent, "Quest")
 
         updateCurrentQuestFilter()
 
         // This part uses `questPrefs` which seems to be for raw API structure,
         // while `enabledQuestFilters` (from FilterPreferences) stores the processed filter strings.
         val filtersJson = questPrefs.getString("quest_api_filters", null)
+
+
+
         if (filtersJson != null) {
             val filters = Gson().fromJson(filtersJson, Quests.Filters::class.java)
             addFilterSection(parent, "Stardust", filters.t3)
@@ -561,10 +535,15 @@ class FilterFragment : Fragment() {
             addFilterSection(parent, "Mega Energy", filters.t12)
             addFilterSection(parent, "Pokémon Encounter", filters.t7)
             addFilterSection(parent, "Item", filters.t2)
+
+
+            if(filters.t7.contains("Spinda")) {
+                Log.d("FilterFragment", "Spinda quest found in Pokémon Encounter section")
+            }
+
+
         } else {
-            // If questsViewModel is essential for fetching initial list for `quest_api_filters`
-            // This might need to be coordinated.
-            questsViewModel.fetchQuests() // This presumably populates `quest_api_filters` in questPrefs eventually
+            questsViewModel.fetchQuests()
             addSectionHeader(parent, "Please open quests tab to update data (or data loading)")
         }
     }
@@ -572,8 +551,8 @@ class FilterFragment : Fragment() {
     private fun addSectionHeader(parent: LinearLayout, text: String) {
         TextView(context).apply {
             this.text = text
-            textSize = 18f // Standard text size
-            setPadding(16) // Use dp or ensure consistent padding
+            textSize = 18f
+            setPadding(16)
             parent.addView(this)
         }
     }
@@ -581,9 +560,9 @@ class FilterFragment : Fragment() {
     private fun addCheckBox(
         parent: LinearLayout,
         text: String,
-        id: Int, // This is the character ID for Rocket filters
-        enabledSet: MutableSet<Int>, // MODIFIED: Pass the mutable set for direct modification
-        onCheckedChangeExternal: (Boolean) -> Unit // This is the external action (saving to prefs)
+        id: Int,
+        enabledSet: MutableSet<Int>,
+        onCheckedChangeExternal: (Boolean) -> Unit
     ) {
         CheckBox(context).apply {
             this.text = text
@@ -664,37 +643,17 @@ class FilterFragment : Fragment() {
                 }
                 val compositeValue = buildQuestFilterString(sectionName, rawValue)
 
+
+
+
                 // Use the fragment's enabledQuestFilters and save via FilterPreferences
                 addQuestCheckBox(parent, displayText, compositeValue, enabledQuestFilters) { checked ->
-                    // The lambda in addQuestCheckBox already handles adding/removing from enabledQuestFilters
-                    // Now, save the updated enabledQuestFilters set using FilterPreferences
                     filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
                 }
             }
         }
     }
 
-    // MODIFIED: This function is now handled by FilterPreferences.saveEnabledQuestFilters
-    // We keep it here if it's used by older parts of the code for `questPrefs` but ideally should be removed
-    // if FilterPreferences is the sole source of truth for enabled quest filters.
-    private fun saveEnabledQuestFilters(filters: Set<String>) {
-        // If you want to use FilterPreferences exclusively:
-        filterPreferences.saveEnabledQuestFilters(filters)
-
-        // If you also need to update the old `questPrefs` for some reason:
-        // requireContext().getSharedPreferences("quest_filters", Context.MODE_PRIVATE).edit()
-        //    .putStringSet("enabled_quest_filters", filters).apply()
-    }
-
-    // MODIFIED: This function is now handled by FilterPreferences.getEnabledQuestFilters
-    private fun getEnabledQuestFilters(): Set<String> {
-        // Use FilterPreferences as the source of truth
-        return filterPreferences.getEnabledQuestFilters()
-
-        // Old way if still needed for `questPrefs`:
-        // return requireContext().getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
-        //    .getStringSet("enabled_quest_filters", null) ?: emptySet()
-    }
 
     override fun onResume() {
         super.onResume()

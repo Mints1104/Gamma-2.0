@@ -17,8 +17,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.Quests
+import com.mints.projectgammatwo.data.VisitedQuestsPreferences
 import com.mints.projectgammatwo.helpers.OverlayServiceManager
 import com.mints.projectgammatwo.recyclerviews.QuestsAdapter
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
@@ -33,12 +35,12 @@ class QuestsFragment : Fragment() {
     private lateinit var questsAdapter: QuestsAdapter
     private lateinit var questsViewModel: QuestsViewModel
     private lateinit var serviceManager: OverlayServiceManager
+    private lateinit var scrollToTopFab: FloatingActionButton
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        // Inflate layout containing a header TextView, SwipeRefreshLayout, and RecyclerView
         return inflater.inflate(R.layout.fragment_quests, container, false)
     }
 
@@ -48,17 +50,12 @@ class QuestsFragment : Fragment() {
         swipeRefresh = view.findViewById(R.id.swipeRefresh)
         questsCountText = view.findViewById(R.id.questsCountText)
         recyclerView = view.findViewById(R.id.questsRecyclerView)
-
-        // Initialize adapter with onDelete callback preserving your exact deletion logic.
         questsAdapter = QuestsAdapter { quest: Quests.Quest ->
             questsViewModel.saveLastVisitedCoordinates(quest)
 
-            // Create a unique identifier for the quest.
             val questId = "${quest.name}|${quest.lat}|${quest.lng}"
-            // Save as visited.
-            val visitedPreferences = com.mints.projectgammatwo.data.VisitedQuestsPreferences(requireContext())
+            val visitedPreferences = VisitedQuestsPreferences(requireContext())
             visitedPreferences.addVisitedQuest(questId)
-            // Remove from the adapter list.
             val currentList = questsAdapter.currentList.toMutableList()
             currentList.remove(quest)
             questsAdapter.submitList(currentList)
@@ -67,11 +64,21 @@ class QuestsFragment : Fragment() {
 
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
         recyclerView.adapter = questsAdapter
-
+        scrollToTopFab = view.findViewById(R.id.scrollToTopFab)
+        setupScrollToTop()
         questsViewModel = ViewModelProvider(this)[QuestsViewModel::class.java]
         questsViewModel.questsLiveData.observe(viewLifecycleOwner) { quests: List<Quests.Quest> ->
             questsAdapter.submitList(quests)
             updateQuestsCount(quests.size)
+            swipeRefresh.isRefreshing = false
+            recyclerView.post {
+                checkAndUpdateFabVisibility()
+            }
+
+        }
+
+        questsViewModel.error.observe(viewLifecycleOwner) { errorMessage ->
+            Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
             swipeRefresh.isRefreshing = false
         }
 
@@ -84,21 +91,82 @@ class QuestsFragment : Fragment() {
         startServiceButton.setOnClickListener {
             handleStartServiceClick()
         }
+        updateServiceButtonState(startServiceButton)
 
-        // Load quests initially.
         swipeRefresh.isRefreshing = true
         questsViewModel.fetchQuests()
+    }
+
+    private fun setupScrollToTop() {
+        // Show/hide FAB based on scroll position
+        recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                super.onScrolled(recyclerView, dx, dy)
+                checkAndUpdateFabVisibility()
+            }
+        })
+
+        // Also monitor adapter data changes
+        questsAdapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
+            override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
+                super.onItemRangeInserted(positionStart, itemCount)
+                // Post to ensure RecyclerView has updated
+                recyclerView.post { checkAndUpdateFabVisibility() }
+            }
+
+            override fun onItemRangeRemoved(positionStart: Int, itemCount: Int) {
+                super.onItemRangeRemoved(positionStart, itemCount)
+                recyclerView.post { checkAndUpdateFabVisibility() }
+            }
+
+            override fun onChanged() {
+                super.onChanged()
+                recyclerView.post { checkAndUpdateFabVisibility() }
+            }
+        })
+
+        // Handle FAB click
+        scrollToTopFab.setOnClickListener {
+            // Smooth scroll to top
+            recyclerView.scrollToPosition(0)
+
+        }
+    }
+
+    private fun checkAndUpdateFabVisibility() {
+        val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return
+
+        // Make sure adapter has items before checking positions
+        if (questsAdapter.itemCount == 0) {
+            Log.d("FAB_DEBUG", "No items, hiding FAB")
+            scrollToTopFab.hide()
+            return
+        }
+
+        val firstVisibleItem = layoutManager.findFirstVisibleItemPosition()
+        Log.d(
+            "FAB_DEBUG",
+            "First visible item: $firstVisibleItem, Total items: ${questsAdapter.itemCount}"
+        )
+
+        // Only show FAB if we have valid position data
+        if (firstVisibleItem != RecyclerView.NO_POSITION && firstVisibleItem > 2) {
+            Log.d("FAB_DEBUG", "Showing FAB")
+            scrollToTopFab.show()
+        } else {
+            Log.d("FAB_DEBUG", "Hiding FAB")
+            scrollToTopFab.hide()
+        }
     }
 
     private fun handleStartServiceClick() {
         // Check if we have overlay permission
         if (Settings.canDrawOverlays(requireContext())) {
             // We have permission, start service directly
-            serviceManager.startOverlayService()
+            serviceManager.startOverlayService("quests")
             return
         }
 
-        // We need to request overlay permission
         AlertDialog.Builder(requireContext())
             .setTitle("Overlay Permission Required")
             .setMessage("This app needs the 'Display over other apps' permission to show overlays with Pokémon GO. Please enable this in the settings.")
@@ -118,8 +186,6 @@ class QuestsFragment : Fragment() {
 
     private fun updateServiceButtonState(button: Button) {
         val overlayPermission = Settings.canDrawOverlays(requireContext())
-
-        // Add logging to debug permission issues
         Log.d("PermissionStatus", "Overlay permission: $overlayPermission")
 
         if (!overlayPermission) {
@@ -131,5 +197,14 @@ class QuestsFragment : Fragment() {
 
     private fun updateQuestsCount(count: Int) {
         questsCountText.text = "Total Quests: $count"
+    }
+
+    override fun onResume() {
+        super.onResume()
+        view?.findViewById<Button>(R.id.startServiceButton)?.let {
+            updateServiceButtonState(it)
+        }
+        checkAndUpdateFabVisibility()
+
     }
 }

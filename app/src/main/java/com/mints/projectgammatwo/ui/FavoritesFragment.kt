@@ -23,6 +23,7 @@ import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.FavoriteLocation
 import com.mints.projectgammatwo.recyclerviews.FavoritesAdapter
 import java.util.Collections
+import androidx.core.content.edit
 
 private const val PREFS_NAME = "FavoritesPrefs"
 private const val SORT_ORDER_KEY = "sort_order"
@@ -37,8 +38,6 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     private lateinit var addFavoriteFab: View
     private var favoritesList = mutableListOf<FavoriteLocation>()
     private val gson = Gson()
-
-    // SharedPreferences keys for favorites.
     private val FAVORITES_PREFS_NAME = "favorites_prefs"
     private val KEY_FAVORITES = "favorites_list"
     private val FAVORITES_SORTED = "favorites_sorted"
@@ -72,13 +71,10 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         addFavoriteFab.setOnClickListener {
             showAddFavoriteDialog()
         }
-
-        // Attach ItemTouchHelper for drag & drop reordering.
         val itemTouchHelper = ItemTouchHelper(itemTouchHelperCallback)
         itemTouchHelper.attachToRecyclerView(recyclerView)
     }
 
-    // --- Options Menu for Importing Favorites ---
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.favorites_menu, menu)
@@ -93,17 +89,12 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
             }
             R.id.action_sortByName -> {
                 saveSortOrderPreference(SORT_ORDER_NAME)
-
                 sortFavsByName()
-
-
                 true
-
             }
 
             R.id.action_sortByDefault -> {
                 sortFavsByDefault()
-
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -112,19 +103,18 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
 
     private fun saveSortOrderPreference(sortOrder: String) {
         val prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putString(SORT_ORDER_KEY, sortOrder).apply()
+        prefs.edit { putString(SORT_ORDER_KEY, sortOrder) }
     }
 
     private fun sortFavsByName() {
         val sortedList = favoritesList.toMutableList().apply {
             sortBy { it.name }
         }
-        // Update the adapter with the sorted list
         adapter.submitList(sortedList)
     }
 
     private fun sortFavsByDefault() {
-        loadFavorites() // Reloads in original order
+        loadFavorites()
     }
 
 
@@ -188,12 +178,10 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         }
     }
 
-    // --- Persistence Methods ---
 
     private fun loadFavorites() {
         val prefs = requireContext().getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
 
-        // Load the full favorites list
         val json = prefs.getString(KEY_FAVORITES, "[]") ?: "[]"
         val type = TypeToken
             .getParameterized(List::class.java, FavoriteLocation::class.java)
@@ -203,7 +191,6 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
             .type
         val loadedFavorites: List<FavoriteLocation> = gson.fromJson(json, listType)
 
-        // Load the original order of names
         val orderJson = prefs.getString("favorites_order", "[]")
         val orderType = TypeToken
             .getParameterized(List::class.java, String::class.java)
@@ -240,24 +227,15 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     }
 
     private fun deleteFavorite(favorite: FavoriteLocation) {
-        // 1) Grab a parent view for the Snackbar
         val rootView = requireActivity().findViewById<View>(android.R.id.content)
-
-        // 2) Remove from your in-memory list and update the adapter
         val deletedIndex = favoritesList.indexOf(favorite).takeIf { it != -1 } ?: return
         favoritesList.removeAt(deletedIndex)
         adapter.submitList(favoritesList.toList())
-
-        // 3) Persist the deletion right away
         saveFavorites()
-
-        // 4) Show Snackbar with UNDO that restores + re‑saves
         Snackbar.make(rootView, "Deleted: ${favorite.name}", Snackbar.LENGTH_LONG)
             .setAction("UNDO") {
-                // restore in RAM
                 favoritesList.add(deletedIndex, favorite)
                 adapter.submitList(favoritesList.toList())
-                // persist the restoration
                 saveFavorites()
             }
             .show()
@@ -277,7 +255,6 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         Toast.makeText(requireContext(), "Coordinates copied to clipboard", Toast.LENGTH_SHORT).show()
     }
 
-    // --- Teleport Functionality ---
 
     /**
      * Teleports to the favorite location based on the user's teleport method preference.
@@ -289,22 +266,17 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         val method = teleportPrefs.getString("teleport_method", "ipogo") ?: "ipogo"
 
         if (method == "ipogo") {
-            // IPoGo: launch the URL with coordinates.
             val url = "https://ipogo.app/?coords=${favorite.lat},${favorite.lng}"
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
             startActivity(intent)
             return
         }
 
-        // GPS Joystick: build the base intent.
         val baseIntent = Intent().apply {
             action = "theappninjas.gpsjoystick.TELEPORT"
             putExtra("lat", favorite.lat.toFloat())
             putExtra("lng", favorite.lng.toFloat())
         }
-
-        // List of known service components—in the order you know work.
-        // First is the one you showed working; second is the alternate.
         val knownComponents = listOf(
             ComponentName(
                 "com.theappninjas.fakegpsjoystick",
@@ -317,7 +289,6 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         )
 
         var serviceStarted = false
-        // Try each known component.
         for (component in knownComponents) {
             val intent = Intent(baseIntent).apply {
                 this.component = component
@@ -329,11 +300,9 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
                     break
                 }
             } catch (e: Exception) {
-                // This known component didn't work; try the next one.
             }
         }
 
-        // If neither known component worked, fall back to a dynamic lookup.
         if (!serviceStarted) {
             val dynamicIntent = Intent(baseIntent).apply { component = null }
             val pm = context.packageManager
@@ -345,7 +314,6 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
                     val compName = context.startService(dynamicIntent)
                     serviceStarted = (compName != null)
                 } catch (e: Exception) {
-                    // dynamic lookup failed.
                 }
             }
         }
@@ -360,7 +328,6 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
 
 
 
-    // --- Dialogs for Adding and Editing Favorites ---
 
     /**
      * Opens the dialog to add a new favorite.
@@ -380,7 +347,6 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         dialog.show(parentFragmentManager, "FavoriteDialogFragment")
     }
 
-    // --- Callback from FavoriteDialogFragment ---
 
     override fun onFavoriteSaved(favorite: FavoriteLocation, position: Int) {
         if (position == -1) {
@@ -394,7 +360,6 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         saveFavorites()
     }
 
-    // --- ItemTouchHelper for Drag & Drop Reordering ---
 
     private val itemTouchHelperCallback = object : ItemTouchHelper.SimpleCallback(
         ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0

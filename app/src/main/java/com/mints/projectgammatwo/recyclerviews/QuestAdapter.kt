@@ -50,7 +50,9 @@ class QuestsAdapter(
             conditionsText.text = "Condition: ${quest.conditionsString}"
             val coordsFormatted = String.format("%.5f, %.5f", quest.lat, quest.lng)
             coordinatesText.text = "Location: $coordsFormatted"
-            sourceText.text = "Source: ${quest.source}"
+            val questText = quest.source.lowercase().replaceFirstChar { it.uppercase() }
+
+            sourceText.text = "Source: $questText"
 
             teleportButton.setOnClickListener {
                 val url = "https://ipogo.app/?coords=${quest.lat},${quest.lng}"

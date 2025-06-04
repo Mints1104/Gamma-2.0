@@ -18,11 +18,13 @@ class OverlayServiceManager(private val context: Context) {
     /**
      * Start the overlay service
      */
-    fun startOverlayService() {
+    fun startOverlayService(selectedMode:String) {
         Log.d(TAG, "Starting OverlayService")
         val serviceIntent = Intent(context, OverlayService::class.java)
+        serviceIntent.putExtra("mode",selectedMode)
 
         try {
+            
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent)
             } else {
@@ -35,22 +37,5 @@ class OverlayServiceManager(private val context: Context) {
         }
     }
 
-    /**
-     * Check if we have overlay permission
-     */
-    fun hasOverlayPermission(): Boolean {
-        return Settings.canDrawOverlays(context)
-    }
 
-    /**
-     * Open system settings to request overlay permission
-     */
-    fun openOverlayPermissionSettings() {
-        val intent = Intent(
-            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-            Uri.parse("package:${context.packageName}")
-        )
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
-    }
 }

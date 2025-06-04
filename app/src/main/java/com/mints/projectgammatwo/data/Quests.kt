@@ -4,7 +4,6 @@ import com.google.gson.annotations.SerializedName
 
 class Quests {
 
-    // Data model for a quest (matching the JSON exactly)
     data class Quest(
         val name: String,
         val lat: Double,
@@ -20,7 +19,7 @@ class Quests {
         val rewardsAmounts: String,
         @SerializedName("rewards_ids")
         val rewardsIds: String,
-        val source: String = ""  // New property; default is empty
+        val source: String = ""
     )
 
 
@@ -34,7 +33,6 @@ class Quests {
         val time: Long
     )
 
-    // Data model for filters returned by the API.
     data class Filters(
         val t3: List<String>,
         val t4: List<String>,

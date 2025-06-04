@@ -3,25 +3,32 @@ package com.mints.projectgammatwo.services
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
-import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
-import android.view.*
-import android.view.WindowManager.LayoutParams.*
-import android.widget.Button
+import android.view.ContextThemeWrapper
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
+import android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+import android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+import android.view.WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+import android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+import android.view.WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
+import android.view.WindowManager.LayoutParams.WRAP_CONTENT
 import android.widget.ImageButton
-import android.widget.PopupMenu  // Add this import
+import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.lifecycle.Observer
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -34,8 +41,8 @@ import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.helpers.DragTouchListener
-import com.mints.projectgammatwo.recyclerviews.OverlayFavoritesAdapter
 import com.mints.projectgammatwo.recyclerviews.FiltersRecyclerView
+import com.mints.projectgammatwo.recyclerviews.OverlayFavoritesAdapter
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
 
@@ -113,12 +120,14 @@ class OverlayService : Service() {
         }
 
         // Add the overlay immediately when service starts
-        addOverlay("invasions")
+       // addOverlay("invasions")
     }
 
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val mode = intent?.getStringExtra("overlay_mode") ?: "invasions"
+        val mode = intent?.getStringExtra("mode").toString()
+        Log.d(TAG, "Service onStartCommand with mode: $mode")
+
         if (overlayView == null) {
             addOverlay(mode)
             Log.d(TAG, "Overlay re-added on onStartCommand with mode: $mode")
@@ -369,7 +378,7 @@ class OverlayService : Service() {
     private fun launchHome(lat: Double, lng: Double) {
         Log.d(TAG, "Launching home with coords: $lat, $lng")
         val url = "https://ipogo.app/?coords=$lat,$lng"
-        Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        Intent(Intent.ACTION_VIEW, url.toUri())
             .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
             .also(::startActivity)
     }
@@ -377,7 +386,7 @@ class OverlayService : Service() {
     private fun launchMap(inv: Invasion) {
         Log.d(TAG, "Launching map with coords: ${inv.lat}, ${inv.lng}")
         val url = "https://ipogo.app/?coords=${inv.lat},${inv.lng}"
-        Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        Intent(Intent.ACTION_VIEW, url.toUri())
             .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
             .also(::startActivity)
     }
@@ -385,7 +394,7 @@ class OverlayService : Service() {
     private fun launchQuest(quest: com.mints.projectgammatwo.data.Quests.Quest) {
         Log.d(TAG, "Launching quest map with coords: ${quest.lat}, ${quest.lng}")
         val url = "https://ipogo.app/?coords=${quest.lat},${quest.lng}"
-        Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        Intent(Intent.ACTION_VIEW, url.toUri())
             .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
             .also(::startActivity)
     }
@@ -408,14 +417,14 @@ class OverlayService : Service() {
         toastText.text = message
 
         val params = WindowManager.LayoutParams().apply {
-            width = WindowManager.LayoutParams.WRAP_CONTENT
-            height = WindowManager.LayoutParams.WRAP_CONTENT
+            width = WRAP_CONTENT
+            height = WRAP_CONTENT
             type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                TYPE_APPLICATION_OVERLAY
             else
-                WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
-            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                TYPE_SYSTEM_ALERT
+            flags = FLAG_NOT_FOCUSABLE or
+                    FLAG_NOT_TOUCH_MODAL
             format = PixelFormat.TRANSLUCENT
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             y = 100  // Distance from bottom
@@ -447,7 +456,7 @@ class OverlayService : Service() {
         }
 
         // Cancel notification explicitly
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(NOTIFICATION_ID)
 
         cleanupObservers()
@@ -479,7 +488,7 @@ class OverlayService : Service() {
                 hideFilterOverlay()
                 val url = "https://ipogo.app/?coords=${favorite.lat},${favorite.lng}"
                 showOverlayToast("Teleporting to ${favorite.name}")
-                Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                Intent(Intent.ACTION_VIEW, url.toUri())
                     .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
                     .also(::startActivity)
             }
@@ -562,12 +571,12 @@ class OverlayService : Service() {
     }
 
     private fun saveSortOrderPreference(sortOrder: FilterSortOrder) {
-        val sharedPrefs = getSharedPreferences("app_preferences", Context.MODE_PRIVATE)
-        sharedPrefs.edit().putString(PREF_FILTER_SORT_ORDER, sortOrder.name).apply()
+        val sharedPrefs = getSharedPreferences("app_preferences", MODE_PRIVATE)
+        sharedPrefs.edit { putString(PREF_FILTER_SORT_ORDER, sortOrder.name) }
     }
 
     private fun loadSortOrderPreference() {
-        val sharedPrefs = getSharedPreferences("app_preferences", Context.MODE_PRIVATE)
+        val sharedPrefs = getSharedPreferences("app_preferences", MODE_PRIVATE)
         val savedSortOrder = sharedPrefs.getString(PREF_FILTER_SORT_ORDER, FilterSortOrder.DEFAULT.name)
         currentSortOrder = try {
             FilterSortOrder.valueOf(savedSortOrder ?: FilterSortOrder.DEFAULT.name)
@@ -594,13 +603,13 @@ class OverlayService : Service() {
         // Add filters overlay to window manager if not already added
         if (filterOverlayView?.parent == null) {
             val params = WindowManager.LayoutParams().apply {
-                width = WindowManager.LayoutParams.WRAP_CONTENT
-                height = WindowManager.LayoutParams.WRAP_CONTENT
+                width = WRAP_CONTENT
+                height = WRAP_CONTENT
                 type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    TYPE_APPLICATION_OVERLAY
                 else
-                    WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
-                flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    TYPE_SYSTEM_ALERT
+                flags = FLAG_NOT_FOCUSABLE
                 format = PixelFormat.TRANSLUCENT
                 gravity = Gravity.TOP
             }
@@ -682,13 +691,13 @@ class OverlayService : Service() {
         // Add favorites overlay to window manager if not already added
         if (favoritesOverlayView?.parent == null) {
             val params = WindowManager.LayoutParams().apply {
-                width = WindowManager.LayoutParams.WRAP_CONTENT
-                height = WindowManager.LayoutParams.WRAP_CONTENT
+                width = WRAP_CONTENT
+                height = WRAP_CONTENT
                 type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    TYPE_APPLICATION_OVERLAY
                 else
-                    WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
-                flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    TYPE_SYSTEM_ALERT
+                flags = FLAG_NOT_FOCUSABLE
                 format = PixelFormat.TRANSLUCENT
                 gravity = Gravity.TOP
             }
@@ -727,4 +736,6 @@ class OverlayService : Service() {
         // Show main overlay again
         overlayView?.visibility = View.VISIBLE
     }
+
+
 }
