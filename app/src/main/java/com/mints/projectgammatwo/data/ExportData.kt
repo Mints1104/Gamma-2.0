@@ -9,6 +9,7 @@ data class ExportData(
     val homeCoordinates: String,
     val savedRocketFilters: Map<String, Set<Int>>,
     val savedQuestFilters: Map<String, Set<String>>,
+    val savedQuestSpindaForms: Map<String, Set<String>>,
     val activeRocketFilter: String,
     val activeQuestFilter: String
 )

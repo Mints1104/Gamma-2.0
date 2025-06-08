@@ -3,9 +3,13 @@ package com.mints.projectgammatwo.ui
 import android.app.AlertDialog
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.os.Bundle
 import android.text.InputType
 import android.util.Log
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuInflater
@@ -16,7 +20,6 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
@@ -75,6 +78,18 @@ class FilterFragment : Fragment() {
         enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters())
 
         questsViewModel = ViewModelProvider(this)[QuestsViewModel::class.java]
+        questsViewModel.fetchSpindaFormsFromApi()
+
+        questsViewModel.spindaFormsLiveData.observe(viewLifecycleOwner) { spindaFormsMap ->
+            Log.d("FilterFragment", "spindaFormsLiveData emitted: ${spindaFormsMap.keys}")
+            DataMappings.initializePokemonData(requireContext()) {
+                if (!isAdded) return@initializePokemonData
+                Log.d("App", "Pokemon data loaded with ${DataMappings.pokemonEncounterMapNew.size} entries")
+
+                setupQuestFilters(questLayout)
+            }
+
+        }
 
         val testList = CurrentQuestData.currentQuests
         Log.d("FilterFragment", "Current quests size: ${testList.size}")
@@ -94,14 +109,9 @@ class FilterFragment : Fragment() {
         Log.d("FilterFragment", "Spinda (02) quests: ${spindaType2.size}")
 
 
-
+        getAvailableSpindaForms()
         questsViewModel.questsLiveData.observe(viewLifecycleOwner) { quests ->
-            val spindaQuests = quests.filter { quest ->
-                quest.rewardsIds.split(",").any { it == "327" }
-            }
-
-
-
+            getAvailableSpindaForms()
         }
 
         val radioGroup = view.findViewById<RadioGroup>(R.id.filterTypeRadioGroup)
@@ -155,12 +165,7 @@ class FilterFragment : Fragment() {
         }
 
 
-        DataMappings.initializePokemonData(requireContext()) {
-            if (!isAdded) return@initializePokemonData
-            Log.d("App", "Pokemon data loaded with ${DataMappings.pokemonEncounterMapNew.size} entries")
 
-            setupQuestFilters(questLayout)
-        }
 
 
 
@@ -242,13 +247,15 @@ class FilterFragment : Fragment() {
                 } else {
 
                     filterPreferences.setActiveRocketFilter(newFilterName)
-                    originalSettingsOfLoadedRocketFilter = HashSet(enabledRocketFilters) // B is now the baseline
+                    originalSettingsOfLoadedRocketFilter = HashSet(enabledRocketFilters)
                 }
                 setupRocketFilters(rocketLayoutGlobal)
 
             } else {
                 filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
                 filterPreferences.saveCurrentQuestFilter(newFilterName)
+                Log.d("SaveFilter","Current enabled spinda forms: ${filterPreferences.getEnabledSpindaForms()}")
+
                 Toast.makeText(requireContext(), "Filter '$newFilterName' saved", Toast.LENGTH_SHORT).show()
 
                 val activeFilterNameToRevert = filterPreferences.getActiveQuestFilter()
@@ -288,6 +295,10 @@ class FilterFragment : Fragment() {
     }
 
     private fun updateCurrentRocketFilter() {
+
+        if(currentFilterType != "Rocket") {
+            updateCurrentQuestFilter()
+        }
         val currentFilterName = filterPreferences.getActiveRocketFilter()
         if (currentFilterName.isNotEmpty()) {
             currentFilterTextView.visibility = View.VISIBLE
@@ -298,6 +309,12 @@ class FilterFragment : Fragment() {
         }
     }
     private fun updateCurrentQuestFilter() {
+
+        if(currentFilterType != "Quest") {
+            updateCurrentRocketFilter()
+        }
+
+
         val currentFilterName = filterPreferences.getActiveQuestFilter()
         if (currentFilterName.isNotEmpty()) {
             currentFilterTextView.visibility = View.VISIBLE
@@ -385,6 +402,8 @@ class FilterFragment : Fragment() {
                         filterPreferences.loadFilter(filterName, "Rocket")
                         enabledRocketFilters.clear()
                         enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
+                        filterPreferences.getEnabledSpindaForms()
+                        Log.d("SelectingFilter","Spinda forms enabled: ${filterPreferences.getEnabledSpindaForms()}")
 
                         originalSettingsOfLoadedRocketFilter = HashSet(enabledRocketFilters)
 
@@ -403,7 +422,7 @@ class FilterFragment : Fragment() {
                 }
 
                 deleteButton.setOnClickListener {
-                    showDeleteConfirmationDialog(filterName, filterType, parentLayoutForRefresh) {
+                    showDeleteConfirmationDialog(filterName, filterType) {
 
                         if (filterType == "Rocket") {
                             enabledRocketFilters.clear()
@@ -416,7 +435,7 @@ class FilterFragment : Fragment() {
                             originalSettingsOfLoadedQuestFilter = null
                             setupQuestFilters(parentLayoutForRefresh)
                         }
-                        updateDialogContent() // Refresh the dialog list
+                        updateDialogContent()
                     }
                 }
                 listContainer.addView(itemView)
@@ -429,7 +448,6 @@ class FilterFragment : Fragment() {
     private fun showDeleteConfirmationDialog(
         filterName: String,
         filterType: String,
-        parentLayoutForRefresh: LinearLayout, // MODIFIED: Changed name for clarity
         onDeleted: () -> Unit
     ) {
         val confirmBuilder = AlertDialog.Builder(requireContext())
@@ -439,9 +457,8 @@ class FilterFragment : Fragment() {
             val wasActiveRocket = filterType == "Rocket" && filterName == filterPreferences.getActiveRocketFilter()
             val wasActiveQuest = filterType == "Quest" && filterName == filterPreferences.getActiveQuestFilter()
 
-            filterPreferences.deleteFilter(filterName, filterType) // Deletes from prefs and clears active if it was active
+            filterPreferences.deleteFilter(filterName, filterType)
 
-            // ADDED: If the deleted filter was the one whose original state we'd snapped, clear the snapshot.
             if (wasActiveRocket) {
                 originalSettingsOfLoadedRocketFilter = null
             }
@@ -450,7 +467,7 @@ class FilterFragment : Fragment() {
             }
 
             Toast.makeText(requireContext(), "Filter '$filterName' deleted", Toast.LENGTH_SHORT).show()
-            onDeleted() // This will trigger UI refresh and dialog list refresh
+            onDeleted()
         }
         confirmBuilder.setNegativeButton("Cancel", null)
         confirmBuilder.show()
@@ -467,7 +484,7 @@ class FilterFragment : Fragment() {
                         if (allSelected) {
                             enabledRocketFilters.clear()
                         } else {
-                            enabledRocketFilters.clear() // Clear first to ensure no duplicates if some were already selected
+                            enabledRocketFilters.clear()
                             enabledRocketFilters.addAll(DataMappings.characterNamesMap.keys)
                         }
                         filterPreferences.saveEnabledCharacters(enabledRocketFilters)
@@ -478,7 +495,6 @@ class FilterFragment : Fragment() {
                         if (filtersJson != null) {
                             val filtersFromApi = Gson().fromJson(filtersJson, Quests.Filters::class.java)
                             val allPossibleQuestFilters = mutableSetOf<String>()
-                            // Simplified logic for gathering all possible filters
                             listOfNotNull(
                                 filtersFromApi.t3 to "Stardust",
                                 filtersFromApi.t4 to "Pokémon Candy",
@@ -493,7 +509,7 @@ class FilterFragment : Fragment() {
 
                             if (allPossibleQuestFilters.isNotEmpty()) {
                                 val allCurrentlySelected = enabledQuestFilters.containsAll(allPossibleQuestFilters) &&
-                                        enabledQuestFilters.size == allPossibleQuestFilters.size // ensure exact match
+                                        enabledQuestFilters.size == allPossibleQuestFilters.size
 
                                 if (allCurrentlySelected) {
                                     enabledQuestFilters.clear()
@@ -501,7 +517,6 @@ class FilterFragment : Fragment() {
                                     enabledQuestFilters.clear()
                                     enabledQuestFilters.addAll(allPossibleQuestFilters)
                                 }
-                                // Use FilterPreferences for saving enabled quest filters
                                 filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
                                 setupQuestFilters(parent)
                             }
@@ -519,34 +534,29 @@ class FilterFragment : Fragment() {
         addToggleAllButton(parent, "Quest")
         addSectionHeader(parent, "Quest Filters")
         addSelectFilterButton(parent, "Quest")
+        if(currentFilterType == "Quest") updateCurrentQuestFilter()
 
-        updateCurrentQuestFilter()
-
-        // This part uses `questPrefs` which seems to be for raw API structure,
-        // while `enabledQuestFilters` (from FilterPreferences) stores the processed filter strings.
         val filtersJson = questPrefs.getString("quest_api_filters", null)
-
-
-
         if (filtersJson != null) {
             val filters = Gson().fromJson(filtersJson, Quests.Filters::class.java)
+
+            val spindaFormsMap: Map<String, Int> = questsViewModel.spindaFormsLiveData.value ?: emptyMap()
+            Log.d("FilterFragment", "All available Spinda forms (cached): ${spindaFormsMap.keys}")
+
             addFilterSection(parent, "Stardust", filters.t3)
             addFilterSection(parent, "Pokémon Candy", filters.t4)
             addFilterSection(parent, "Mega Energy", filters.t12)
-            addFilterSection(parent, "Pokémon Encounter", filters.t7)
+
+            addFilterSection(parent, "Pokémon Encounter", filters.t7, spindaFormsMap)
+
             addFilterSection(parent, "Item", filters.t2)
-
-
-            if(filters.t7.contains("Spinda")) {
-                Log.d("FilterFragment", "Spinda quest found in Pokémon Encounter section")
-            }
-
-
         } else {
             questsViewModel.fetchQuests()
             addSectionHeader(parent, "Please open quests tab to update data (or data loading)")
         }
     }
+
+
 
     private fun addSectionHeader(parent: LinearLayout, text: String) {
         TextView(context).apply {
@@ -567,15 +577,14 @@ class FilterFragment : Fragment() {
         CheckBox(context).apply {
             this.text = text
             isChecked = id in enabledSet
-            setPadding(32, 8, 16, 8) // Consider dp values
+            setPadding(32, 8, 16, 8)
             setOnCheckedChangeListener { _, checked ->
-                // Direct modification of the fragment's set
                 if (checked) {
                     enabledSet.add(id)
                 } else {
                     enabledSet.remove(id)
                 }
-                onCheckedChangeExternal(checked) // Call the passed lambda (which saves to FilterPreferences)
+                onCheckedChangeExternal(checked)
             }
             parent.addView(this)
         }
@@ -584,8 +593,8 @@ class FilterFragment : Fragment() {
     private fun addQuestCheckBox(
         parent: LinearLayout,
         text: String,
-        id: String, // This is the composite quest filter string
-        enabledSet: MutableSet<String>, // MODIFIED: Pass the mutable set
+        id: String,
+        enabledSet: MutableSet<String>,
         onCheckedChangeExternal: (Boolean) -> Unit
     ) {
         CheckBox(context).apply {
@@ -593,13 +602,12 @@ class FilterFragment : Fragment() {
             isChecked = id in enabledSet
             setPadding(32, 8, 16, 8)
             setOnCheckedChangeListener { _, checked ->
-                // Direct modification of the fragment's set
                 if (checked) {
                     enabledSet.add(id)
                 } else {
                     enabledSet.remove(id)
                 }
-                onCheckedChangeExternal(checked) // Call the passed lambda (which saves to FilterPreferences)
+                onCheckedChangeExternal(checked)
             }
             parent.addView(this)
         }
@@ -608,58 +616,307 @@ class FilterFragment : Fragment() {
     private fun buildQuestFilterString(section: String, rawValue: String): String {
         return when (section) {
             "Stardust" -> "3,$rawValue,0"
-            "Mega Energy" -> "12,0,$rawValue" // Assuming 12 is correct based on your API
+            "Mega Energy" -> "12,0,$rawValue"
             "Pokémon Encounter" -> "7,0,$rawValue"
             "Item" -> "2,0,$rawValue"
-            "Pokémon Candy" -> "4,0,$rawValue" // Assuming 4 is correct
-            else -> rawValue // Should ideally not happen if sections are well-defined
+            "Pokémon Candy" -> "4,0,$rawValue"
+            else -> rawValue
         }
     }
 
-    private fun addFilterSection(parent: LinearLayout, sectionName: String, filterList: List<String>) {
+    private fun addFilterSection(
+        parent: LinearLayout,
+        sectionName: String,
+        filterList: List<String>
+    ) {
         addSectionHeader(parent, sectionName)
+
         if (filterList.isEmpty()) {
             TextView(context).apply {
-                text = "None available for $sectionName" // More specific
-                setPadding(16)
+                text = "None available for $sectionName"
+                setPadding(16) // consistent 16dp padding around text
                 parent.addView(this)
             }
         } else {
-            // Sorting logic seems fine
+            // Sort differently if it’s one of the special categories; else alphabetical
             val sortedList = when (sectionName) {
-                "Pokémon Encounter", "Mega Energy", "Pokémon Candy" -> filterList.sortedBy {
-                    DataMappings.pokemonEncounterMapNew[it] ?: it
-                }
-                else -> filterList.sorted() // Default sort for others like Stardust, Item amounts
+                "Pokémon Encounter", "Mega Energy", "Pokémon Candy" ->
+                    filterList.sortedBy { DataMappings.pokemonEncounterMapNew[it] ?: it }
+                else ->
+                    filterList.sorted()
             }
 
             sortedList.forEach { rawValue ->
                 val displayText = when (sectionName) {
-                    "Pokémon Encounter" -> DataMappings.pokemonEncounterMapNew[rawValue] ?: "ID: $rawValue"
-                    "Item" -> DataMappings.itemMap["item$rawValue"] ?: "Item ID: $rawValue"
-                    "Mega Energy" -> DataMappings.pokemonEncounterMapNew[rawValue] ?: "Energy for ID: $rawValue"
-                    "Pokémon Candy" -> DataMappings.pokemonEncounterMapNew[rawValue] ?: "Candy for ID: $rawValue"
-                    else -> rawValue // For Stardust amounts, etc.
+                    "Pokémon Encounter" -> DataMappings.pokemonEncounterMapNew[rawValue]
+                        ?: "ID: $rawValue"
+                    "Item"              -> DataMappings.itemMap["item$rawValue"]
+                        ?: "Item ID: $rawValue"
+                    "Mega Energy"       -> DataMappings.pokemonEncounterMapNew[rawValue]
+                        ?: "Energy for ID: $rawValue"
+                    "Pokémon Candy"     -> DataMappings.pokemonEncounterMapNew[rawValue]
+                        ?: "Candy for ID: $rawValue"
+                    else                -> rawValue
                 }
+
                 val compositeValue = buildQuestFilterString(sectionName, rawValue)
 
-
-
-
-                // Use the fragment's enabledQuestFilters and save via FilterPreferences
-                addQuestCheckBox(parent, displayText, compositeValue, enabledQuestFilters) { checked ->
-                    filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+                // Only if it's **not** Spinda (ID 327) do we use a plain checkbox
+                if (!(sectionName == "Pokémon Encounter" && rawValue == "327")) {
+                    addQuestCheckBox(
+                        parent,
+                        displayText,
+                        compositeValue,
+                        enabledQuestFilters
+                    ) {
+                        filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+                    }
                 }
             }
         }
+    }
+    private fun addFilterSection(
+        parent: LinearLayout,
+        sectionName: String,
+        filterList: List<String>,
+        spindaFormsMap: Map<String, Int>
+    ) {
+        addSectionHeader(parent, sectionName)
+
+        if (filterList.isEmpty()) {
+            TextView(context).apply {
+                text = "None available for $sectionName"
+                setPadding(16)
+                parent.addView(this)
+            }
+        } else {
+            val sortedList = filterList.sortedBy { DataMappings.pokemonEncounterMapNew[it] ?: it }
+
+            sortedList.forEach { rawValue ->
+                val displayText = DataMappings.pokemonEncounterMapNew[rawValue] ?: "ID: $rawValue"
+                val compositeValue = buildQuestFilterString(sectionName, rawValue)
+
+                if (rawValue == "327") {
+                    addSpindaFilterWithForms(
+                        parent,
+                        displayText,
+                        compositeValue,
+                        spindaFormsMap
+                    )
+                } else {
+                    addQuestCheckBox(
+                        parent,
+                        displayText,
+                        compositeValue,
+                        enabledQuestFilters
+                    ) {
+                        filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+                    }
+                }
+            }
+        }
+    }
+
+
+
+
+    private fun getAvailableSpindaForms(): Map<String, Int> {
+        val spindaForms = mutableMapOf<String, Int>()
+        val quests = CurrentQuestData.currentQuests ?: emptyList() // Ensure null safety
+        val spindaQuests = quests.filter { quest ->
+            quest.rewardsIds.split(",").any { it == "327" }
+        }
+        spindaQuests.forEach { quest ->
+            val formPattern = "\\((\\d+)\\)".toRegex()
+            val matches = formPattern.findAll(quest.rewardsString)
+            matches.forEach { matchResult ->
+                val formNumber = matchResult.groupValues[1]
+                val formKey = "spinda_form_$formNumber"
+                spindaForms[formKey] = spindaForms.getOrDefault(formKey, 0) + 1
+            }
+        }
+        Log.d("FilterFragment", "getAvailableSpindaForms returning: ${spindaForms.keys}")
+        return spindaForms
+    }
+
+
+    private fun addSpindaFilterWithForms(
+        parent: LinearLayout,
+        displayText: String,
+        baseCompositeValue: String,
+        spindaFormsMap: Map<String, Int>
+    ) {
+        // 1. Container for the entire “Spinda” block
+        val spindaContainer = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        // 2. Top row: main “Spinda” checkbox + spacer + expand/collapse button
+        val topRow = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        // 2a. Main “Spinda” checkbox itself
+        val mainSpindaCheckbox = CheckBox(requireContext()).apply {
+            text = displayText
+            isChecked = baseCompositeValue in enabledQuestFilters
+            // same padding as other checkboxes:
+            setPadding(32, 8, 16, 8)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+
+            setOnCheckedChangeListener { _, isChecked ->
+                if (isChecked) {
+                    enabledQuestFilters.add(baseCompositeValue)
+                } else {
+                    enabledQuestFilters.remove(baseCompositeValue)
+                }
+                filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+                Log.d("FilterFragmentSpinda", "Main Spinda toggled: $isChecked")
+            }
+        }
+
+        // 2b. Spacer
+        val spacer = View(requireContext()).apply {
+            layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
+        }
+
+        // 2c. Expand/Collapse button
+        val expandButton = MaterialButton(requireContext()).apply {
+            if (spindaFormsMap.isNotEmpty()) {
+                text = "▶"
+                isEnabled = true
+            } else {
+                text = ""
+                isEnabled = false
+            }
+            backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
+            val onSurface = TypedValue().also {
+                requireContext().theme.resolveAttribute(
+                    com.google.android.material.R.attr.colorOnSurface, it, true
+                )
+            }.data
+            setTextColor(onSurface)
+            elevation = 0f
+            minimumWidth = 0
+            minWidth = 0
+            setPadding(8.dpToPx(), 4.dpToPx(), 8.dpToPx(), 4.dpToPx())
+
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        topRow.addView(mainSpindaCheckbox)
+        topRow.addView(spacer)
+        if (spindaFormsMap.isNotEmpty()) {
+            topRow.addView(expandButton)
+        }
+
+        // 3. Container for specific‐form checkboxes (hidden initially)
+        val formsContainer = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding((32 + 16).dpToPx(), 0, 16.dpToPx(), 8.dpToPx())
+        }
+
+        // 4. Populate one checkbox per formKey
+        val formCheckboxes = mutableListOf<CheckBox>()
+        if (spindaFormsMap.isNotEmpty()) {
+            val enabledSpecificForms = filterPreferences.getEnabledSpindaForms()
+
+            spindaFormsMap.keys.sorted().forEach { formKey ->
+                val formNumber = formKey.removePrefix("spinda_form_")
+                val count = spindaFormsMap[formKey] ?: 0
+                val formLabel = "Form #$formNumber"
+
+                val formCheckbox = CheckBox(requireContext()).apply {
+                    text = formLabel
+                    isChecked = formKey in enabledSpecificForms
+                    setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+
+                    setOnCheckedChangeListener { _, isChecked ->
+                        Log.d("FilterFragmentSpinda", "Specific $formKey toggled: $isChecked")
+                        updateSpindaFormSelection(formKey, isChecked)
+
+                        if (isChecked) {
+                            // If any form is checked, ensure main Spinda is also checked
+                            if (!mainSpindaCheckbox.isChecked) {
+                                mainSpindaCheckbox.isChecked = true
+                                enabledQuestFilters.add(baseCompositeValue)
+                                filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+                            }
+                        } else {
+                            // If this was unchecked, and no other form remains checked, uncheck main Spinda
+                            val anyStillChecked = formCheckboxes.any { it.isChecked }
+                            if (!anyStillChecked && mainSpindaCheckbox.isChecked) {
+                                mainSpindaCheckbox.isChecked = false
+                                enabledQuestFilters.remove(baseCompositeValue)
+                                filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+                            }
+                        }
+                    }
+                }
+
+                formCheckboxes.add(formCheckbox)
+                formsContainer.addView(formCheckbox)
+            }
+
+            // 5. Expand/Collapse logic
+            var isExpanded = false
+            expandButton.setOnClickListener {
+                isExpanded = !isExpanded
+                formsContainer.visibility = if (isExpanded) View.VISIBLE else View.GONE
+                expandButton.text = if (isExpanded) "▼" else "▶"
+                Log.d("FilterFragmentSpinda", "Expand clicked, now expanded = $isExpanded")
+            }
+        }
+
+        // 6. Assemble into parent
+        spindaContainer.addView(topRow)
+        spindaContainer.addView(formsContainer)
+        parent.addView(spindaContainer)
+    }
+
+
+
+
+
+    private fun Int.dpToPx(): Int {
+        return (this * requireContext().resources.displayMetrics.density).toInt()
+    }
+
+    private fun updateSpindaFormSelection(formKey: String, isChecked: Boolean) {
+        val currentForms = filterPreferences.getEnabledSpindaForms().toMutableSet()
+        if (isChecked) {
+            currentForms.add(formKey)
+        } else {
+            currentForms.remove(formKey)
+        }
+        filterPreferences.saveEnabledSpindaForms(currentForms)
+        Log.d("FilterFragmentSpinda", "Updated specific Spinda forms: $currentForms")
     }
 
 
     override fun onResume() {
         super.onResume()
-        // Refresh filters when fragment resumes, in case underlying data changed
-        // (e.g. quest_api_filters from network or another tab)
-        if (::questLayout.isInitialized) { // Ensure layout is initialized
+        if (::questLayout.isInitialized) {
             setupQuestFilters(questLayout)
         }
         if (::rocketLayoutGlobal.isInitialized) {

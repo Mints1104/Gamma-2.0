@@ -157,7 +157,7 @@ class SettingsFragment : Fragment() {
         homeCoordinates.setText(savedCoords)
 
         // Set input hint
-        homeCoordinates.hint = "40.7128, -74.0060"
+        homeCoordinates.hint = "Enter coords (e.g. 40.121, -32.121)"
 
         // Set input type for decimal numbers and comma
         homeCoordinates.inputType = InputType.TYPE_CLASS_TEXT
@@ -256,6 +256,12 @@ class SettingsFragment : Fragment() {
         // Get all saved quest filters
         val savedQuestFilters = filterPreferences.getSavedQuestFilters()
         Log.d("SettingsExport", "Saved quest filters: ${savedQuestFilters.keys}")
+        val savedQuestSpindaForms = savedQuestFilters.keys.associateWith { name ->
+            // you used QUEST_SPINDA_PREFIX = "spinda_"
+            requireContext()
+                .getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
+                .getStringSet("spinda_$name", emptySet())!!
+        }
 
         // Get active filter names
         val activeRocketFilter = filterPreferences.getActiveRocketFilter()
@@ -271,6 +277,7 @@ class SettingsFragment : Fragment() {
             homeCoordinates = homeCoords,
             savedRocketFilters = savedRocketFilters,
             savedQuestFilters = savedQuestFilters,
+            savedQuestSpindaForms   = savedQuestSpindaForms,
             activeRocketFilter = activeRocketFilter,
             activeQuestFilter = activeQuestFilter
         )
@@ -375,10 +382,7 @@ class SettingsFragment : Fragment() {
                 for ((name, characters) in importData.savedRocketFilters) {
                     Log.d("SettingsImport", "Importing rocket filter '$name' with ${characters.size} characters: $characters")
                     try {
-                        // Use saveCurrentAsFilter method since it's more reliable for creating filters
-                        // First, set the current enabled characters to match this filter
                         filterPreferences.saveEnabledCharacters(characters)
-                        // Then save as a named filter
                         filterPreferences.saveCurrentAsFilter(name)
                         Log.d("SettingsImport", "Successfully saved rocket filter: $name")
                     } catch (e: Exception) {
@@ -430,8 +434,13 @@ class SettingsFragment : Fragment() {
                         // Use saveCurrentQuestFilter method since it's more reliable
                         // First, set the current enabled quests to match this filter
                         filterPreferences.saveEnabledQuestFilters(questStrings)
-                        // Then save as a named filter
                         filterPreferences.saveCurrentQuestFilter(name)
+                        val forms = importData.savedQuestSpindaForms[name] ?: emptySet()
+                        filterPreferences.saveEnabledSpindaForms(forms)
+                        val questStringss = questIds.toSet()
+                        filterPreferences.saveEnabledQuestFilters(questStringss)
+                        filterPreferences.saveCurrentQuestFilter(name)
+
                         Log.d("SettingsImport", "Successfully saved quest filter: $name")
                     } catch (e: Exception) {
                         Log.e("SettingsImport", "Error saving quest filter '$name': ${e.message}", e)

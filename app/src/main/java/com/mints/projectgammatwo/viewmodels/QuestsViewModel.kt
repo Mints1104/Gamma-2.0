@@ -34,12 +34,18 @@ import okio.IOException
 import retrofit2.HttpException
 import java.util.concurrent.TimeUnit
 import androidx.core.content.edit
+import kotlinx.coroutines.withContext
 
 
 class QuestsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _questsLiveData = MutableLiveData<List<Quest>>()
     val questsLiveData: LiveData<List<Quest>> = _questsLiveData
+
+    // Inside QuestsViewModel:
+    private val _spindaFormsLiveData = MutableLiveData<Map<String, Int>>()
+    val spindaFormsLiveData: LiveData<Map<String, Int>> = _spindaFormsLiveData
+
 
     private val _error = MutableLiveData<String>()
     val error: LiveData<String> get() = _error
@@ -136,6 +142,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
 
         val enabledFilters = filterPreferences.getEnabledFilters()
         val filtersToUse = if (enabledFilters.isEmpty()) emptyList() else enabledFilters.toList()
+        Log.d("QuestsViewModel","Filters enabled: $filtersToUse")
         val selectedSources = dataSourcePreferences.getSelectedSources()
 
         viewModelScope.launch {
@@ -229,18 +236,26 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                     val id = "${quest.name}|${quest.lat}|${quest.lng}"
                     !visited.contains(id)
                 }
+                val spindaForms = filterPreferences.getEnabledSpindaForms()
+                val enabledFormNumbers: List<String> =
+                    filterPreferences
+                        .getEnabledSpindaForms()
+                        .map { it.substringAfterLast("_") }
+
+                Log.d("QuestsViewModel", "Enabled Spinda Form Numbers: $enabledFormNumbers")
+                val formRegex = Regex("Spinda \\((\\d{2})\\)")
+
+                if(spindaForms.isNotEmpty()) {
+                    filteredQuests = filterSpindaForms(filteredQuests, formRegex, enabledFormNumbers)
+                }
+
+
+
+
+
                 filteredQuests = filteredQuests.take(500)
 
-                filteredQuests.forEach { quest ->
-                    if (quest.rewardsIds == "327") {
-                        if (quest.rewardsString.contains("06")) {
-                            Log.d("Test", "Spinda with 06 found")
-                        }
-                        if (quest.rewardsString.contains("07")) {
-                            Log.d("Test", "Spinda with 07 found!")
-                        }
-                    }
-                }
+
 
                 // Load last visited coordinates from shared preferences
                 val prefs = context.getSharedPreferences("last_visited_pref", Context.MODE_PRIVATE)
@@ -261,4 +276,113 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
     }
+
+    private fun filterSpindaForms(
+        filteredQuests: List<Quest>,
+        formRegex: Regex,
+        enabledFormNumbers: List<String>
+    ): List<Quest> {
+        var filteredQuests1 = filteredQuests
+        filteredQuests1 = filteredQuests1
+            .filter { it.rewardsIds == "327" }
+            .filter { quest ->
+                val matchResult = formRegex.find(quest.rewardsString)
+                val formNumber = matchResult?.groupValues?.get(1)
+                formNumber != null && enabledFormNumbers.contains(formNumber)
+            }
+        return filteredQuests1
+    }
+    fun fetchSpindaFormsFromApi() {
+        val context = getApplication<Application>().applicationContext
+        Log.d("QuestsViewModel", "Starting fetchSpindaFormsFromApi()")
+
+        val filtersToUse = listOf("7,0,327")
+
+        val interceptor = HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.NONE
+        }
+        val client = OkHttpClient.Builder()
+            .addInterceptor(interceptor)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+
+        viewModelScope.launch {
+            try {
+                val dataSourcePreferences = DataSourcePreferences(context)
+                val selectedSources = dataSourcePreferences.getSelectedSources()
+                Log.d("QuestsViewModel", "Selected sources: $selectedSources")
+
+                if (selectedSources.isEmpty()) {
+                    Log.w("QuestsViewModel", "No data sources selected, posting empty spinda forms map")
+                    _spindaFormsLiveData.postValue(emptyMap())
+                    return@launch
+                }
+
+                val baseUrl = ApiClient.DATA_SOURCE_URLS[selectedSources.first()]
+                Log.d("QuestsViewModel", "Using base URL: $baseUrl")
+                if (baseUrl == null) {
+                    Log.w("QuestsViewModel", "Base URL for selected source is null, posting empty spinda forms map")
+                    _spindaFormsLiveData.postValue(emptyMap())
+                    return@launch
+                }
+
+                val retrofit = Retrofit.Builder()
+                    .baseUrl(baseUrl)
+                    .addConverterFactory(GsonConverterFactory.create())
+                    .client(client)
+                    .build()
+                val service = retrofit.create(QuestsApiService::class.java)
+
+                Log.d("QuestsViewModel", "Making API call to fetch quests with filters: $filtersToUse")
+                // Switch to IO dispatcher for the blocking call
+                val response = withContext(Dispatchers.IO) {
+                    service.getQuests(filtersToUse, System.currentTimeMillis()).execute()
+                }
+
+                if (!response.isSuccessful) {
+                    Log.w("QuestsViewModel", "API call unsuccessful: ${response.code()} - ${response.message()}")
+                    _spindaFormsLiveData.postValue(emptyMap())
+                    return@launch
+                }
+
+                val body = response.body()
+                if (body == null) {
+                    Log.w("QuestsViewModel", "API response body is null")
+                    _spindaFormsLiveData.postValue(emptyMap())
+                    return@launch
+                }
+
+                Log.d("QuestsViewModel", "Received ${body.quests.size} quests from API")
+
+                val spindaQuests = body.quests.filter { quest ->
+                    val contains327 = quest.rewardsIds.split(",").any { it == "327" }
+                    contains327
+                }
+                Log.d("QuestsViewModel", "Filtered down to ${spindaQuests.size} spinda quests with reward id 327")
+
+                val formCounts = mutableMapOf<String, Int>()
+                val formPattern = "\\((\\d{2})\\)".toRegex()
+                for (quest in spindaQuests) {
+                    val match = formPattern.find(quest.rewardsString)
+                    val formNumber = match?.groupValues?.get(1)
+                    if (formNumber == null) {
+                        Log.w("QuestsViewModel", "No form number found in rewardsString: '${quest.rewardsString}'")
+                        continue
+                    }
+                    val formKey = "spinda_form_$formNumber"
+                    formCounts[formKey] = formCounts.getOrDefault(formKey, 0) + 1
+                }
+
+                Log.d("QuestsViewModel", "Posting spinda form counts: $formCounts")
+                _spindaFormsLiveData.postValue(formCounts)
+            } catch (t: Throwable) {
+                Log.e("QuestsViewModel", "Exception in fetchSpindaFormsFromApi", t)
+                _spindaFormsLiveData.postValue(emptyMap())
+            }
+        }
+    }
+
+
 }

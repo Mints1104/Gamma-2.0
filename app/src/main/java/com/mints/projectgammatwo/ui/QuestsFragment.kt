@@ -138,23 +138,16 @@ class QuestsFragment : Fragment() {
 
         // Make sure adapter has items before checking positions
         if (questsAdapter.itemCount == 0) {
-            Log.d("FAB_DEBUG", "No items, hiding FAB")
             scrollToTopFab.hide()
             return
         }
 
         val firstVisibleItem = layoutManager.findFirstVisibleItemPosition()
-        Log.d(
-            "FAB_DEBUG",
-            "First visible item: $firstVisibleItem, Total items: ${questsAdapter.itemCount}"
-        )
 
-        // Only show FAB if we have valid position data
+
         if (firstVisibleItem != RecyclerView.NO_POSITION && firstVisibleItem > 2) {
-            Log.d("FAB_DEBUG", "Showing FAB")
             scrollToTopFab.show()
         } else {
-            Log.d("FAB_DEBUG", "Hiding FAB")
             scrollToTopFab.hide()
         }
     }

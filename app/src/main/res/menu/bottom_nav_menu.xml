@@ -2,17 +2,17 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:id="@+id/homeFragment"
-        android:icon="@android:drawable/ic_menu_compass"
+        android:icon="@drawable/team_rocket_logo"
         android:title="Rockets" />
 
     <item
         android:id="@+id/questsFragment"
-        android:icon="@drawable/ic_search"
+        android:icon="@drawable/binoculars_2"
         android:title="Quests" />
 
     <item
         android:id="@+id/filterFragment"
-        android:icon="@android:drawable/ic_menu_sort_by_size"
+        android:icon="@drawable/tune_24px"
         android:title="Filter" />
 
     <item

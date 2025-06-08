@@ -611,7 +611,7 @@ class OverlayService : Service() {
                     TYPE_SYSTEM_ALERT
                 flags = FLAG_NOT_FOCUSABLE
                 format = PixelFormat.TRANSLUCENT
-                gravity = Gravity.TOP
+                gravity = Gravity.CENTER
             }
 
             val dragHandle = filterOverlayView?.findViewById<ImageButton>(R.id.drag_handle)
@@ -699,7 +699,7 @@ class OverlayService : Service() {
                     TYPE_SYSTEM_ALERT
                 flags = FLAG_NOT_FOCUSABLE
                 format = PixelFormat.TRANSLUCENT
-                gravity = Gravity.TOP
+                gravity = Gravity.CENTER
             }
             val dragHandle = favoritesOverlayView?.findViewById<ImageButton>(R.id.drag_handle)
             dragHandle?.setOnTouchListener(DragTouchListener(params, windowManager, favoritesOverlayView!!))

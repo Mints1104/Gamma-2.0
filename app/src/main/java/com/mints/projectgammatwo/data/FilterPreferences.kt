@@ -3,6 +3,7 @@ package com.mints.projectgammatwo.data
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import androidx.core.content.edit
 
 class FilterPreferences(context: Context) {
 
@@ -15,30 +16,18 @@ class FilterPreferences(context: Context) {
     private val KEY_QUEST_FILTERS = "quest_filters"
     private val KEY_ACTIVE_ROCKET_FILTER = "active_rocket_filter"
     private val KEY_ACTIVE_QUEST_FILTER = "active_quest_filter"
-    private var currentRocketFilterName: String = "Default" // Or some initial value, or load last active
+    private var currentRocketFilterName: String = "Default"
+    private val QUEST_SPINDA_PREFIX = "spinda_"
+    private val KEY_ENABLED_SPINDA = "enabled_spinda_forms"
 
 
 
-    /**
-     * Saves the set of enabled character IDs into SharedPreferences.
-     *
-     * @param characters A set of integers representing the enabled character IDs.
-     *
-     * How it works:
-     * 1. Converts each integer in the set to its string representation.
-     * 2. Collects these strings into a new set.
-     * 3. Saves the set of strings into SharedPreferences using the key defined by KEY_CHARACTERS.
-     * 4. The .apply() method commits the changes asynchronously.
-     */
     fun saveEnabledCharacters(characters: Set<Int>) {
-        // Convert the Set<Int> to a Set<String> because SharedPreferences supports string sets.
         val stringSet = characters.map { it.toString() }.toSet()
 
-        prefs.edit()
-            .putStringSet(KEY_CHARACTERS, stringSet)
-            .apply()
-
-        // If there's an active filter, update it with the new values
+        prefs.edit {
+            putStringSet(KEY_CHARACTERS, stringSet)
+        }
         val activeFilter = getActiveRocketFilter()
         if (activeFilter.isNotEmpty()) {
             updateFilter(activeFilter, characters)
@@ -46,38 +35,27 @@ class FilterPreferences(context: Context) {
     }
 
     fun saveCurrentAsFilter(name: String) {
-        // 1. Snapshot the current IDs
         val current = getEnabledCharacters()
         Log.d("FilterPreferences", "Saving filter $name with characters: $current")
-        // 2. Convert to Set<String>
         val stringSet = current.map { it.toString() }.toSet()
         Log.d("FilterPreferences", "Converted to string set: $stringSet")
-        // 3. Save under "filter_<name>"
         prefs.edit()
             .putStringSet("$KEY_FILTER_PREFIX$name", stringSet)
             .apply()
-        // 4. Register this filter name
         val all = prefs.getStringSet(KEY_ALL_FILTERS, emptySet())!!.toMutableSet()
         all.add(name)
         Log.d("FilterPreferences", "All filters after adding: $all")
         prefs.edit()
             .putStringSet(KEY_ALL_FILTERS, all)
             .apply()
-
-        // Don't automatically set this as the active filter
-        // If we want to set this as active after saving:
-        // setActiveRocketFilter(name)
     }
 
-    // Returns a set of filters (each filter is a string like "2,0,708")
     fun getEnabledQuestFilters(): Set<String> {
         return questPrefs.getStringSet("enabled_quest_filters", emptySet()) ?: emptySet()
     }
 
     fun saveEnabledQuestFilters(filters: Set<String>) {
         questPrefs.edit().putStringSet("enabled_quest_filters", filters).apply()
-
-        // If there's an active filter, update it with the new values
         val activeFilter = getActiveQuestFilter()
         if (activeFilter.isNotEmpty()) {
             updateQuestFilter(activeFilter, filters)
@@ -85,27 +63,26 @@ class FilterPreferences(context: Context) {
     }
 
     fun saveCurrentQuestFilter(name: String) {
-        // 1. Snapshot the current IDs
-        val current = getEnabledQuestFilters()
-        Log.d("FilterPreferences", "Saving filter $name with quests: $current")
-        // 2. Convert to Set<String>
-        val stringSet = current.map { it }.toSet()
-        Log.d("FilterPreferences", "Converted to string set: $stringSet")
-        // 3. Save under "filter_<name>"
-        questPrefs.edit()
-            .putStringSet("$QUEST_FILTER_PREFIX$name", stringSet)
-            .apply()
-        // 4. Register this filter name
+        // 1) Persist the set of enabled quest-IDs
+        val currentQuests = getEnabledQuestFilters()
+        Log.d("FilterPreferences", "Saving filter $name with quests: $currentQuests")
+        questPrefs.edit {
+            putStringSet("$QUEST_FILTER_PREFIX$name", currentQuests)
+        }
+
+        // 2) Persist the set of enabled Spinda forms under "spinda_$name"
+        val currentForms = getEnabledSpindaForms()
+        Log.d("FilterPreferences", "Saving Spinda forms for filter $name: $currentForms")
+        questPrefs.edit {
+            putStringSet("$QUEST_SPINDA_PREFIX$name", currentForms)
+        }
+
+        // 3) Add this name into the master list
         val all = questPrefs.getStringSet(KEY_QUEST_FILTERS, emptySet())!!.toMutableSet()
         all.add(name)
-        Log.d("FilterPreferences", "All filters after adding: $all")
-        questPrefs.edit()
-            .putStringSet(KEY_QUEST_FILTERS, all)
-            .apply()
-
-        // Don't automatically set this as the active filter
-        // If we want to set this as active after saving:
-        // setActiveQuestFilter(name)
+        questPrefs.edit {
+            putStringSet(KEY_QUEST_FILTERS, all)
+        }
     }
 
     fun getSavedQuestFilters(): Map<String, Set<String>> {
@@ -151,44 +128,28 @@ class FilterPreferences(context: Context) {
 
     fun loadFilter(name: String, type: String) {
         if (type == "Quest") {
-            Log.d("FilterPreferences", "Loading QUEST filter $name (Prior Active Quest: ${getActiveQuestFilter()})")
-            val savedFilterData = questPrefs.getStringSet("$QUEST_FILTER_PREFIX$name", emptySet())!! // Renamed for clarity
-            Log.d("FilterPreferences", "Data for $name: $savedFilterData")
+            Log.d("FilterPreferences", "Loading QUEST filter $name")
 
-
-            // --- SOLUTION FOR QUEST FILTERS ---
-            // 1. Set this filter name as the ACTIVE quest filter FIRST.
+            // 1) Read saved quest-IDs and activate them
+            val savedQuests = questPrefs.getStringSet("$QUEST_FILTER_PREFIX$name", emptySet())!!
             setActiveQuestFilter(name)
-            // Log.d("FilterPreferences", "Active quest filter set to: $name")
+            saveEnabledQuestFilters(savedQuests)
 
-            // 2. Now call saveEnabledQuestFilters.
-            // This will:
-            //    a. Update "enabled_quest_filters" (the current working set for quests) with `savedFilterData`.
-            //    b. Inside saveEnabledQuestFilters, getActiveQuestFilter() will correctly return `name`.
-            //    c. It will then call updateQuestFilter(`name`, `savedFilterData`), effectively re-saving
-            //       the loaded filter under its own name. This is okay and prevents corrupting other filters.
-            saveEnabledQuestFilters(savedFilterData)
-            Log.d("FilterPreferences", "Loaded and applied quest filter $name. Active quest is now: ${getActiveQuestFilter()}")
+            // 2) Read saved Spinda-forms for this filter
+            val savedForms = questPrefs.getStringSet("$QUEST_SPINDA_PREFIX$name", emptySet())!!
+            Log.d("FilterPreferences", "Restoring Spinda forms for $name: $savedForms")
+            // copy them into the “working” enabled_spinda_forms slot
+            questPrefs.edit {
+                putStringSet(KEY_ENABLED_SPINDA, savedForms)
+            }
             return
         }
 
-        // ROCKET filter logic:
         Log.d("FilterPreferences", "Loading ROCKET filter $name (Prior Active Rocket: ${getActiveRocketFilter()})")
         val savedFilterDataSet = prefs.getStringSet("$KEY_FILTER_PREFIX$name", emptySet())!! // Renamed for clarity
         val charactersToLoad = savedFilterDataSet.mapNotNull { it.toIntOrNull() }.toSet() // Renamed for clarity
         Log.d("FilterPreferences", "Data for $name: $charactersToLoad")
-
-        // --- SOLUTION FOR ROCKET FILTERS ---
-        // 1. Set this filter name as the ACTIVE rocket filter FIRST.
         setActiveRocketFilter(name)
-        // Log.d("FilterPreferences", "Active rocket filter set to: $name")
-
-        // 2. Now call saveEnabledCharacters.
-        // This will:
-        //    a. Update KEY_CHARACTERS (the current working set for rocket filters) with `charactersToLoad`.
-        //    b. Inside saveEnabledCharacters, getActiveRocketFilter() will correctly return `name`.
-        //    c. It will then call updateFilter(`name`, `charactersToLoad`), effectively re-saving
-        //       the loaded filter under its own name. This is okay and prevents corrupting other filters.
         saveEnabledCharacters(charactersToLoad)
         Log.d("FilterPreferences", "Loaded and applied rocket filter $name. Active rocket is now: ${getActiveRocketFilter()}")
     }
@@ -196,28 +157,29 @@ class FilterPreferences(context: Context) {
     fun listFilterNames(): Set<String> =
         prefs.getStringSet(KEY_ALL_FILTERS, emptySet())!!
 
-    /** Delete a saved filter (does not touch current enabled set). */
     fun deleteFilter(name: String, filterType: String) {
         if(filterType == "Quest") {
             Log.d("FilterPreferences", "Deleting QUEST filter $name")
-            questPrefs.edit().remove("$QUEST_FILTER_PREFIX$name").apply()
+            questPrefs.edit {
+                remove("$QUEST_FILTER_PREFIX$name")
+                remove("$QUEST_SPINDA_PREFIX$name")
+            }
             val all = questPrefs.getStringSet(KEY_QUEST_FILTERS, emptySet())!!.toMutableSet()
             all.remove(name)
-            questPrefs.edit().putStringSet(KEY_QUEST_FILTERS, all).apply()
+            questPrefs.edit { putStringSet(KEY_QUEST_FILTERS, all) }
 
-            // If this was the active filter, clear it
             if (name == getActiveQuestFilter()) {
                 clearActiveQuestFilter()
+                saveEnabledSpindaForms(emptySet())
             }
             return
         }
 
-        prefs.edit().remove("$KEY_FILTER_PREFIX$name").apply()
+        prefs.edit { remove("$KEY_FILTER_PREFIX$name") }
         val all = prefs.getStringSet(KEY_ALL_FILTERS, emptySet())!!.toMutableSet()
         all.remove(name)
-        prefs.edit().putStringSet(KEY_ALL_FILTERS, all).apply()
+        prefs.edit { putStringSet(KEY_ALL_FILTERS, all) }
 
-        // If this was the active filter, clear it
         if (name == getActiveRocketFilter()) {
             clearActiveRocketFilter()
         }
@@ -250,105 +212,82 @@ class FilterPreferences(context: Context) {
     }
 
 
-    // Set the active rocket filter name
     fun setActiveRocketFilter(name: String) {
         prefs.edit().putString(KEY_ACTIVE_ROCKET_FILTER, name).apply()
     }
 
-    // Get the active rocket filter name
     fun getActiveRocketFilter(): String {
         return prefs.getString(KEY_ACTIVE_ROCKET_FILTER, "") ?: ""
     }
 
-    // Clear the active rocket filter
+
     fun clearActiveRocketFilter() {
-        prefs.edit().remove(KEY_ACTIVE_ROCKET_FILTER).apply()
+        prefs.edit { remove(KEY_ACTIVE_ROCKET_FILTER) }
     }
 
-    // Set the active quest filter name
     fun setActiveQuestFilter(name: String) {
-        questPrefs.edit().putString(KEY_ACTIVE_QUEST_FILTER, name).apply()
+        questPrefs.edit { putString(KEY_ACTIVE_QUEST_FILTER, name) }
     }
 
-    // Get the active quest filter name
     fun getActiveQuestFilter(): String {
         return questPrefs.getString(KEY_ACTIVE_QUEST_FILTER, "") ?: ""
     }
 
-    // Clear the active quest filter
-    fun clearActiveQuestFilter() {
-        questPrefs.edit().remove(KEY_ACTIVE_QUEST_FILTER).apply()
+    private fun clearActiveQuestFilter() {
+        questPrefs.edit { remove(KEY_ACTIVE_QUEST_FILTER) }
     }
 
-    // Update a specific rocket filter with new values
-    fun updateFilter(name: String, characters: Set<Int>) {
+    private fun updateFilter(name: String, characters: Set<Int>) {
         val stringSet = characters.map { it.toString() }.toSet()
-        prefs.edit()
-            .putStringSet("$KEY_FILTER_PREFIX$name", stringSet)
-            .apply()
+        prefs.edit {
+            putStringSet("$KEY_FILTER_PREFIX$name", stringSet)
+        }
         Log.d("FilterPreferences", "Updated filter $name with characters: $characters")
     }
 
-    // Update a specific quest filter with new values
-    fun updateQuestFilter(name: String, filters: Set<String>) {
-        questPrefs.edit()
-            .putStringSet("$QUEST_FILTER_PREFIX$name", filters)
-            .apply()
+
+    private fun updateQuestFilter(name: String, filters: Set<String>) {
+        questPrefs.edit {
+            putStringSet("$QUEST_FILTER_PREFIX$name", filters)
+        }
         Log.d("FilterPreferences", "Updated filter $name with quests: $filters")
     }
 
-    /**
-     * Retrieves the set of enabled character IDs from SharedPreferences.
-     *
-     * @return A set of integers representing the enabled characters.
-     *
-     * How it works:
-     * 1. Attempts to retrieve a stored Set<String> using the KEY_CHARACTERS key.
-     * 2. If a set is found, it maps each string back to an integer using toIntOrNull().
-     *    - toIntOrNull() converts the string to an integer, returning null if the conversion fails.
-     *    - mapNotNull() applies the conversion and filters out any null values.
-     * 3. Converts the resulting list of integers back to a Set<Int>.
-     * 4. If no set is found (i.e., the value is null), it returns a default set from DataMappings.characterNamesMap.keys.
-     */
+
     fun getEnabledCharacters(): Set<Int> {
-        // Attempt to get the saved set of strings; if not found, null is returned.
         return prefs.getStringSet(KEY_CHARACTERS, null)
-            // If the retrieved value is not null, convert each string to an integer.
             ?.mapNotNull { it.toIntOrNull() }
-            // Convert the list of integers into a set.
             ?.toSet()
-        // If no set was saved (the result is null), use the default set of characters.
             ?: DataMappings.characterNamesMap.keys
     }
 
-    /**
-     * Resets the filters to their default values.
-     *
-     * How it works:
-     * 1. Removes the stored set of enabled characters using the KEY_CHARACTERS key.
-     * 2. The next call to getEnabledCharacters() will return the default values.
-     */
+
     fun resetToDefault() {
-        prefs.edit().remove(KEY_CHARACTERS).apply()
-        // Clear any active filter
+        prefs.edit { remove(KEY_CHARACTERS) }
         clearActiveRocketFilter()
     }
 
-    /**
-     * Wipes the invasion filter completely by clearing all stored filter values.
-     * This does not affect the data source settings.
-     */
+
     fun wipeFilters() {
-        prefs.edit().putStringSet(KEY_CHARACTERS, emptySet()).apply()
-        // Clear any active filter
+        prefs.edit { putStringSet(KEY_CHARACTERS, emptySet()) }
         clearActiveRocketFilter()
+    }
+
+    fun getEnabledSpindaForms(filterName: String? = null): Set<String> {
+        val key = filterName?.let { "$QUEST_SPINDA_PREFIX$it" }
+            ?: "enabled_spinda_forms"
+        return questPrefs.getStringSet(key, emptySet()) ?: emptySet()
+    }
+
+    fun saveEnabledSpindaForms(forms: Set<String>, filterName: String? = null) {
+        val key = filterName?.let { "$QUEST_SPINDA_PREFIX$it" }
+            ?: "enabled_spinda_forms"
+        questPrefs.edit { putStringSet(key, forms) }
     }
 
     companion object {
-        // Constant for the SharedPreferences file name.
         private const val PREF_NAME = "invasion_filters"
         private const val QUEST_PREF_NAME = "quest_filters"
-        // Constant key for saving and retrieving the set of enabled characters.
         private const val KEY_CHARACTERS = "enabled_characters"
     }
 }

@@ -15,6 +15,5 @@
 
     </style>
 
-    <!-- Add Theme.ProjectGamma2 if it doesn't exist in your night theme -->
     <style name="Theme.ProjectGamma2" parent="Base.Theme.ProjectGamma2" />
 </resources>

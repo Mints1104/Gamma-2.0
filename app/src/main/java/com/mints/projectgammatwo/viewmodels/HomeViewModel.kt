@@ -44,31 +44,28 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val selectedSources = dataSourcePreferences.getSelectedSources()
-
-                // For each source, fetch invasions and tag them with the source string.
                 val deferredList = selectedSources.mapNotNull { source ->
                     ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
                         async {
                             try {
-                                // Try to fetch invasions
                                 ApiClient.getApiForBaseUrl(baseUrl)
                                     .getInvasions().invasions
                                     .map { invasion -> invasion.copy(source = source) }
                             }catch(e: IOException) {
-                                Log.e(TAG, "Network error: ${e.message}", e)
+                                e(TAG, "Network error: ${e.message}", e)
                                 _error.value = "Network error: ${e.message}"
-                                emptyList<Invasion>()
+                                emptyList()
                             } catch (e: HttpException) {
-                                Log.e(TAG, "HTTP error: ${e.code()} - ${e.message}", e)
+                                e(TAG, "HTTP error: ${e.code()} - ${e.message}", e)
                                 _error.value = "HTTP error: ${e.code()} - ${e.message}"
-                                emptyList<Invasion>()
+                                emptyList()
                             } catch (e: JsonSyntaxException) {
-                                Log.e(TAG, "JSON parsing error: ${e.message}", e)
+                                e(TAG, "JSON parsing error: ${e.message}", e)
                                 _error.value = "JSON parsing error: ${e.message}"
-                                emptyList<Invasion>()
+                                emptyList()
                             } catch (e: Exception) {
-                                Log.e(TAG, "Source “$source” failed: ${e.message}", e)
-                                emptyList<Invasion>()
+                                e(TAG, "Source “$source” failed: ${e.message}", e)
+                                emptyList()
                             }
                         }
                     }
@@ -80,7 +77,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         try {
                             it.await()
                         } catch (e: Exception) {
-                            Log.e(TAG, "Failed to await result: ${e.message}", e)
+                            e(TAG, "Failed to await result: ${e.message}", e)
                             null
                         }
                     }
@@ -113,7 +110,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
 
             } catch (e: Exception) {
-                Log.e(TAG, "Error fetching invasions: ${e.message}", e)
+                e(TAG, "Error fetching invasions: ${e.message}", e)
                 _error.value = "Failed to fetch invasions: ${e.message}"
             }
 
