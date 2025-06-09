@@ -76,6 +76,7 @@ class OverlayService : Service() {
     private var currentSortOrder = FilterSortOrder.DEFAULT
     private var currentX = 0
     private var currentY = 100
+    private lateinit var dragTouchListener: DragTouchListener
 
     companion object {
         private const val TAG = "OverlayService"
@@ -151,8 +152,8 @@ class OverlayService : Service() {
             flags = FLAG_NOT_TOUCH_MODAL or FLAG_NOT_FOCUSABLE or FLAG_WATCH_OUTSIDE_TOUCH
             format = PixelFormat.TRANSLUCENT
             gravity = Gravity.TOP or Gravity.START
-            x = 0
-            y = 100
+            x = currentX
+            y = currentY
         }
         try {
             windowManager.addView(overlayView, params)
@@ -182,6 +183,8 @@ class OverlayService : Service() {
         val switchModesBtn = overlayView?.findViewById<ImageButton>(R.id.switch_modes)
         val favoritesButton = overlayView?.findViewById<ImageButton>(R.id.favorites_tab)
         val filtersButton = overlayView?.findViewById<ImageButton>(R.id.filter_tab)
+        dragTouchListener = DragTouchListener(params, windowManager, overlayView!!)
+
         switchModesBtn?.setImageResource(if (mode == "quests") R.drawable.binoculars else R.drawable.team_rocket_logo)
         if (dragHandle == null || closeBtn == null || rightBtn == null || leftBtn == null
             || homeBtn == null || refreshBtn == null ||
@@ -190,7 +193,7 @@ class OverlayService : Service() {
             return
         }
 
-        dragHandle.setOnTouchListener(DragTouchListener(params, windowManager, overlayView!!))
+        dragHandle.setOnTouchListener(dragTouchListener)
         closeBtn.setOnClickListener {
             Log.d(TAG, "Close button clicked")
             showOverlayToast("Closing overlay")
@@ -237,6 +240,8 @@ class OverlayService : Service() {
             if (mode == "quests") {
                 Log.d(TAG, "Switching to invasions mode")
                 showOverlayToast("Switching to invasions mode")
+                currentX = dragTouchListener.getCurrentParamsX()
+                currentY = dragTouchListener.getCurrentParamsY()
                 currentMode = "invasions"
 
                 cleanupObservers()
@@ -248,6 +253,8 @@ class OverlayService : Service() {
             } else {
                 showOverlayToast("Switching to quests mode")
                 Log.d(TAG, "Switching to quests mode")
+                currentX = dragTouchListener.getCurrentParamsX()
+                currentY = dragTouchListener.getCurrentParamsY()
                 currentMode = "quests"
 
                 cleanupObservers()
