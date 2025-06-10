@@ -296,7 +296,7 @@ class OverlayService : Service() {
                 }
                 currentIndex = (currentIndex + 1) % currentInvasions.size
                 Log.d(TAG, "Navigating to invasion at index $currentIndex: ${currentInvasions[currentIndex].lat}, ${currentInvasions[currentIndex].lng}")
-                showOverlayToast("Teleporting to ${currentInvasions[currentIndex].characterName}")
+                showOverlayToast("Teleporting to ${currentInvasions[currentIndex].characterName} \n Daily Limit: ${deletedInvasionsRepository.getDeletionCountLast24Hours()}/900")
                 deletedInvasionsRepository.addDeletedInvasion(currentInvasions[currentIndex])
                 launchMap(currentInvasions[currentIndex])
             }
