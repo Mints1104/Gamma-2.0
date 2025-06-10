@@ -2,4 +2,13 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <color name="dark_purple">#3F2A56</color>
+
+    <!-- Alternative darker purple options -->
+    <color name="deep_purple">#2D1B3D</color>
+    <color name="royal_purple">#4A2C5A</color>
+
+    <!-- If you want to keep some lilac but darker -->
+    <color name="dark_lilac">#6B4C87</color>
 </resources>

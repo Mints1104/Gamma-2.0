@@ -1,18 +1,33 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
+    <!-- Base application theme for dark mode -->
     <style name="Base.Theme.ProjectGamma2" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your dark theme here. -->
+        <!-- Dark theme colors -->
         <item name="colorOnSurface">@color/white</item>
+
+        <!-- Use a dark primary color for better contrast with white text -->
+        <item name="colorPrimary">@color/dark_purple</item>
+        <item name="colorOnPrimary">@color/white</item>
+
+        <!-- Dark action bar theme for white text on dark background -->
         <item name="actionBarTheme">@style/ThemeOverlay.AppCompat.Dark.ActionBar</item>
+        <item name="popupTheme">@style/OverflowMenuTheme</item>
     </style>
 
-    <!-- Define the OverflowMenuTheme at root level -->
+    <!-- Dark overflow menu theme -->
     <style name="OverflowMenuTheme" parent="ThemeOverlay.Material3">
         <item name="popupMenuBackground">@color/black</item>
         <item name="android:textColor">@color/white</item>
         <item name="subtitleTextColor">@color/white</item>
         <item name="navigationIconTint">@color/white</item>
+    </style>
 
+    <!-- Custom dark toolbar theme for better control -->
+    <style name="CustomToolbarTheme" parent="ThemeOverlay.Material3.Dark.ActionBar">
+        <item name="android:textColorPrimary">@color/white</item>
+        <item name="android:textColorSecondary">@color/white</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="titleTextColor">@color/white</item>
+        <item name="subtitleTextColor">@color/white</item>
     </style>
 
     <style name="Theme.ProjectGamma2" parent="Base.Theme.ProjectGamma2" />

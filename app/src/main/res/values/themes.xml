@@ -16,5 +16,15 @@
 
     </style>
 
+    <!-- Add this to your existing themes.xml (light theme) -->
+    <style name="CustomToolbarTheme" parent="ThemeOverlay.Material3.Dark.ActionBar">
+        <!-- This will work with your dark purple primary color in light mode -->
+        <item name="android:textColorPrimary">@color/white</item>
+        <item name="android:textColorSecondary">@color/white</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="titleTextColor">@color/white</item>
+        <item name="subtitleTextColor">@color/white</item>
+    </style>
+
     <style name="Theme.ProjectGamma2" parent="Base.Theme.ProjectGamma2" />
 </resources>
