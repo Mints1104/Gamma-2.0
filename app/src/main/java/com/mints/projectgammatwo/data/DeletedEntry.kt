@@ -2,6 +2,7 @@ package com.mints.projectgammatwo.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 
 data class DeletedEntry(val lat: Double, val lng: Double, val timestamp: Long)
 
@@ -11,11 +12,14 @@ class DeletedInvasionsRepository(context: Context) {
     private val key = "deleted_invasions_set"
 
     fun addDeletedInvasion(invasion: Invasion) {
+
+
+        if(invasion.type == 8 || invasion.type == 9 || invasion.type == 7) return
         val currentTime = System.currentTimeMillis()
         val entry = "${invasion.lat},${invasion.lng},$currentTime"
         val set = prefs.getStringSet(key, mutableSetOf())?.toMutableSet() ?: mutableSetOf()
         set.add(entry)
-        prefs.edit().putStringSet(key, set).apply()
+        prefs.edit { putStringSet(key, set) }
     }
 
     fun getDeletedEntries(): Set<DeletedEntry> {
