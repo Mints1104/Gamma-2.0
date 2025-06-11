@@ -167,25 +167,36 @@ class HomeFragment : Fragment() {
         // Check if we have overlay permission
         if (Settings.canDrawOverlays(requireContext())) {
             // We have permission, start service directly
-            serviceManager.startOverlayService("invasions")
+            serviceManager.startOverlayService("quests")
             return
         }
 
-        AlertDialog.Builder(requireContext())
-            .setTitle("Overlay Permission Required")
-            .setMessage("This app needs the 'Display over other apps' permission to show overlays with Pokémon GO. Please enable this in the settings.")
-            .setPositiveButton("Open Settings") { _, _ ->
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:${requireContext().packageName}")
-                )
-                startActivity(intent)
-            }
-            .setNegativeButton("Not Now") { dialog, _ ->
-                dialog.dismiss()
-            }
-            .setCancelable(false)
-            .show()
+        val builder = AlertDialog.Builder(requireContext())
+        val inflater = requireActivity().layoutInflater
+        val dialogView = inflater.inflate(R.layout.dialog_overlay_permission, null)
+
+        val notNowButton = dialogView.findViewById<Button>(R.id.notNowButton)
+        val openSettingsButton = dialogView.findViewById<Button>(R.id.openSettingsButton)
+
+        builder.setView(dialogView)
+        builder.setCancelable(false)
+        val dialog = builder.create()
+
+        // Set up button click listeners
+        notNowButton.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        openSettingsButton.setOnClickListener {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:${requireContext().packageName}")
+            )
+            startActivity(intent)
+            dialog.dismiss()
+        }
+
+        dialog.show()
     }
 
     private fun updateServiceButtonState(button: Button) {
