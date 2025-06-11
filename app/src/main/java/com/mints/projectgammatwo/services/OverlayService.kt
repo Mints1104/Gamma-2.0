@@ -77,6 +77,8 @@ class OverlayService : Service() {
     private var currentX = 0
     private var currentY = 100
     private lateinit var dragTouchListener: DragTouchListener
+    private var currentFavoritesSortOrder: FilterSortOrder = FilterSortOrder.DEFAULT
+    private val PREF_FAVORITES_SORT_ORDER = "favorites_sort_order"
 
     companion object {
         private const val TAG = "OverlayService"
@@ -692,6 +694,12 @@ class OverlayService : Service() {
             setupFavoritesOverlay()
         }
 
+        // Load saved sort order preferences
+        loadFavoritesSortOrderPreference()
+
+        // Setup the overflow menu
+        setupFavoritesOverflowMenu()
+
         // Hide main overlay first
         overlayView?.visibility = View.GONE
 
@@ -723,9 +731,85 @@ class OverlayService : Service() {
             isFavoritesVisible = true
         }
 
-        // Refresh the favorites list
+        // Load favorites with the appropriate sort order
+        loadFavoritesWithSort()
+    }
+
+    private fun setupFavoritesOverflowMenu() {
+        val overflowButton = favoritesOverlayView?.findViewById<ImageButton>(R.id.overflow_menu_button)
+
+        overflowButton?.setOnClickListener { view ->
+            val popupMenu = PopupMenu(this, view)
+            popupMenu.menuInflater.inflate(R.menu.overlay_favorites_menu, popupMenu.menu)
+
+            // Check the currently active sort method
+            when (currentFavoritesSortOrder) {
+                FilterSortOrder.DEFAULT -> popupMenu.menu.findItem(R.id.sort_default).isChecked = true
+                FilterSortOrder.NAME -> popupMenu.menu.findItem(R.id.sort_by_name).isChecked = true
+            }
+
+            popupMenu.setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    R.id.sort_default -> {
+                        if (currentFavoritesSortOrder != FilterSortOrder.DEFAULT) {
+                            currentFavoritesSortOrder = FilterSortOrder.DEFAULT
+                            saveFavoritesSortOrderPreference(FilterSortOrder.DEFAULT)
+                            sortFavsByDefault()
+                        }
+                        true
+                    }
+                    R.id.sort_by_name -> {
+                        if (currentFavoritesSortOrder != FilterSortOrder.NAME) {
+                            currentFavoritesSortOrder = FilterSortOrder.NAME
+                            saveFavoritesSortOrderPreference(FilterSortOrder.NAME)
+                            sortFavsByName()
+                        }
+                        true
+                    }
+                    else -> false
+                }
+            }
+
+            popupMenu.show()
+        }
+    }
+
+    private fun saveFavoritesSortOrderPreference(sortOrder: FilterSortOrder) {
+        val sharedPrefs = getSharedPreferences("app_preferences", MODE_PRIVATE)
+        sharedPrefs.edit { putString(PREF_FAVORITES_SORT_ORDER, sortOrder.name) }
+    }
+
+    private fun loadFavoritesSortOrderPreference() {
+        val sharedPrefs = getSharedPreferences("app_preferences", MODE_PRIVATE)
+        val savedSortOrder = sharedPrefs.getString(PREF_FAVORITES_SORT_ORDER, FilterSortOrder.DEFAULT.name)
+        currentFavoritesSortOrder = try {
+            FilterSortOrder.valueOf(savedSortOrder ?: FilterSortOrder.DEFAULT.name)
+        } catch (e: IllegalArgumentException) {
+            FilterSortOrder.DEFAULT
+        }
+    }
+
+    // Enhanced sorting methods with preference-based sorting
+    private fun sortFavsByName() {
+        val favorites = FavoritesManager.getFavorites(this)
+        val sortedList = favorites.sortedBy { it.name }
+        favoritesAdapter.submitList(sortedList)
+    }
+
+    private fun sortFavsByDefault() {
         val favorites = FavoritesManager.getFavorites(this)
         favoritesAdapter.submitList(favorites)
+    }
+    private fun loadFavoritesWithSort() {
+        val favorites = FavoritesManager.getFavorites(this)
+
+        // Apply sorting based on current sort order preference
+        val sortedFavorites = when (currentFavoritesSortOrder) {
+            FilterSortOrder.DEFAULT -> favorites
+            FilterSortOrder.NAME -> favorites.sortedBy { it.name }
+        }
+
+        favoritesAdapter.submitList(sortedFavorites)
     }
 
     private fun hideFavoritesOverlay() {
