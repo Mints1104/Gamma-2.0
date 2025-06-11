@@ -220,21 +220,34 @@ class FilterFragment : Fragment() {
 
     private fun showSaveFilterDialog(isRocket: Boolean) {
         val builder = AlertDialog.Builder(requireContext())
-        builder.setTitle("Enter a name for the new filter")
-        val input = EditText(requireContext())
-        input.inputType = InputType.TYPE_CLASS_TEXT
-        input.hint = "New filter name"
-        builder.setView(input)
+        val inflater = requireActivity().layoutInflater
+        val dialogView = inflater.inflate(R.layout.dialog_save_filter, null)
 
-        builder.setPositiveButton("Save New") { dialog, _ ->
-            val newFilterName = input.text.toString().trim()
+        val titleTextView = dialogView.findViewById<TextView>(R.id.saveFilterTitle)
+        val editText = dialogView.findViewById<EditText>(R.id.editFilterName)
+        val cancelButton = dialogView.findViewById<Button>(R.id.cancelFilterButton)
+        val saveButton = dialogView.findViewById<Button>(R.id.saveFilterButton)
+
+        // Set the dynamic title
+        val type = if(isRocket) "rocket" else "quest"
+        titleTextView.text = "Enter a name for the new $type filter"
+
+        builder.setView(dialogView)
+        val dialog = builder.create()
+
+        // Set up button click listeners
+        cancelButton.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        saveButton.setOnClickListener {
+            val newFilterName = editText.text.toString().trim()
             if (newFilterName.isEmpty()) {
                 Toast.makeText(requireContext(), "Please enter a name", Toast.LENGTH_SHORT).show()
-                return@setPositiveButton
+                return@setOnClickListener
             }
 
             if (isRocket) {
-
                 filterPreferences.saveEnabledCharacters(enabledRocketFilters)
                 filterPreferences.saveCurrentAsFilter(newFilterName)
                 Toast.makeText(requireContext(), "Filter '$newFilterName' saved", Toast.LENGTH_SHORT).show()
@@ -245,7 +258,6 @@ class FilterFragment : Fragment() {
                     enabledRocketFilters.addAll(originalSettingsOfLoadedRocketFilter!!)
                     filterPreferences.saveEnabledCharacters(enabledRocketFilters)
                 } else {
-
                     filterPreferences.setActiveRocketFilter(newFilterName)
                     originalSettingsOfLoadedRocketFilter = HashSet(enabledRocketFilters)
                 }
@@ -271,8 +283,8 @@ class FilterFragment : Fragment() {
             }
             dialog.dismiss()
         }
-        builder.setNegativeButton("Cancel") { innerDialog, _ -> innerDialog.cancel() }
-        builder.show()
+
+        dialog.show()
     }
 
 

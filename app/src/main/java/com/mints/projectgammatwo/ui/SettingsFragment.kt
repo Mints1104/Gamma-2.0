@@ -305,22 +305,32 @@ class SettingsFragment : Fragment() {
      */
     private fun importSettingsDialog() {
         val builder = AlertDialog.Builder(requireContext())
-        builder.setTitle("Import Settings (Paste JSON)")
-        val input = EditText(requireContext())
-        input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-        input.hint = "Paste settings JSON here"
-        builder.setView(input)
-        builder.setPositiveButton("Import") { dialog, _ ->
-            val jsonString = input.text.toString()
+        val inflater = requireActivity().layoutInflater
+        val dialogView = inflater.inflate(R.layout.dialog_import_settings, null)
+
+        val editText = dialogView.findViewById<EditText>(R.id.editImportSettingsJson)
+        val cancelButton = dialogView.findViewById<Button>(R.id.cancelSettingsImportButton)
+        val importButton = dialogView.findViewById<Button>(R.id.importSettingsButton)
+
+        builder.setView(dialogView)
+        val dialog = builder.create()
+
+        // Set up button click listeners
+        cancelButton.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        importButton.setOnClickListener {
+            val jsonString = editText.text.toString()
             if (jsonString.isBlank()) {
                 Toast.makeText(requireContext(), "Input cannot be empty", Toast.LENGTH_SHORT).show()
             } else {
                 importSettings(jsonString)
+                dialog.dismiss()
             }
-            dialog.dismiss()
         }
-        builder.setNegativeButton("Cancel") { dialog, _ -> dialog.cancel() }
-        builder.show()
+
+        dialog.show()
     }
 
     /**

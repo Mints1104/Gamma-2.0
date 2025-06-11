@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<menu xmlns:android="http://schemas.android.com/apk/res/android">
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
 
 
     <item
         android:id="@+id/action_save_rocket"
         android:title="Save Rocket Filter"
+        android:icon="@drawable/save_as_24px"
+
+        app:showAsAction="ifRoom"
+
 
         />
 
@@ -12,6 +17,8 @@
     <item
         android:id="@+id/action_save_quest"
         android:title="Save Quest Filter"
+        app:showAsAction="ifRoom"
+        android:icon="@drawable/save_as_24px"
 
         />
 

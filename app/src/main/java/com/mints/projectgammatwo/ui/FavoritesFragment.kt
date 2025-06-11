@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
 import android.view.*
+import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
 import androidx.coordinatorlayout.widget.CoordinatorLayout
@@ -136,22 +137,32 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
      */
     private fun showImportFavoritesDialog() {
         val builder = AlertDialog.Builder(requireContext())
-        builder.setTitle("Import Favorites (Paste JSON)")
-        val input = EditText(requireContext())
-        input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-        input.hint = "Paste favorites JSON here"
-        builder.setView(input)
-        builder.setPositiveButton("Import") { dialog, _ ->
-            val jsonString = input.text.toString()
+        val inflater = requireActivity().layoutInflater
+        val dialogView = inflater.inflate(R.layout.dialog_import_favorites, null)
+
+        val editText = dialogView.findViewById<EditText>(R.id.editImportJson)
+        val cancelButton = dialogView.findViewById<Button>(R.id.cancelImportButton)
+        val importButton = dialogView.findViewById<Button>(R.id.importButton)
+
+        builder.setView(dialogView)
+        val dialog = builder.create()
+
+        // Set up button click listeners
+        cancelButton.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        importButton.setOnClickListener {
+            val jsonString = editText.text.toString()
             if (jsonString.isBlank()) {
                 Toast.makeText(requireContext(), "Input cannot be empty", Toast.LENGTH_SHORT).show()
             } else {
                 importFavorites(jsonString)
+                dialog.dismiss()
             }
-            dialog.dismiss()
         }
-        builder.setNegativeButton("Cancel") { dialog, _ -> dialog.cancel() }
-        builder.show()
+
+        dialog.show()
     }
 
     /**

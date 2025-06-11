@@ -6,6 +6,8 @@
         <!-- Use the app bar theme reference for toolbar styling -->
         <item name="actionBarTheme">@style/ThemeOverlay.AppCompat.Dark.ActionBar</item>
         <item name="popupTheme">@style/OverflowMenuTheme</item>
+        <item name="snackbarStyle">@style/Widget.App.Snackbar</item>
+        <item name="snackbarTextViewStyle">@style/Widget.App.Snackbar.TextView</item>
     </style>
 
     <style name="OverflowMenuTheme" parent="ThemeOverlay.Material3">
@@ -15,6 +17,15 @@
         <item name="navigationIconTint">@color/black</item>
 
     </style>
+
+    <style name="Widget.App.Snackbar" parent="Widget.Material3.Snackbar">
+        <item name="backgroundTint">@color/white</item>
+    </style>
+
+    <style name="Widget.App.Snackbar.TextView" parent="Widget.Material3.Snackbar.TextView">
+        <item name="android:textColor">@color/black</item>
+    </style>
+
 
     <!-- Add this to your existing themes.xml (light theme) -->
     <style name="CustomToolbarTheme" parent="ThemeOverlay.Material3.Dark.ActionBar">
