@@ -18,6 +18,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.RadioGroup
@@ -751,14 +752,13 @@ class FilterFragment : Fragment() {
         return spindaForms
     }
 
-
     private fun addSpindaFilterWithForms(
         parent: LinearLayout,
         displayText: String,
         baseCompositeValue: String,
         spindaFormsMap: Map<String, Int>
     ) {
-        // 1. Container for the entire “Spinda” block
+        // Container for the entire “Spinda” block
         val spindaContainer = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
@@ -767,7 +767,7 @@ class FilterFragment : Fragment() {
             )
         }
 
-        // 2. Top row: main “Spinda” checkbox + spacer + expand/collapse button
+        // Top row: main “Spinda” checkbox + spacer + expand/collapse button
         val topRow = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -777,11 +777,14 @@ class FilterFragment : Fragment() {
             )
         }
 
-        // 2a. Main “Spinda” checkbox itself
+        // We need to access formCheckboxes inside the main checkbox listener,
+        // so we declare the list before the main checkbox is defined.
+        val formCheckboxes = mutableListOf<CheckBox>()
+
+        // Main “Spinda” checkbox itself
         val mainSpindaCheckbox = CheckBox(requireContext()).apply {
             text = displayText
             isChecked = baseCompositeValue in enabledQuestFilters
-            // same padding as other checkboxes:
             setPadding(32, 8, 16, 8)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -791,28 +794,34 @@ class FilterFragment : Fragment() {
             setOnCheckedChangeListener { _, isChecked ->
                 if (isChecked) {
                     enabledQuestFilters.add(baseCompositeValue)
+                    formCheckboxes.forEach { it.isChecked = true }
+
                 } else {
+                    //  If the main toggle is turned off...
                     enabledQuestFilters.remove(baseCompositeValue)
+
+                    // ...uncheck all specific form checkboxes in the UI...
+                    formCheckboxes.forEach { it.isChecked = false }
+
+                    // ...and clear them from saved preferences in the backend.
+                    filterPreferences.clearEnabledSpindaForms()
                 }
                 filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                Log.d("FilterFragmentSpinda", "Main Spinda toggled: $isChecked")
+
+                // Enable or disable all child checkboxes based on the parent's state.
+                formCheckboxes.forEach { it.isEnabled = isChecked }
             }
         }
 
-        // 2b. Spacer
+        // Spacer
         val spacer = View(requireContext()).apply {
             layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
         }
 
-        // 2c. Expand/Collapse button
+        // Expand/Collapse button
         val expandButton = MaterialButton(requireContext()).apply {
-            if (spindaFormsMap.isNotEmpty()) {
-                text = "▶"
-                isEnabled = true
-            } else {
-                text = ""
-                isEnabled = false
-            }
+            text = if (spindaFormsMap.isNotEmpty()) "▶" else ""
+            isEnabled = spindaFormsMap.isNotEmpty()
             backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
             val onSurface = TypedValue().also {
                 requireContext().theme.resolveAttribute(
@@ -824,7 +833,6 @@ class FilterFragment : Fragment() {
             minimumWidth = 0
             minWidth = 0
             setPadding(8.dpToPx(), 4.dpToPx(), 8.dpToPx(), 4.dpToPx())
-
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -837,26 +845,28 @@ class FilterFragment : Fragment() {
             topRow.addView(expandButton)
         }
 
-        // 3. Container for specific‐form checkboxes (hidden initially)
+        // Container for specific‐form checkboxes (hidden initially)
         val formsContainer = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
             setPadding((32 + 16).dpToPx(), 0, 16.dpToPx(), 8.dpToPx())
         }
 
-        // 4. Populate one checkbox per formKey
-        val formCheckboxes = mutableListOf<CheckBox>()
+        // Populate one checkbox per formKey
         if (spindaFormsMap.isNotEmpty()) {
             val enabledSpecificForms = filterPreferences.getEnabledSpindaForms()
-
             spindaFormsMap.keys.sorted().forEach { formKey ->
                 val formNumber = formKey.removePrefix("spinda_form_")
-                val count = spindaFormsMap[formKey] ?: 0
                 val formLabel = "Form #$formNumber"
 
                 val formCheckbox = CheckBox(requireContext()).apply {
                     text = formLabel
                     isChecked = formKey in enabledSpecificForms
+
+                    //  Child checkboxes are only enabled if the main checkbox is checked.
+                    // This sets the initial state correctly on view creation.
+                    isEnabled = mainSpindaCheckbox.isChecked
+
                     setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
                     layoutParams = LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -864,25 +874,7 @@ class FilterFragment : Fragment() {
                     )
 
                     setOnCheckedChangeListener { _, isChecked ->
-                        Log.d("FilterFragmentSpinda", "Specific $formKey toggled: $isChecked")
                         updateSpindaFormSelection(formKey, isChecked)
-
-                        if (isChecked) {
-                            // If any form is checked, ensure main Spinda is also checked
-                            if (!mainSpindaCheckbox.isChecked) {
-                                mainSpindaCheckbox.isChecked = true
-                                enabledQuestFilters.add(baseCompositeValue)
-                                filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                            }
-                        } else {
-                            // If this was unchecked, and no other form remains checked, uncheck main Spinda
-                            val anyStillChecked = formCheckboxes.any { it.isChecked }
-                            if (!anyStillChecked && mainSpindaCheckbox.isChecked) {
-                                mainSpindaCheckbox.isChecked = false
-                                enabledQuestFilters.remove(baseCompositeValue)
-                                filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                            }
-                        }
                     }
                 }
 
@@ -890,17 +882,16 @@ class FilterFragment : Fragment() {
                 formsContainer.addView(formCheckbox)
             }
 
-            // 5. Expand/Collapse logic
+            // Expand/Collapse logic
             var isExpanded = false
             expandButton.setOnClickListener {
                 isExpanded = !isExpanded
                 formsContainer.visibility = if (isExpanded) View.VISIBLE else View.GONE
                 expandButton.text = if (isExpanded) "▼" else "▶"
-                Log.d("FilterFragmentSpinda", "Expand clicked, now expanded = $isExpanded")
             }
         }
 
-        // 6. Assemble into parent
+        // Assemble into parent
         spindaContainer.addView(topRow)
         spindaContainer.addView(formsContainer)
         parent.addView(spindaContainer)
@@ -924,6 +915,7 @@ class FilterFragment : Fragment() {
         filterPreferences.saveEnabledSpindaForms(currentForms)
         Log.d("FilterFragmentSpinda", "Updated specific Spinda forms: $currentForms")
     }
+
 
 
     override fun onResume() {

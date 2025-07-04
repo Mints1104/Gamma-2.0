@@ -125,6 +125,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun fetchQuests() {
+        Log.d("QuestsViewModel", "Starting fetchQuests()")
         val context = getApplication<Application>().applicationContext
         val interceptor = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.NONE
@@ -147,6 +148,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             try {
+                Log.d("QuestsViewModel", "Selected data sources: $selectedSources")
                 val deferredList = selectedSources.mapNotNull { source ->
                     ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
                         async(Dispatchers.IO) {
@@ -162,6 +164,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
 
                                 // Check if the response is successful
                                 if (response.isSuccessful) {
+                                    Log.d("QuestsViewModel", "API call successful for source $source")
                                     Pair(source, Result.success(response))
                                 } else {
                                     // Handle HTTP errors (4xx, 5xx)
@@ -217,6 +220,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                      _error.postValue("Unable to fetch quests. Please check your connection.")
                     return@launch
                 }
+                Log.d("QuestsViewModel", "Successfully fetched quests from ${successfulResponses.size} sources")
 
                 // Process successful responses
                 successfulResponses.firstOrNull()?.second?.body()?.filters?.let { filters ->
@@ -230,12 +234,14 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                         quest.copy(source = source)
                     } ?: emptyList()
                 }
+                Log.d("QuestsViewModel", "Total quests fetched: ${allQuests.size}")
 
                 val visited = visitedPreferences.getVisitedQuests()
                 var filteredQuests = allQuests.filter { quest ->
                     val id = "${quest.name}|${quest.lat}|${quest.lng}"
                     !visited.contains(id)
                 }
+                Log.d("QuestsViewModel", "Filtered quests after removing visited: ${filteredQuests.size}")
                 val spindaForms = filterPreferences.getEnabledSpindaForms()
                 val enabledFormNumbers: List<String> =
                     filterPreferences
@@ -248,6 +254,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                 if(spindaForms.isNotEmpty()) {
                     filteredQuests = filterSpindaForms(filteredQuests, formRegex, enabledFormNumbers)
                 }
+                Log.d("QuestsViewModel", "Filtered quests after Spinda form filtering: ${filteredQuests.size}")
 
 
 
@@ -266,11 +273,12 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
 
                 // Sort the filtered quests using the last visited coordinates
                 val sortedQuests = sortQuestsByNearestNeighbor(filteredQuests, startLat, startLng)
+
                 _questsLiveData.postValue(sortedQuests)
                 CurrentQuestData.currentQuests = sortedQuests.toMutableList()
 
             } catch (e: Exception) {
-                Log.e("QuestsViewModel", "Error in fetchQuests", e)
+                e("QuestsViewModel", "Error in fetchQuests", e)
                 _questsLiveData.postValue(emptyList())
                  _error.postValue("An unexpected error occurred")
             }
@@ -278,20 +286,23 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun filterSpindaForms(
-        filteredQuests: List<Quest>,
+        quests: List<Quest>,
         formRegex: Regex,
         enabledFormNumbers: List<String>
     ): List<Quest> {
-        var filteredQuests1 = filteredQuests
-        filteredQuests1 = filteredQuests1
-            .filter { it.rewardsIds == "327" }
-            .filter { quest ->
+        return quests.filter { quest ->
+            if (quest.rewardsIds != "327") {
+                true
+            } else {
                 val matchResult = formRegex.find(quest.rewardsString)
-                val formNumber = matchResult?.groupValues?.get(1)
+                val formNumber = matchResult?.groupValues?.getOrNull(1)
+                // We only keep the Spinda quest if we found its form number AND it's in the enabled list.
                 formNumber != null && enabledFormNumbers.contains(formNumber)
             }
-        return filteredQuests1
+        }
     }
+
+
     fun fetchSpindaFormsFromApi() {
         val context = getApplication<Application>().applicationContext
         Log.d("QuestsViewModel", "Starting fetchSpindaFormsFromApi()")

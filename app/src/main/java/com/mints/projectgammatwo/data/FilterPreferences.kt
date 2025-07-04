@@ -261,6 +261,9 @@ class FilterPreferences(context: Context) {
             ?: DataMappings.characterNamesMap.keys
     }
 
+    fun clearEnabledSpindaForms() {
+        questPrefs.edit { remove("enabled_spinda_forms") }
+    }
 
     fun resetToDefault() {
         prefs.edit { remove(KEY_CHARACTERS) }

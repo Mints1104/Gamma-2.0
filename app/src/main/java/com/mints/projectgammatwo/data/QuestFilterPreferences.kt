@@ -19,6 +19,10 @@ class QuestFilterPreferences(context: Context) {
 
     }
 
+    fun clearEnabledSpindaForms() {
+        prefs.edit { remove("enabled_spinda_forms") }
+    }
+
 
 
     fun saveEnabledSpindaForms(forms: Set<String>) {
