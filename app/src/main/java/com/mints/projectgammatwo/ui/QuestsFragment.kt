@@ -12,6 +12,7 @@ import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -36,6 +37,7 @@ class QuestsFragment : Fragment() {
     private lateinit var questsViewModel: QuestsViewModel
     private lateinit var serviceManager: OverlayServiceManager
     private lateinit var scrollToTopFab: FloatingActionButton
+    private lateinit var questErrorHandler: TextView
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -50,6 +52,7 @@ class QuestsFragment : Fragment() {
         swipeRefresh = view.findViewById(R.id.swipeRefresh)
         questsCountText = view.findViewById(R.id.questsCountText)
         recyclerView = view.findViewById(R.id.questsRecyclerView)
+        questErrorHandler = view.findViewById(R.id.errorHandlerText)
         questsAdapter = QuestsAdapter { quest: Quests.Quest ->
             questsViewModel.saveLastVisitedCoordinates(quest)
 
@@ -71,6 +74,18 @@ class QuestsFragment : Fragment() {
             questsAdapter.submitList(quests)
             updateQuestsCount(quests.size)
             swipeRefresh.isRefreshing = false
+
+            if(questsViewModel.filterSizeLiveData.value == 0) {
+                questErrorHandler.visibility = View.VISIBLE
+                questErrorHandler.text = "No quest filters enabled. Please go to the filter tab to filter quests."
+
+            } else if(quests.isEmpty()) {
+                questErrorHandler.visibility = View.VISIBLE
+                questErrorHandler.text = "No quests available. Please check your filters or change the data source in the Settings."
+            } else {
+                questErrorHandler.visibility = View.GONE
+            }
+
             recyclerView.post {
                 checkAndUpdateFabVisibility()
             }
@@ -81,6 +96,8 @@ class QuestsFragment : Fragment() {
             Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
             swipeRefresh.isRefreshing = false
         }
+
+
 
 
         swipeRefresh.setOnRefreshListener {
@@ -193,9 +210,9 @@ class QuestsFragment : Fragment() {
         Log.d("PermissionStatus", "Overlay permission: $overlayPermission")
 
         if (!overlayPermission) {
-            button.text = "Enable Overlay"
+            button.text = "Enable Overlay Permissions"
         } else {
-            button.text = "Start Service"
+            button.text = "Enable Overlay"
         }
     }
 

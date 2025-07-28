@@ -20,10 +20,12 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.CompoundButton
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.core.view.setPadding
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
@@ -374,14 +376,22 @@ class FilterFragment : Fragment() {
 
     private fun showSelectFilterDialog(parentLayoutForRefresh: LinearLayout, filterType: String) {
         val builder = AlertDialog.Builder(requireContext())
-        builder.setTitle("Select a $filterType filter")
+        val inflater = requireActivity().layoutInflater
+        val dialogView = inflater.inflate(R.layout.dialog_select_filter, null)
 
-        val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_filter_list, null)
+        val title = dialogView.findViewById<TextView>(R.id.selectFilterTitle)
         val listContainer = dialogView.findViewById<LinearLayout>(R.id.filterListContainer)
+        val cancelButton = dialogView.findViewById<Button>(R.id.cancelSelectButton)
+
+        title.text = "Select $filterType Filter"
 
         builder.setView(dialogView)
-        builder.setNegativeButton("Cancel", null)
         val dialog = builder.create()
+
+        // Set up cancel button
+        cancelButton.setOnClickListener {
+            dialog.dismiss()
+        }
 
         fun updateDialogContent() {
             listContainer.removeAllViews()
@@ -395,17 +405,19 @@ class FilterFragment : Fragment() {
             if (filterNames.isEmpty()) {
                 val emptyView = TextView(requireContext()).apply {
                     text = "No saved filters available"
-                    setPadding(16) // Simplified padding
+                    setPadding(16, 16, 16, 16)
                     gravity = android.view.Gravity.CENTER
+                    textSize = 16f
+                    setTextColor(ContextCompat.getColor(requireContext(), android.R.color.darker_gray))
                 }
                 listContainer.addView(emptyView)
                 return
             }
 
             filterNames.forEach { filterName ->
-                val itemView = LayoutInflater.from(requireContext()).inflate(R.layout.filter_list_item, listContainer, false)
+                val itemView = inflater.inflate(R.layout.filter_list_item, listContainer, false)
                 val nameTextView = itemView.findViewById<TextView>(R.id.filterNameText)
-                val deleteButton = itemView.findViewById<Button>(R.id.deleteFilterButton)
+                val deleteButton = itemView.findViewById<ImageButton>(R.id.deleteFilterButton)
                 val selectButton = itemView.findViewById<Button>(R.id.selectFilterButton)
 
                 nameTextView.text = filterName
@@ -419,7 +431,6 @@ class FilterFragment : Fragment() {
                         Log.d("SelectingFilter","Spinda forms enabled: ${filterPreferences.getEnabledSpindaForms()}")
 
                         originalSettingsOfLoadedRocketFilter = HashSet(enabledRocketFilters)
-
                         setupRocketFilters(parentLayoutForRefresh)
                     } else {
                         filterPreferences.loadFilter(filterName, "Quest")
@@ -427,7 +438,6 @@ class FilterFragment : Fragment() {
                         enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters())
 
                         originalSettingsOfLoadedQuestFilter = HashSet(enabledQuestFilters)
-
                         setupQuestFilters(parentLayoutForRefresh)
                     }
                     Toast.makeText(requireContext(), "Filter '$filterName' applied", Toast.LENGTH_SHORT).show()
@@ -436,7 +446,6 @@ class FilterFragment : Fragment() {
 
                 deleteButton.setOnClickListener {
                     showDeleteConfirmationDialog(filterName, filterType) {
-
                         if (filterType == "Rocket") {
                             enabledRocketFilters.clear()
                             enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
@@ -454,6 +463,7 @@ class FilterFragment : Fragment() {
                 listContainer.addView(itemView)
             }
         }
+
         updateDialogContent()
         dialog.show()
     }
@@ -463,10 +473,25 @@ class FilterFragment : Fragment() {
         filterType: String,
         onDeleted: () -> Unit
     ) {
-        val confirmBuilder = AlertDialog.Builder(requireContext())
-        confirmBuilder.setTitle("Delete Filter")
-        confirmBuilder.setMessage("Are you sure you want to delete the filter '$filterName'?")
-        confirmBuilder.setPositiveButton("Delete") { _, _ ->
+        val builder = AlertDialog.Builder(requireContext())
+        val inflater = requireActivity().layoutInflater
+        val dialogView = inflater.inflate(R.layout.dialog_delete_filter, null)
+
+        val filterNameDisplay = dialogView.findViewById<TextView>(R.id.filterNameDisplay)
+        val cancelButton = dialogView.findViewById<Button>(R.id.cancelDeleteButton)
+        val deleteButton = dialogView.findViewById<Button>(R.id.confirmDeleteButton)
+
+        filterNameDisplay.text = filterName
+
+        builder.setView(dialogView)
+        val dialog = builder.create()
+
+        // Set up button listeners
+        cancelButton.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        deleteButton.setOnClickListener {
             val wasActiveRocket = filterType == "Rocket" && filterName == filterPreferences.getActiveRocketFilter()
             val wasActiveQuest = filterType == "Quest" && filterName == filterPreferences.getActiveQuestFilter()
 
@@ -480,10 +505,11 @@ class FilterFragment : Fragment() {
             }
 
             Toast.makeText(requireContext(), "Filter '$filterName' deleted", Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
             onDeleted()
         }
-        confirmBuilder.setNegativeButton("Cancel", null)
-        confirmBuilder.show()
+
+        dialog.show()
     }
 
     private fun addToggleAllButton(parent: LinearLayout, filterType: String) {

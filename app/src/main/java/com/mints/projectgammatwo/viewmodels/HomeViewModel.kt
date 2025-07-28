@@ -1,4 +1,3 @@
-// HomeViewModel.kt
 package com.mints.projectgammatwo.viewmodels
 
 import android.app.Application
@@ -27,12 +26,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _invasions = MutableLiveData<List<Invasion>>()
     val invasions: LiveData<List<Invasion>> get() = _invasions
 
-    // For the deletion counter (from previous code)
     private val _deletedCount = MutableLiveData<Int>()
     val deletedCount: LiveData<Int> get() = _deletedCount
 
     private val _error = MutableLiveData<String>()
     val error: LiveData<String> get() = _error
+
+    private val _currentFilterSize = MutableLiveData<Int>()
+    val currentFilterSize: LiveData<Int> get() = _currentFilterSize
+
+    private val _currentInvasionCount = MutableLiveData<Int>()
+    val currentInvasionCount: LiveData<Int> get() = _currentInvasionCount
 
     companion object {
         private const val TAG = "HomeViewModel"
@@ -84,6 +88,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     .flatten()
                     .toMutableList()
                 val enabledCharacters = filterPreferences.getEnabledCharacters()
+                _currentFilterSize.value = enabledCharacters.size
+
                 val filteredAndSorted = combinedInvasions
                     .map { invasion ->
                         when (invasion.type) {
@@ -100,6 +106,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     .reversed()
 
                 _invasions.value = filteredAndSorted
+                _currentInvasionCount.value = filteredAndSorted.size
+
                 CurrentInvasionData.currentInvasions = filteredAndSorted.toMutableList()
                 _deletedCount.value = deletedRepo.getDeletionCountLast24Hours()
 

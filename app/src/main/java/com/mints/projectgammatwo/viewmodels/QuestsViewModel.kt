@@ -42,6 +42,13 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
     private val _questsLiveData = MutableLiveData<List<Quest>>()
     val questsLiveData: LiveData<List<Quest>> = _questsLiveData
 
+    private val _questsCountLiveData = MutableLiveData<Int>()
+    val questsCountLiveData: LiveData<Int> = _questsCountLiveData
+
+    private val _filterSizeLiveData = MutableLiveData<Int>()
+    val filterSizeLiveData: LiveData<Int> = _filterSizeLiveData
+
+
     // Inside QuestsViewModel:
     private val _spindaFormsLiveData = MutableLiveData<Map<String, Int>>()
     val spindaFormsLiveData: LiveData<Map<String, Int>> = _spindaFormsLiveData
@@ -144,6 +151,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         val enabledFilters = filterPreferences.getEnabledFilters()
         val filtersToUse = if (enabledFilters.isEmpty()) emptyList() else enabledFilters.toList()
         Log.d("QuestsViewModel","Filters enabled: $filtersToUse")
+        _filterSizeLiveData.postValue(filtersToUse.size)
         val selectedSources = dataSourcePreferences.getSelectedSources()
 
         viewModelScope.launch {
@@ -235,6 +243,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                     } ?: emptyList()
                 }
                 Log.d("QuestsViewModel", "Total quests fetched: ${allQuests.size}")
+                _questsCountLiveData.postValue(allQuests.size)
 
                 val visited = visitedPreferences.getVisitedQuests()
                 var filteredQuests = allQuests.filter { quest ->

@@ -22,6 +22,7 @@ import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.helpers.OverlayServiceManager
 import com.mints.projectgammatwo.recyclerviews.InvasionsAdapter
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
+import androidx.core.net.toUri
 
 class HomeFragment : Fragment() {
 
@@ -31,6 +32,7 @@ class HomeFragment : Fragment() {
     private lateinit var serviceManager: OverlayServiceManager
     private lateinit var scrollToTopFab: FloatingActionButton
     private lateinit var recyclerView: RecyclerView
+    private lateinit var errorHandlerText: TextView
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -45,34 +47,43 @@ class HomeFragment : Fragment() {
 
         serviceManager = OverlayServiceManager(requireContext())
 
-        recyclerView = view.findViewById<RecyclerView>(R.id.invasionsRecyclerView)
+        recyclerView = view.findViewById(R.id.invasionsRecyclerView)
+        swipeRefresh = view.findViewById(R.id.swipeRefresh)
+        scrollToTopFab = view.findViewById(R.id.scrollToTopFab)
+        errorHandlerText = view.findViewById(R.id.errorHandlerText)
+
         adapter = InvasionsAdapter { invasion ->
             viewModel.deleteInvasion(invasion)
         }
         recyclerView.adapter = adapter
         recyclerView.layoutManager = LinearLayoutManager(context)
-        scrollToTopFab = view.findViewById(R.id.scrollToTopFab)
+
         setupScrollToTop()
 
-        swipeRefresh = view.findViewById(R.id.swipeRefresh)
         swipeRefresh.setOnRefreshListener {
             viewModel.fetchInvasions()
         }
 
-        // Observe invasions LiveData
         viewModel.invasions.observe(viewLifecycleOwner) { invasions ->
-            adapter.submitList(invasions) {
-                // This callback runs after submitList has completed
-                swipeRefresh.isRefreshing = false
+            adapter.submitList(invasions)
+            swipeRefresh.isRefreshing = false
 
-                // Force check FAB visibility after the list has been updated
-                recyclerView.post {
-                    checkAndUpdateFabVisibility()
-                }
+            val filterSize = viewModel.currentFilterSize.value
+            if (filterSize == 0) {
+                errorHandlerText.visibility = View.VISIBLE
+                errorHandlerText.text = "No rocket filters enabled. Please go to the filter tab to select characters."
+            } else if (invasions.isEmpty()) {
+                errorHandlerText.visibility = View.VISIBLE
+                errorHandlerText.text = "No invasions available. Please check your filters or change the data source in Settings."
+            } else {
+                errorHandlerText.visibility = View.GONE
+            }
+
+            recyclerView.post {
+                checkAndUpdateFabVisibility()
             }
         }
 
-        // Observe error LiveData
         viewModel.error.observe(viewLifecycleOwner) { errorMessage ->
             Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
             swipeRefresh.isRefreshing = false
@@ -97,12 +108,10 @@ class HomeFragment : Fragment() {
         view?.findViewById<Button>(R.id.startServiceButton)?.let {
             updateServiceButtonState(it)
         }
-        // Check FAB visibility when resuming (handles backgrounded app case)
         checkAndUpdateFabVisibility()
     }
 
     private fun setupScrollToTop() {
-        // Show/hide FAB based on scroll position
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(recyclerView, dx, dy)
@@ -110,11 +119,9 @@ class HomeFragment : Fragment() {
             }
         })
 
-        // Also monitor adapter data changes
         adapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
             override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
                 super.onItemRangeInserted(positionStart, itemCount)
-                // Post to ensure RecyclerView has updated
                 recyclerView.post { checkAndUpdateFabVisibility() }
             }
 
@@ -129,9 +136,7 @@ class HomeFragment : Fragment() {
             }
         })
 
-        // Handle FAB click
         scrollToTopFab.setOnClickListener {
-            // Smooth scroll to top
             recyclerView.scrollToPosition(0)
 
         }
@@ -140,7 +145,6 @@ class HomeFragment : Fragment() {
     private fun checkAndUpdateFabVisibility() {
         val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return
 
-        // Make sure adapter has items before checking positions
         if (adapter.itemCount == 0) {
             Log.d("FAB_DEBUG", "No items, hiding FAB")
             scrollToTopFab.hide()
@@ -153,7 +157,6 @@ class HomeFragment : Fragment() {
             "First visible item: $firstVisibleItem, Total items: ${adapter.itemCount}"
         )
 
-        // Only show FAB if we have valid position data
         if (firstVisibleItem != RecyclerView.NO_POSITION && firstVisibleItem > 2) {
             Log.d("FAB_DEBUG", "Showing FAB")
             scrollToTopFab.show()
@@ -164,10 +167,8 @@ class HomeFragment : Fragment() {
     }
 
     private fun handleStartServiceClick() {
-        // Check if we have overlay permission
         if (Settings.canDrawOverlays(requireContext())) {
-            // We have permission, start service directly
-            serviceManager.startOverlayService("quests")
+            serviceManager.startOverlayService("invasions")
             return
         }
 
@@ -182,7 +183,6 @@ class HomeFragment : Fragment() {
         builder.setCancelable(false)
         val dialog = builder.create()
 
-        // Set up button click listeners
         notNowButton.setOnClickListener {
             dialog.dismiss()
         }
@@ -190,7 +190,7 @@ class HomeFragment : Fragment() {
         openSettingsButton.setOnClickListener {
             val intent = Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:${requireContext().packageName}")
+                "package:${requireContext().packageName}".toUri()
             )
             startActivity(intent)
             dialog.dismiss()
@@ -204,9 +204,9 @@ class HomeFragment : Fragment() {
         Log.d("PermissionStatus", "Overlay permission: $overlayPermission")
 
         if (!overlayPermission) {
-            button.text = "Enable Overlay"
+            button.text = "Enable Overlay Permissions"
         } else {
-            button.text = "Start Service"
+            button.text = "Enable Overlay"
         }
     }
 }
