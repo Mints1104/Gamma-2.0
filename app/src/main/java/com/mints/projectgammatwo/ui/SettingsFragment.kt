@@ -13,6 +13,9 @@ import android.view.*
 import android.widget.*
 import androidx.core.text.HtmlCompat
 import androidx.fragment.app.Fragment
+import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.mints.projectgammatwo.R
@@ -47,6 +50,10 @@ class SettingsFragment : Fragment() {
     private lateinit var homeCoordinates: EditText
     private lateinit var homeCoordinatesManager: HomeCoordinatesManager
 
+    // Overlay customization views
+    private lateinit var btnCustomizeOverlay: Button
+    private lateinit var customizationManager: com.mints.projectgammatwo.data.OverlayCustomizationManager
+
     private val gson = Gson()
 
     private val FAVORITES_PREFS_NAME = "favorites_prefs"
@@ -63,6 +70,7 @@ class SettingsFragment : Fragment() {
         filterPreferences = FilterPreferences(requireContext())
         deletedRepo = DeletedInvasionsRepository(requireContext())
         homeCoordinatesManager = HomeCoordinatesManager.getInstance(requireContext())
+        customizationManager = com.mints.projectgammatwo.data.OverlayCustomizationManager(requireContext())
 
         checkboxNYC = view.findViewById(R.id.checkbox_nyc)
         checkboxLondon = view.findViewById(R.id.checkbox_london)
@@ -76,12 +84,14 @@ class SettingsFragment : Fragment() {
         radioJoystick = view.findViewById(R.id.radio_joystick)
         discordTextView = view.findViewById(R.id.discordInvite)
         homeCoordinates = view.findViewById(R.id.homeCoordinates)
+        btnCustomizeOverlay = view.findViewById(R.id.btnCustomizeOverlay)
 
         setupDiscordText()
         setupDataSourceCheckboxes()
         setupExportImportButtons()
         setupTeleportMethod()
         setupHomeCoordinatesField()
+        setupOverlayCustomization()
     }
 
     private fun setupDiscordText() {
@@ -189,6 +199,142 @@ class SettingsFragment : Fragment() {
         }
     }
 
+    private fun setupOverlayCustomization() {
+        btnCustomizeOverlay.setOnClickListener {
+            showOverlayCustomizationDialog()
+        }
+    }
+
+    private fun showOverlayCustomizationDialog() {
+        val dialogView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.dialog_overlay_customization, null)
+
+        val dialog = AlertDialog.Builder(requireContext())
+            .setView(dialogView)
+            .create()
+
+        // Set up button size slider
+        val sizeSeekbar = dialogView.findViewById<SeekBar>(R.id.size_seekbar)
+        val sizeValue = dialogView.findViewById<TextView>(R.id.size_value)
+        val currentSize = customizationManager.getButtonSize()
+
+        sizeSeekbar.progress = currentSize
+        sizeValue.text = "${currentSize}dp"
+
+        sizeSeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                sizeValue.text = "${progress}dp"
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                val newSize = seekBar?.progress ?: 48
+                customizationManager.saveButtonSize(newSize)
+                Toast.makeText(requireContext(), "Button size updated. Restart overlay to apply.", Toast.LENGTH_SHORT).show()
+            }
+        })
+
+        // Set up RecyclerView for buttons
+        val recyclerView = dialogView.findViewById<RecyclerView>(R.id.buttons_recycler_view)
+        recyclerView.layoutManager = LinearLayoutManager(requireContext())
+
+        val buttonOrder = customizationManager.getButtonOrder()
+        val buttonVisibility = customizationManager.getButtonVisibility()
+
+        val buttonItems = buttonOrder.map { buttonId ->
+            com.mints.projectgammatwo.recyclerviews.OverlayButtonItem(
+                id = buttonId,
+                name = getButtonDisplayName(buttonId),
+                iconResId = getButtonIcon(buttonId),
+                isVisible = buttonVisibility[buttonId] ?: true,
+                isRequired = buttonId == "drag_handle" || buttonId == "close_button"
+            )
+        }.toMutableList()
+
+        // Set up ItemTouchHelper for drag-and-drop FIRST (before creating adapter)
+        var itemTouchHelper: ItemTouchHelper? = null
+
+        val adapter = com.mints.projectgammatwo.recyclerviews.OverlayCustomizationAdapter(
+            items = buttonItems,
+            onItemChanged = { updatedItems ->
+                val newOrder = updatedItems.map { it.id }
+                val newVisibility = updatedItems.associate { it.id to it.isVisible }
+                customizationManager.saveButtonOrder(newOrder)
+                customizationManager.saveButtonVisibility(newVisibility)
+                Toast.makeText(requireContext(), "Settings saved. Restart overlay to apply.", Toast.LENGTH_SHORT).show()
+            },
+            onStartDrag = { viewHolder ->
+                itemTouchHelper?.startDrag(viewHolder)
+            }
+        )
+
+        recyclerView.adapter = adapter
+
+        // Force RecyclerView to properly layout its items
+        recyclerView.post {
+            adapter.notifyDataSetChanged()
+            recyclerView.requestLayout()
+        }
+
+        // Now initialize itemTouchHelper
+        itemTouchHelper = ItemTouchHelper(
+            com.mints.projectgammatwo.helpers.ItemTouchHelperCallback(object : com.mints.projectgammatwo.helpers.ItemTouchHelperAdapter {
+                override fun onItemMove(fromPosition: Int, toPosition: Int): Boolean {
+                    return adapter.onItemMove(fromPosition, toPosition)
+                }
+            })
+        )
+        itemTouchHelper.attachToRecyclerView(recyclerView)
+
+        // Set up reset button
+        dialogView.findViewById<Button>(R.id.reset_button).setOnClickListener {
+            customizationManager.resetToDefaults()
+            Toast.makeText(requireContext(), "Reset to defaults. Restart overlay to apply.", Toast.LENGTH_SHORT).show()
+
+            // Refresh the dialog to show reset values
+            dialog.dismiss()
+            showOverlayCustomizationDialog()
+        }
+
+        // Set up close button
+        dialogView.findViewById<Button>(R.id.close_button).setOnClickListener {
+            dialog.dismiss()
+        }
+
+        dialog.show()
+    }
+
+    private fun getButtonDisplayName(buttonId: String): String {
+        return when (buttonId) {
+            "drag_handle" -> "Drag Handle"
+            "close_button" -> "Close"
+            "right_button" -> "Next"
+            "left_button" -> "Previous"
+            "home_button" -> "Home"
+            "refresh_button" -> "Refresh"
+            "switch_modes" -> "Switch Mode"
+            "filter_tab" -> "Filters"
+            "favorites_tab" -> "Favorites"
+            else -> buttonId
+        }
+    }
+
+    private fun getButtonIcon(buttonId: String): Int {
+        return when (buttonId) {
+            "drag_handle" -> R.drawable.ic_drag_handle_overlay
+            "close_button" -> R.drawable.close_24px
+            "right_button" -> R.drawable.arrow_right_24px
+            "left_button" -> R.drawable.arrow_left_24px
+            "home_button" -> R.drawable.home_24px
+            "refresh_button" -> R.drawable.refresh_24px
+            "switch_modes" -> R.drawable.team_rocket_logo
+            "filter_tab" -> R.drawable.tune_24px
+            "favorites_tab" -> R.drawable.ic_favorite
+            else -> R.drawable.ic_launcher_foreground
+        }
+    }
+
     /**
      * Custom input filter for coordinates validation
      */
@@ -268,6 +414,12 @@ class SettingsFragment : Fragment() {
         val activeQuestFilter = filterPreferences.getActiveQuestFilter()
         Log.d("SettingsExport", "Active filters - Rocket: $activeRocketFilter, Quest: $activeQuestFilter")
 
+        // Get overlay customization settings
+        val overlayButtonSize = customizationManager.getButtonSize()
+        val overlayButtonOrder = customizationManager.getButtonOrder()
+        val overlayButtonVisibility = customizationManager.getButtonVisibility()
+        Log.d("SettingsExport", "Overlay customization - Size: $overlayButtonSize, Order: $overlayButtonOrder")
+
         val exportData = ExportData(
             dataSources = dataSources,
             enabledCharacters = enabledCharacters,
@@ -277,9 +429,12 @@ class SettingsFragment : Fragment() {
             homeCoordinates = homeCoords,
             savedRocketFilters = savedRocketFilters,
             savedQuestFilters = savedQuestFilters,
-            savedQuestSpindaForms   = savedQuestSpindaForms,
+            savedQuestSpindaForms = savedQuestSpindaForms,
             activeRocketFilter = activeRocketFilter,
-            activeQuestFilter = activeQuestFilter
+            activeQuestFilter = activeQuestFilter,
+            overlayButtonSize = overlayButtonSize,
+            overlayButtonOrder = overlayButtonOrder,
+            overlayButtonVisibility = overlayButtonVisibility
         )
 
         try {
@@ -485,6 +640,16 @@ class SettingsFragment : Fragment() {
             checkboxSG.isChecked = importData.dataSources.contains("Singapore")
             checkboxVancouver.isChecked = importData.dataSources.contains("VANCOUVER")
             checkboxSydney.isChecked = importData.dataSources.contains("SYDNEY")
+
+            // Import overlay customization settings
+            Log.d("SettingsImport", "Importing overlay button size: ${importData.overlayButtonSize}")
+            customizationManager.saveButtonSize(importData.overlayButtonSize)
+
+            Log.d("SettingsImport", "Importing overlay button order: ${importData.overlayButtonOrder}")
+            customizationManager.saveButtonOrder(importData.overlayButtonOrder)
+
+            Log.d("SettingsImport", "Importing overlay button visibility: ${importData.overlayButtonVisibility}")
+            customizationManager.saveButtonVisibility(importData.overlayButtonVisibility)
 
             Log.d("SettingsImport", "Settings import completed successfully")
             Toast.makeText(requireContext(), "Settings imported successfully", Toast.LENGTH_LONG).show()

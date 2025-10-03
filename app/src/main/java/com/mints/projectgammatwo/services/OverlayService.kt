@@ -22,14 +22,17 @@ import android.view.WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
 import android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 import android.view.WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
 import android.view.WindowManager.LayoutParams.WRAP_CONTENT
+import android.widget.Button
 import android.widget.ImageButton
 import android.widget.PopupMenu
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.lifecycle.Observer
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
@@ -40,9 +43,14 @@ import com.mints.projectgammatwo.data.FavoritesManager
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.data.Invasion
+import com.mints.projectgammatwo.data.OverlayCustomizationManager
 import com.mints.projectgammatwo.helpers.DragTouchListener
+import com.mints.projectgammatwo.helpers.ItemTouchHelperAdapter
+import com.mints.projectgammatwo.helpers.ItemTouchHelperCallback
 import com.mints.projectgammatwo.recyclerviews.FiltersRecyclerView
 import com.mints.projectgammatwo.recyclerviews.OverlayFavoritesAdapter
+import com.mints.projectgammatwo.recyclerviews.OverlayCustomizationAdapter
+import com.mints.projectgammatwo.recyclerviews.OverlayButtonItem
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
 
@@ -50,8 +58,6 @@ enum class FilterSortOrder {
     DEFAULT,
     NAME
 }
-
-
 
 private const val PREF_FILTER_SORT_ORDER = "filter_sort_order"
 
@@ -79,6 +85,11 @@ class OverlayService : Service() {
     private lateinit var dragTouchListener: DragTouchListener
     private var currentFavoritesSortOrder: FilterSortOrder = FilterSortOrder.DEFAULT
     private val PREF_FAVORITES_SORT_ORDER = "favorites_sort_order"
+    private lateinit var customizationManager: OverlayCustomizationManager
+    private var customizationOverlayView: View? = null
+    private var isCustomizationVisible = false
+    private lateinit var customizationAdapter: OverlayCustomizationAdapter
+    private var itemTouchHelper: ItemTouchHelper? = null
 
     companion object {
         private const val TAG = "OverlayService"
@@ -106,6 +117,7 @@ class OverlayService : Service() {
         homeCoordinatesManager = HomeCoordinatesManager.getInstance(this)
         filterPreferences = FilterPreferences(this)
         deletedInvasionsRepository = DeletedInvasionsRepository(this)
+        customizationManager = OverlayCustomizationManager(this)
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Invasion Overlay")
@@ -121,16 +133,61 @@ class OverlayService : Service() {
         } else {
             Log.d(TAG, "No favorites found")
         }
-
-        // Add the overlay immediately when service starts
-       // addOverlay("invasions")
     }
 
+    // Android 15 compatibility: Handle foreground service timeout
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            Log.w(TAG, "Foreground service timeout reached for startId: $startId, fgsType: $fgsType")
+            // Clean up resources and stop the service
+            try {
+                cleanupOverlays()
+                stopSelf()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during timeout cleanup: ${e.message}")
+                stopSelf() // Ensure we stop even if cleanup fails
+            }
+        }
+    }
+
+    private fun cleanupOverlays() {
+        try {
+            overlayView?.let {
+                if (it.windowVisibility == View.VISIBLE) {
+                    windowManager.removeView(it)
+                }
+                overlayView = null
+            }
+            favoritesOverlayView?.let {
+                if (it.windowVisibility == View.VISIBLE) {
+                    windowManager.removeView(it)
+                }
+                favoritesOverlayView = null
+            }
+            filterOverlayView?.let {
+                if (it.windowVisibility == View.VISIBLE) {
+                    windowManager.removeView(it)
+                }
+                filterOverlayView = null
+            }
+            cleanupObservers()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during overlay cleanup: ${e.message}")
+        }
+    }
+
+    // Android 15 compatibility: Check if overlay is visible before starting foreground service
+    private fun isOverlayVisible(): Boolean {
+        return overlayView?.let { view ->
+            view.windowVisibility == View.VISIBLE && view.visibility == View.VISIBLE
+        } ?: false
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val mode = intent?.getStringExtra("mode").toString()
         Log.d(TAG, "Service onStartCommand with mode: $mode")
 
+        // Android 15 compatibility: Ensure overlay is visible for SYSTEM_ALERT_WINDOW compliance
         if (overlayView == null) {
             addOverlay(mode)
             Log.d(TAG, "Overlay re-added on onStartCommand with mode: $mode")
@@ -185,6 +242,8 @@ class OverlayService : Service() {
         val switchModesBtn = overlayView?.findViewById<ImageButton>(R.id.switch_modes)
         val favoritesButton = overlayView?.findViewById<ImageButton>(R.id.favorites_tab)
         val filtersButton = overlayView?.findViewById<ImageButton>(R.id.filter_tab)
+
+        // Create DragTouchListener without long-press callback (no longer needed)
         dragTouchListener = DragTouchListener(params, windowManager, overlayView!!)
 
         switchModesBtn?.setImageResource(if (mode == "quests") R.drawable.binoculars else R.drawable.team_rocket_logo)
@@ -196,6 +255,10 @@ class OverlayService : Service() {
         }
 
         dragHandle.setOnTouchListener(dragTouchListener)
+
+        // Apply saved customization settings
+        applyCustomizationToOverlay()
+
         closeBtn.setOnClickListener {
             Log.d(TAG, "Close button clicked")
             showOverlayToast("Closing overlay")
@@ -789,7 +852,6 @@ class OverlayService : Service() {
         }
     }
 
-    // Enhanced sorting methods with preference-based sorting
     private fun sortFavsByName() {
         val favorites = FavoritesManager.getFavorites(this)
         val sortedList = favorites.sortedBy { it.name }
@@ -800,6 +862,7 @@ class OverlayService : Service() {
         val favorites = FavoritesManager.getFavorites(this)
         favoritesAdapter.submitList(favorites)
     }
+
     private fun loadFavoritesWithSort() {
         val favorites = FavoritesManager.getFavorites(this)
 
@@ -826,6 +889,86 @@ class OverlayService : Service() {
 
         // Show main overlay again
         overlayView?.visibility = View.VISIBLE
+    }
+
+    private fun applyCustomizationToOverlay() {
+        overlayView ?: return
+
+        val buttonSize = customizationManager.getButtonSize()
+        val buttonVisibility = customizationManager.getButtonVisibility()
+        val buttonOrder = customizationManager.getButtonOrder()
+
+        // Convert dp to pixels
+        val buttonSizePx = (buttonSize * resources.displayMetrics.density).toInt()
+
+        // Apply size and visibility to all buttons
+        val buttonMap = mapOf(
+            "drag_handle" to R.id.drag_handle,
+            "close_button" to R.id.close_button,
+            "right_button" to R.id.right_button,
+            "left_button" to R.id.left_button,
+            "home_button" to R.id.home_button,
+            "refresh_button" to R.id.refresh_button,
+            "switch_modes" to R.id.switch_modes,
+            "filter_tab" to R.id.filter_tab,
+            "favorites_tab" to R.id.favorites_tab
+        )
+
+        // Reorder buttons vertically based on saved order
+        var topMargin = 0
+        buttonOrder.forEach { buttonId ->
+            val buttonViewId = buttonMap[buttonId]
+            if (buttonViewId != null) {
+                val button = overlayView?.findViewById<ImageButton>(buttonViewId)
+                button?.let {
+                    // Set size
+                    val layoutParams = it.layoutParams as android.widget.FrameLayout.LayoutParams
+                    layoutParams.width = buttonSizePx
+                    layoutParams.height = buttonSizePx
+                    layoutParams.topMargin = topMargin
+                    it.layoutParams = layoutParams
+
+                    // Set visibility
+                    val isVisible = buttonVisibility[buttonId] ?: true
+                    it.visibility = if (isVisible) View.VISIBLE else View.GONE
+
+                    // Increment top margin for next button (only if visible)
+                    if (isVisible) {
+                        topMargin += buttonSizePx + (2 * resources.displayMetrics.density).toInt() // 2dp spacing
+                    }
+                }
+            }
+        }
+    }
+
+    private fun getButtonDisplayName(buttonId: String): String {
+        return when (buttonId) {
+            "drag_handle" -> "Drag Handle"
+            "close_button" -> "Close"
+            "right_button" -> "Next"
+            "left_button" -> "Previous"
+            "home_button" -> "Home"
+            "refresh_button" -> "Refresh"
+            "switch_modes" -> "Switch Mode"
+            "filter_tab" -> "Filters"
+            "favorites_tab" -> "Favorites"
+            else -> buttonId
+        }
+    }
+
+    private fun getButtonIcon(buttonId: String): Int {
+        return when (buttonId) {
+            "drag_handle" -> R.drawable.ic_drag_handle_overlay
+            "close_button" -> R.drawable.close_24px
+            "right_button" -> R.drawable.arrow_right_24px
+            "left_button" -> R.drawable.arrow_left_24px
+            "home_button" -> R.drawable.home_24px
+            "refresh_button" -> R.drawable.refresh_24px
+            "switch_modes" -> R.drawable.team_rocket_logo
+            "filter_tab" -> R.drawable.tune_24px
+            "favorites_tab" -> R.drawable.ic_favorite
+            else -> R.drawable.ic_launcher_foreground
+        }
     }
 
 

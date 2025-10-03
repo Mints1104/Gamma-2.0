@@ -10,9 +10,9 @@ android {
     defaultConfig {
         applicationId = "com.mints.projectgammatwo"
         minSdk = 24
-        targetSdk = 34
-        versionCode = 1
-        versionName = "3.1"
+        targetSdk = 35
+        versionCode = 2
+        versionName = "3.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

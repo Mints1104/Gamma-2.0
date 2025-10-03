@@ -11,5 +11,9 @@ data class ExportData(
     val savedQuestFilters: Map<String, Set<String>>,
     val savedQuestSpindaForms: Map<String, Set<String>>,
     val activeRocketFilter: String,
-    val activeQuestFilter: String
+    val activeQuestFilter: String,
+    // Overlay customization settings
+    val overlayButtonSize: Int = 48,
+    val overlayButtonOrder: List<String> = emptyList(),
+    val overlayButtonVisibility: Map<String, Boolean> = emptyMap()
 )

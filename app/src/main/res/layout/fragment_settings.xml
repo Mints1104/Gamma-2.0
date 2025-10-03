@@ -10,15 +10,13 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-
-
-
-
-        <!-- Data Source Checkboxes -->
+        <!-- Data Sources Section -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Data Sources:" />
+            android:text="Data Sources"
+            android:textStyle="bold"
+            android:textSize="16sp" />
 
         <CheckBox
             android:id="@+id/checkbox_nyc"
@@ -50,23 +48,53 @@
             android:layout_height="wrap_content"
             android:text="Sydney" />
 
-        <!-- Data Source Checkboxes -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Home Coordinates" />
-
-        <EditText
-            android:id="@+id/homeCoordinates"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Enter home coordinates" />
-
-
-        <!-- Export/Import Buttons -->
+        <!-- Home Coordinates Section -->
         <View
             android:layout_width="match_parent"
             android:layout_height="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Home Coordinates"
+            android:textStyle="bold"
+            android:textSize="16sp" />
+
+        <EditText
+            android:id="@+id/homeCoordinates"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Enter home coordinates" />
+
+        <!-- Overlay Customization Section -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Overlay Customization"
+            android:textStyle="bold"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/btnCustomizeOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Customize Overlay" />
+
+        <!-- Settings Import/Export Section -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Settings Import/Export"
+            android:textStyle="bold"
+            android:textSize="16sp" />
 
         <Button
             android:id="@+id/btnExportSettings"
@@ -80,7 +108,7 @@
             android:layout_height="wrap_content"
             android:text="Import Settings" />
 
-
+        <!-- Divider -->
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
@@ -99,7 +127,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Gamma by Mints&#10;Version: 3.1"
+            android:text="Gamma by Mints&#10;Version: 3.2"
             android:textAlignment="center"
             android:textSize="14sp" />
 
@@ -114,7 +142,7 @@
             android:focusableInTouchMode="true"
             android:textSize="14sp" />
 
-        <!-- Teleport Method Selection -->
+        <!-- Teleport Method Selection (hidden) -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -133,7 +161,6 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:visibility="invisible"
-
                 android:text="ipogo" />
 
             <RadioButton
@@ -141,7 +168,6 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:visibility="invisible"
-
                 android:text="GPS Joystick" />
         </RadioGroup>
 
