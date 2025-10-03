@@ -201,9 +201,11 @@ class FilterFragment : Fragment() {
         super.onPrepareOptionsMenu(menu)
         val saveRocketItem = menu.findItem(R.id.action_save_rocket)
         val saveQuestItem  = menu.findItem(R.id.action_save_quest)
+        val refreshFiltersItem = menu.findItem(R.id.action_refresh_filters)
 
         saveRocketItem?.isVisible = (currentFilterType == "Rocket")
         saveQuestItem?.isVisible  = (currentFilterType == "Quest")
+        refreshFiltersItem?.isVisible = (currentFilterType == "Quest")
     }
 
 
@@ -215,6 +217,16 @@ class FilterFragment : Fragment() {
             }
             R.id.action_save_quest -> {
                 showSaveFilterDialog(false)
+                true
+            }
+            R.id.action_refresh_filters -> {
+                questsViewModel.fetchQuests()
+                if (::questLayout.isInitialized) {
+                    setupQuestFilters(questLayout)
+                }
+                if (::rocketLayoutGlobal.isInitialized) {
+                    setupRocketFilters(rocketLayoutGlobal)
+                }
                 true
             }
             else -> super.onOptionsItemSelected(item)

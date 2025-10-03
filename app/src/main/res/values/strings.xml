@@ -4,5 +4,8 @@
     <string name="discord_link"><![CDATA[<a href="https://discord.gg/VP4mRsvXec">Join our discord</a>]]></string>
     <string name="overlay_icon">Overlay icon\n</string>
     <string name="accessibility_service_description">Enables  overlay features</string>
+    <string name="refresh_quest_filters">Refresh Quest Filters</string>
+    <string name="save_rocket_filter">Save Rocket Filter</string>
+    <string name="save_quest_filter">Save Quest Filter</string>
 
 </resources>

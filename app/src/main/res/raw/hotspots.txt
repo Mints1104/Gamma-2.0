@@ -1,0 +1,213 @@
+[
+    {
+        "name": "Kiritimati",
+        "lat": 1.98715,
+        "lng": -157.47714
+    },
+    {
+        "name": "Pago Pago",
+        "lat": -14.27859,
+        "lng": -170.68886
+    },
+    {
+        "name": "Sau Paulo Brazil",
+        "lat": -23.58659,
+        "lng": -46.65702
+    },
+    {
+        "name": "Sau Luis Brazil",
+        "lat": -2.5578,
+        "lng": -44.30924
+    },
+    {
+        "name": "Santa Cruz Spain",
+        "lat": 28.48952,
+        "lng": -16.31807
+    },
+    {
+        "name": "Indaial Brazil",
+        "lat": -26.89304,
+        "lng": -49.22998
+    },
+    {
+        "name": "Izmir Turkey",
+        "lat": 38.46297,
+        "lng": 27.21787
+    },
+    {
+        "name": "Antalya Turkey",
+        "lat": 36.87944,
+        "lng": 30.709
+    },
+    {
+        "name": "Canary Islands",
+        "lat": 28.1289,
+        "lng": -15.4339
+    },
+    {
+        "name": "Alcatraz Island",
+        "lat": 37.82658,
+        "lng": -122.42296
+    },
+    {
+        "name": "Bornova Buyuk Park Turkey",
+        "lat": 38.46314,
+        "lng": 27.21649
+    },
+    {
+        "name": "Bryant Park",
+        "lat": 40.7536,
+        "lng": -73.9832
+    },
+    {
+        "name": "Budapest",
+        "lat": 47.52876,
+        "lng": 19.05138
+    },
+    {
+        "name": "Busan",
+        "lat": 35.15621,
+        "lng": 129.05732
+    },
+    {
+        "name": "Ceasers Palace",
+        "lat": 36.116,
+        "lng": -115.17422
+    },
+    {
+        "name": "Disneyland",
+        "lat": 33.81195,
+        "lng": -117.91907
+    },
+    {
+        "name": "Central Park",
+        "lat": 40.77042,
+        "lng": -73.97464
+    },
+    {
+        "name": "Dallas",
+        "lat": 32.7759,
+        "lng": -96.79678
+    },
+    {
+        "name": "Disneyworld FL",
+        "lat": 28.41597,
+        "lng": -81.58093
+    },
+    {
+        "name": "Greece",
+        "lat": 40.62773,
+        "lng": 22.95471
+    },
+    {
+        "name": "Hong Kong",
+        "lat": 22.31905,
+        "lng": 114.17212
+    },
+    {
+        "name": "Honolulu",
+        "lat": 21.29836,
+        "lng": -157.86011
+    },
+    {
+        "name": "Korea",
+        "lat": 37.56792,
+        "lng": 126.98776
+    },
+    {
+        "name": "Las Vegas",
+        "lat": 36.11207,
+        "lng": -115.1719
+    },
+    {
+        "name": "London",
+        "lat": 51.51008,
+        "lng": -0.12385
+    },
+    {
+        "name": "Melbourne",
+        "lat": -37.81751,
+        "lng": 144.9633
+    },
+    {
+        "name": "MonteCarlo",
+        "lat": 36.10447,
+        "lng": -115.17458
+    },
+    {
+        "name": "New York",
+        "lat": 40.75593,
+        "lng": -73.98461
+    },
+    {
+        "name": "NianticHQ",
+        "lat": 37.78946,
+        "lng": -122.40162
+    },
+    {
+        "name": "Osaka",
+        "lat": 34.70246,
+        "lng": 135.50024
+    },
+    {
+        "name": "Peru",
+        "lat": -11.56302,
+        "lng": -77.27028
+    },
+    {
+        "name": "Pier 39",
+        "lat": 37.80867,
+        "lng": -122.40982
+    },
+    {
+        "name": "Royal Botanical Gardens",
+        "lat": -33.8642,
+        "lng": 151.2178
+    },
+    {
+        "name": "Santa Monica",
+        "lat": 34.00903,
+        "lng": -118.49728
+    },
+    {
+        "name": "Shinjuku Tokyo",
+        "lat": 35.68902,
+        "lng": 139.70122
+    },
+    {
+        "name": "Singapore",
+        "lat": 1.28872,
+        "lng": 103.84874
+    },
+    {
+        "name": "Sydney",
+        "lat": -33.86882,
+        "lng": 151.2093
+    },
+    {
+        "name": "Times Square",
+        "lat": 40.7589,
+        "lng": -73.9851
+    },
+    {
+        "name": "Disneyland Japan",
+        "lat": 35.63121,
+        "lng": 139.88093
+    },
+    {
+        "name": "Ueno Onshi Tokyo",
+        "lat": 35.71238,
+        "lng": 139.77247
+    },
+    {
+        "name": "UnionSquare",
+        "lat": 37.78799,
+        "lng": -122.40744
+    },
+    {
+        "name": "Zaragoza",
+        "lat": 41.66134,
+        "lng": -0.89283
+    }
+]
+

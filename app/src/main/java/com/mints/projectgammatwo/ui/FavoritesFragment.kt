@@ -88,6 +88,10 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
                 showImportFavoritesDialog()
                 true
             }
+            R.id.menu_import_hotspots -> {
+                showImportHotspotsDialog()
+                true
+            }
             R.id.action_sortByName -> {
                 saveSortOrderPreference(SORT_ORDER_NAME)
                 sortFavsByName()
@@ -164,6 +168,86 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
 
         dialog.show()
     }
+
+    /**
+     * Displays a confirmation dialog for importing hotspots.
+     */
+    private fun showImportHotspotsDialog() {
+        val builder = AlertDialog.Builder(requireContext())
+        val inflater = requireActivity().layoutInflater
+        val dialogView = inflater.inflate(R.layout.dialog_confirm_import_hotspots, null)
+
+        val cancelButton = dialogView.findViewById<Button>(R.id.cancelConfirmButton)
+        val confirmButton = dialogView.findViewById<Button>(R.id.confirmImportButton)
+
+        builder.setView(dialogView)
+        val dialog = builder.create()
+
+        // Set up button click listeners
+        cancelButton.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        confirmButton.setOnClickListener {
+            importHotspots()
+            dialog.dismiss()
+        }
+
+        dialog.show()
+    }
+
+    /**
+     * Imports hotspots from the hotspots.txt file in the res folder.
+     */
+    private fun importHotspots() {
+        try {
+            val inputStream = resources.openRawResource(R.raw.hotspots)
+            val jsonString = inputStream.bufferedReader().use { it.readText() }
+
+            val importType = TypeToken
+                .getParameterized(List::class.java, FavoriteLocation::class.java)
+                .type
+            val importedHotspots: List<FavoriteLocation> = gson.fromJson(jsonString, importType)
+
+            // Store the current list before making changes
+            val previousList = favoritesList.toList()
+            val addedLocations = mutableListOf<FavoriteLocation>()
+
+            // Merge imported hotspots with the current list, avoiding duplicates
+            for (hotspot in importedHotspots) {
+                if (!favoritesList.any { it.lat == hotspot.lat && it.lng == hotspot.lng && it.name == hotspot.name }) {
+                    favoritesList.add(hotspot)
+                    addedLocations.add(hotspot)
+                }
+            }
+
+            adapter.submitList(favoritesList.toList())
+            saveFavorites()
+
+            // Show snackbar with undo option
+            val rootView = requireActivity().findViewById<View>(android.R.id.content)
+            val message = if (addedLocations.isNotEmpty()) {
+                "Imported ${addedLocations.size} hotspot(s)"
+            } else {
+                "No new hotspots to import"
+            }
+
+            Snackbar.make(rootView, message, Snackbar.LENGTH_LONG)
+                .setAction("UNDO") {
+                    // Restore the previous list
+                    favoritesList.clear()
+                    favoritesList.addAll(previousList)
+                    adapter.submitList(favoritesList.toList())
+                    saveFavorites()
+                    Toast.makeText(requireContext(), "Import undone", Toast.LENGTH_SHORT).show()
+                }
+                .show()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(requireContext(), "Failed to import hotspots: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
 
     /**
      * Imports favorites from the provided JSON string.

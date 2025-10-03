@@ -4,6 +4,9 @@
         android:id="@+id/menu_import_favorites"
         android:title="Import Favorites" />
 
+    <item
+        android:id="@+id/menu_import_hotspots"
+        android:title="Import Hotspots" />
 
     <item
         android:id="@+id/action_sortByName"

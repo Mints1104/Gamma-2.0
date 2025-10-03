@@ -4,8 +4,19 @@
 
 
     <item
+        android:id="@+id/action_refresh_filters"
+        android:title="@string/refresh_quest_filters"
+        android:icon="@drawable/refresh_24px"
+
+        app:showAsAction="always"
+
+
+        />
+
+    
+    <item
         android:id="@+id/action_save_rocket"
-        android:title="Save Rocket Filter"
+        android:title="@string/save_rocket_filter"
         android:icon="@drawable/save_as_24px"
 
         app:showAsAction="ifRoom"
@@ -14,9 +25,12 @@
         />
 
 
+
+
+
     <item
         android:id="@+id/action_save_quest"
-        android:title="Save Quest Filter"
+        android:title="@string/save_quest_filter"
         app:showAsAction="ifRoom"
         android:icon="@drawable/save_as_24px"
 
