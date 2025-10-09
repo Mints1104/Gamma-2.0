@@ -3,6 +3,7 @@ package com.mints.projectgammatwo.ui
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.text.InputFilter
 import android.text.InputType
@@ -205,6 +206,32 @@ class SettingsFragment : Fragment() {
         }
     }
 
+    private fun restartOverlayService() {
+        // Check if overlay service is running by checking shared preferences or a flag
+        val sharedPrefs = requireContext().getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE)
+        val isOverlayRunning = sharedPrefs.getBoolean("overlay_running", false)
+        val currentMode = sharedPrefs.getString("overlay_mode", "invasions") ?: "invasions"
+
+        if (isOverlayRunning) {
+            // Stop the service
+            val stopIntent = Intent(requireContext(), com.mints.projectgammatwo.services.OverlayService::class.java)
+            requireContext().stopService(stopIntent)
+
+            // Wait a bit before restarting
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                // Restart the service
+                val startIntent = Intent(requireContext(), com.mints.projectgammatwo.services.OverlayService::class.java)
+                startIntent.putExtra("mode", currentMode)
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    requireContext().startForegroundService(startIntent)
+                } else {
+                    requireContext().startService(startIntent)
+                }
+            }, 500)
+        }
+    }
+
     private fun showOverlayCustomizationDialog() {
         val dialogView = LayoutInflater.from(requireContext())
             .inflate(R.layout.dialog_overlay_customization, null)
@@ -231,7 +258,7 @@ class SettingsFragment : Fragment() {
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 val newSize = seekBar?.progress ?: 48
                 customizationManager.saveButtonSize(newSize)
-                Toast.makeText(requireContext(), "Button size updated. Restart overlay to apply.", Toast.LENGTH_SHORT).show()
+                restartOverlayService()
             }
         })
 
@@ -242,15 +269,18 @@ class SettingsFragment : Fragment() {
         val buttonOrder = customizationManager.getButtonOrder()
         val buttonVisibility = customizationManager.getButtonVisibility()
 
-        val buttonItems = buttonOrder.map { buttonId ->
-            com.mints.projectgammatwo.recyclerviews.OverlayButtonItem(
-                id = buttonId,
-                name = getButtonDisplayName(buttonId),
-                iconResId = getButtonIcon(buttonId),
-                isVisible = buttonVisibility[buttonId] ?: true,
-                isRequired = buttonId == "drag_handle" || buttonId == "close_button"
-            )
-        }.toMutableList()
+        // Filter out drag_handle from the list since it can't be changed
+        val buttonItems = buttonOrder
+            .filter { it != "drag_handle" }
+            .map { buttonId ->
+                com.mints.projectgammatwo.recyclerviews.OverlayButtonItem(
+                    id = buttonId,
+                    name = getButtonDisplayName(buttonId),
+                    iconResId = getButtonIcon(buttonId),
+                    isVisible = buttonVisibility[buttonId] ?: true,
+                    isRequired = buttonId == "close_button"
+                )
+            }.toMutableList()
 
         // Set up ItemTouchHelper for drag-and-drop FIRST (before creating adapter)
         var itemTouchHelper: ItemTouchHelper? = null
@@ -258,11 +288,13 @@ class SettingsFragment : Fragment() {
         val adapter = com.mints.projectgammatwo.recyclerviews.OverlayCustomizationAdapter(
             items = buttonItems,
             onItemChanged = { updatedItems ->
-                val newOrder = updatedItems.map { it.id }
-                val newVisibility = updatedItems.associate { it.id to it.isVisible }
+                // Re-add drag_handle at the beginning when saving
+                val newOrder = listOf("drag_handle") + updatedItems.map { it.id }
+                val newVisibility = updatedItems.associate { it.id to it.isVisible }.toMutableMap()
+                newVisibility["drag_handle"] = true // Always visible
                 customizationManager.saveButtonOrder(newOrder)
                 customizationManager.saveButtonVisibility(newVisibility)
-                Toast.makeText(requireContext(), "Settings saved. Restart overlay to apply.", Toast.LENGTH_SHORT).show()
+                restartOverlayService()
             },
             onStartDrag = { viewHolder ->
                 itemTouchHelper?.startDrag(viewHolder)
@@ -277,7 +309,7 @@ class SettingsFragment : Fragment() {
             recyclerView.requestLayout()
         }
 
-        // Now initialize itemTouchHelper
+        // Now initialize itemTouchHelper (all items can be dragged now)
         itemTouchHelper = ItemTouchHelper(
             com.mints.projectgammatwo.helpers.ItemTouchHelperCallback(object : com.mints.projectgammatwo.helpers.ItemTouchHelperAdapter {
                 override fun onItemMove(fromPosition: Int, toPosition: Int): Boolean {
@@ -290,11 +322,32 @@ class SettingsFragment : Fragment() {
         // Set up reset button
         dialogView.findViewById<Button>(R.id.reset_button).setOnClickListener {
             customizationManager.resetToDefaults()
-            Toast.makeText(requireContext(), "Reset to defaults. Restart overlay to apply.", Toast.LENGTH_SHORT).show()
 
-            // Refresh the dialog to show reset values
-            dialog.dismiss()
-            showOverlayCustomizationDialog()
+            // Update the current dialog without dismissing it
+            val newButtonOrder = customizationManager.getButtonOrder()
+            val newButtonVisibility = customizationManager.getButtonVisibility()
+
+            // Filter out drag_handle again
+            val newButtonItems = newButtonOrder
+                .filter { it != "drag_handle" }
+                .map { buttonId ->
+                    com.mints.projectgammatwo.recyclerviews.OverlayButtonItem(
+                        id = buttonId,
+                        name = getButtonDisplayName(buttonId),
+                        iconResId = getButtonIcon(buttonId),
+                        isVisible = newButtonVisibility[buttonId] ?: true,
+                        isRequired = buttonId == "close_button"
+                    )
+                }
+
+            adapter.updateItems(newButtonItems)
+
+            // Update size slider
+            val defaultSize = customizationManager.getButtonSize()
+            sizeSeekbar.progress = defaultSize
+            sizeValue.text = "${defaultSize}dp"
+
+            restartOverlayService()
         }
 
         // Set up close button
@@ -596,8 +649,7 @@ class SettingsFragment : Fragment() {
                     Log.d("SettingsImport", "Importing quest filter '$name' with ${questStrings.size} quests: $questStrings")
 
                     try {
-                        // Use saveCurrentQuestFilter method since it's more reliable
-                        // First, set the current enabled quests to match this filter
+
                         filterPreferences.saveEnabledQuestFilters(questStrings)
                         filterPreferences.saveCurrentQuestFilter(name)
                         val forms = importData.savedQuestSpindaForms[name] ?: emptySet()
@@ -655,7 +707,6 @@ class SettingsFragment : Fragment() {
             Toast.makeText(requireContext(), "Settings imported successfully", Toast.LENGTH_LONG).show()
         } catch (ex: Exception) {
             Log.e("SettingsImport", "Import failed with exception: ${ex.message}", ex)
-            // Log the JSON as well to see what might be wrong with it
             Log.e("SettingsImport", "JSON that caused failure: ${jsonString.take(200)}...")
             ex.printStackTrace()
             Toast.makeText(requireContext(), "Failed to import settings: ${ex.message}", Toast.LENGTH_LONG).show()

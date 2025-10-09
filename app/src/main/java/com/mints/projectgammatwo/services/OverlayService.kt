@@ -133,6 +133,10 @@ class OverlayService : Service() {
         } else {
             Log.d(TAG, "No favorites found")
         }
+
+        // Save overlay running state
+        val sharedPrefs = getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE)
+        sharedPrefs.edit().putBoolean("overlay_running", true).apply()
     }
 
     // Android 15 compatibility: Handle foreground service timeout
@@ -186,6 +190,10 @@ class OverlayService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val mode = intent?.getStringExtra("mode").toString()
         Log.d(TAG, "Service onStartCommand with mode: $mode")
+
+        // Save the current mode
+        val sharedPrefs = getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE)
+        sharedPrefs.edit().putString("overlay_mode", mode).apply()
 
         // Android 15 compatibility: Ensure overlay is visible for SYSTEM_ALERT_WINDOW compliance
         if (overlayView == null) {
@@ -540,6 +548,11 @@ class OverlayService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Error on destroy: ${e.message}")
         }
+
+        // Clear overlay running state
+        val sharedPrefs = getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE)
+        sharedPrefs.edit().putBoolean("overlay_running", false).apply()
+
         Log.d(TAG, "Service destroyed completely")
     }
 
@@ -886,6 +899,7 @@ class OverlayService : Service() {
     private fun hideFilterOverlay() {
         filterOverlayView?.visibility = View.GONE
         isFilterVisible = false
+
 
         // Show main overlay again
         overlayView?.visibility = View.VISIBLE

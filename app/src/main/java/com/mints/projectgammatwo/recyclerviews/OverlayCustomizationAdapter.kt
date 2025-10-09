@@ -38,9 +38,6 @@ class OverlayCustomizationAdapter(
     override fun getItemCount(): Int = items.size
 
     fun onItemMove(fromPosition: Int, toPosition: Int): Boolean {
-        // Don't allow moving drag_handle from first position
-        if (fromPosition == 0 || toPosition == 0) return false
-
         Collections.swap(items, fromPosition, toPosition)
         notifyItemMoved(fromPosition, toPosition)
         onItemChanged(items)
@@ -67,11 +64,8 @@ class OverlayCustomizationAdapter(
             // Disable switch for required buttons
             visibilitySwitch.isEnabled = !item.isRequired
 
-            // Disable dragging for drag_handle (should always be first)
-            // Only make the DRAG ICON grey, not the button preview icon
-            dragIcon.alpha = if (position == 0) 0.3f else 1.0f
-
-            // Keep button icon at full opacity
+            // All items can now be dragged
+            dragIcon.alpha = 1.0f
             buttonIcon.alpha = 1.0f
 
             visibilitySwitch.setOnCheckedChangeListener { _, isChecked ->
@@ -80,7 +74,7 @@ class OverlayCustomizationAdapter(
             }
 
             dragIcon.setOnTouchListener { _, event ->
-                if (event.action == MotionEvent.ACTION_DOWN && position != 0) {
+                if (event.action == MotionEvent.ACTION_DOWN) {
                     onStartDrag(this)
                     true
                 } else {
