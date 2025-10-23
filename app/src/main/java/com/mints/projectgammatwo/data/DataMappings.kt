@@ -37,7 +37,6 @@ object DataMappings {
         4 to "Typeless Male",
         1 to "Kecleon",
         0 to "Showcase",
-        9998 to "Golden Lure"
     )
 
     val typeDescriptionsMap = mapOf(
@@ -56,7 +55,7 @@ object DataMappings {
         ICE(15), DRAGON(16), DARK(17), FAIRY(18);
 
         companion object {
-            fun fromId(id: Int): PokemonType = values().firstOrNull { it.id == id } ?: NONE
+            fun fromId(id: Int): PokemonType = PokemonType.entries.firstOrNull { it.id == id } ?: NONE
         }
     }
 

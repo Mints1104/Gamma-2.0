@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import androidx.core.content.edit
 
 /**
  * Manages overlay customization preferences including button visibility, order, and size
@@ -46,7 +47,7 @@ class OverlayCustomizationManager(context: Context) {
      */
     fun saveButtonOrder(order: List<String>) {
         val json = gson.toJson(order)
-        prefs.edit().putString(KEY_BUTTON_ORDER, json).apply()
+        prefs.edit { putString(KEY_BUTTON_ORDER, json) }
     }
 
     /**
@@ -67,7 +68,7 @@ class OverlayCustomizationManager(context: Context) {
      */
     fun saveButtonVisibility(visibility: Map<String, Boolean>) {
         val json = gson.toJson(visibility)
-        prefs.edit().putString(KEY_BUTTON_VISIBILITY, json).apply()
+        prefs.edit { putString(KEY_BUTTON_VISIBILITY, json) }
     }
 
     /**

@@ -49,11 +49,11 @@ class DeletedInvasionsRepository(context: Context) {
     }
 
     fun resetDeletedInvasions() {
-        prefs.edit().remove(key).apply()
+        prefs.edit { remove(key) }
     }
 
     fun setDeletedEntries(entries: Set<DeletedEntry>) {
         val stringSet = entries.map { "${it.lat},${it.lng},${it.timestamp}" }.toSet()
-        prefs.edit().putStringSet(key, stringSet).apply()
+        prefs.edit { putStringSet(key, stringSet) }
     }
 }

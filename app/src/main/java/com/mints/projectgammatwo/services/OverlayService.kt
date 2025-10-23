@@ -548,11 +548,11 @@ class OverlayService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Error on destroy: ${e.message}")
         }
-
+        
         // Clear overlay running state
         val sharedPrefs = getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE)
         sharedPrefs.edit().putBoolean("overlay_running", false).apply()
-
+        
         Log.d(TAG, "Service destroyed completely")
     }
 

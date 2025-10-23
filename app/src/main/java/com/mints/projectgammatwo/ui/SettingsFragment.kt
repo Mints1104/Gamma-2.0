@@ -211,18 +211,18 @@ class SettingsFragment : Fragment() {
         val sharedPrefs = requireContext().getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE)
         val isOverlayRunning = sharedPrefs.getBoolean("overlay_running", false)
         val currentMode = sharedPrefs.getString("overlay_mode", "invasions") ?: "invasions"
-
+        
         if (isOverlayRunning) {
             // Stop the service
             val stopIntent = Intent(requireContext(), com.mints.projectgammatwo.services.OverlayService::class.java)
             requireContext().stopService(stopIntent)
-
+            
             // Wait a bit before restarting
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 // Restart the service
                 val startIntent = Intent(requireContext(), com.mints.projectgammatwo.services.OverlayService::class.java)
                 startIntent.putExtra("mode", currentMode)
-
+                
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     requireContext().startForegroundService(startIntent)
                 } else {
@@ -322,11 +322,11 @@ class SettingsFragment : Fragment() {
         // Set up reset button
         dialogView.findViewById<Button>(R.id.reset_button).setOnClickListener {
             customizationManager.resetToDefaults()
-
+            
             // Update the current dialog without dismissing it
             val newButtonOrder = customizationManager.getButtonOrder()
             val newButtonVisibility = customizationManager.getButtonVisibility()
-
+            
             // Filter out drag_handle again
             val newButtonItems = newButtonOrder
                 .filter { it != "drag_handle" }
@@ -339,14 +339,14 @@ class SettingsFragment : Fragment() {
                         isRequired = buttonId == "close_button"
                     )
                 }
-
+            
             adapter.updateItems(newButtonItems)
-
+            
             // Update size slider
             val defaultSize = customizationManager.getButtonSize()
             sizeSeekbar.progress = defaultSize
             sizeValue.text = "${defaultSize}dp"
-
+            
             restartOverlayService()
         }
 

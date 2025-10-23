@@ -45,9 +45,9 @@ class FilterPreferences(context: Context) {
         val all = prefs.getStringSet(KEY_ALL_FILTERS, emptySet())!!.toMutableSet()
         all.add(name)
         Log.d("FilterPreferences", "All filters after adding: $all")
-        prefs.edit()
-            .putStringSet(KEY_ALL_FILTERS, all)
-            .apply()
+        prefs.edit {
+            putStringSet(KEY_ALL_FILTERS, all)
+        }
     }
 
     fun getEnabledQuestFilters(): Set<String> {
@@ -55,7 +55,7 @@ class FilterPreferences(context: Context) {
     }
 
     fun saveEnabledQuestFilters(filters: Set<String>) {
-        questPrefs.edit().putStringSet("enabled_quest_filters", filters).apply()
+        questPrefs.edit { putStringSet("enabled_quest_filters", filters) }
         val activeFilter = getActiveQuestFilter()
         if (activeFilter.isNotEmpty()) {
             updateQuestFilter(activeFilter, filters)
@@ -213,7 +213,7 @@ class FilterPreferences(context: Context) {
 
 
     fun setActiveRocketFilter(name: String) {
-        prefs.edit().putString(KEY_ACTIVE_ROCKET_FILTER, name).apply()
+        prefs.edit { putString(KEY_ACTIVE_ROCKET_FILTER, name) }
     }
 
     fun getActiveRocketFilter(): String {

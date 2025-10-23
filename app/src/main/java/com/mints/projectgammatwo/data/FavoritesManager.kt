@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import androidx.core.content.edit
 
 object FavoritesManager {
     private const val FAVORITES_PREFS_NAME = "favorites_prefs"
@@ -36,16 +37,16 @@ object FavoritesManager {
 
     fun saveFavorites(context: Context, favorites: List<FavoriteLocation>) {
         val prefs = context.getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
-        val editor = prefs.edit()
+        prefs.edit {
 
-        // Save the full favorites list as JSON
-        editor.putString(KEY_FAVORITES, gson.toJson(favorites))
+            // Save the full favorites list as JSON
+            putString(KEY_FAVORITES, gson.toJson(favorites))
 
-        // Save the order separately
-        val originalOrder = favorites.map { it.name } // Store names as order reference
-        editor.putString(KEY_ORDER, gson.toJson(originalOrder))
+            // Save the order separately
+            val originalOrder = favorites.map { it.name } // Store names as order reference
+            putString(KEY_ORDER, gson.toJson(originalOrder))
 
-        editor.apply()
+        }
     }
 
     fun teleportToLocation(context: Context, favorite: FavoriteLocation): Boolean {
