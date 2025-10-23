@@ -35,4 +35,40 @@
     <string name="overlay_button_switch_mode">Switch Mode</string>
     <string name="overlay_button_filters">Filters</string>
     <string name="overlay_button_favorites">Favorites</string>
+    <string name="quests_error_unable_fetch">Unable to fetch quests. Please check your connection.</string>
+    <string name="quests_error_unexpected">An unexpected error occurred</string>
+    <string name="deleted_unknown_character">Unknown Character</string>
+    <string name="deleted_unknown_type">Unknown Type</string>
+    <string name="deleted_unknown_stop">Unknown Pokéstop</string>
+    <string name="deleted_unknown_source">Unknown Source</string>
+
+    <string name="deleted_item_name">Pokestop: %1$s</string>
+    <string name="deleted_item_source">Source: %1$s</string>
+    <string name="deleted_item_character">Character: %1$s</string>
+    <string name="deleted_item_type">Type: %1$s</string>
+    <string name="deleted_item_coords">Location: %1$.5f, %2$.5f</string>
+    <string name="deleted_item_time">Battled: %1$s</string>
+
+    <string name="deleted_item_name_placeholder">Pokestop: —</string>
+    <string name="deleted_item_source_placeholder">Source: —</string>
+    <string name="deleted_item_character_placeholder">Character: —</string>
+    <string name="deleted_item_type_placeholder">Type: —</string>
+    <string name="deleted_item_coords_placeholder">Location: —</string>
+    <string name="deleted_item_time_placeholder">Battled: —</string>
+    <string name="copy">Copy</string>
+    <string name="teleport">Teleport</string>
+    <string name="history">History</string>
+
+    <string name="coords_copied">Coordinates copied to clipboard</string>
+    <string name="deleted_empty">No previous battles yet.</string>
+    <plurals name="deleted_count">
+        <item quantity="one">%1$d battle in journal</item>
+        <item quantity="other">%1$d battles in journal</item>
+    </plurals>
+
+    <string name="cd_scroll_to_top">Scroll to top</string>
+    <string name="invasion_item_name">Pokestop: %1$s</string>
+    <string name="invasion_item_source">Source: %1$s</string>
+    <string name="invasion_item_coords">Location: %1$s</string>
+    <string name="invasion_item_time_range">Time: %1$s - %2$s</string>
 </resources>

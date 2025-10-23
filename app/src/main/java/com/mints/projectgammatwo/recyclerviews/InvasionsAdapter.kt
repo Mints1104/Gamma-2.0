@@ -4,7 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -41,7 +41,7 @@ class InvasionsAdapter(
         private val characterNameText: TextView = itemView.findViewById(R.id.characterNameText)
         private val typeText: TextView = itemView.findViewById(R.id.typeText)
         private val locationNameText: TextView = itemView.findViewById(R.id.locationText)
-        private val sourceText: TextView = itemView.findViewById(R.id.sourceText)  // New TextView for source
+        private val sourceText: TextView = itemView.findViewById(R.id.sourceText)
         private val coordinatesText: TextView = itemView.findViewById(R.id.coordinatesText)
         private val timeText: TextView = itemView.findViewById(R.id.timeText)
         private val teleportButton: Button = itemView.findViewById(R.id.teleportButton)
@@ -50,38 +50,34 @@ class InvasionsAdapter(
         private val dateFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
         fun bind(invasion: Invasion) {
+            val ctx = itemView.context
             characterNameText.text = invasion.characterName
             typeText.text = invasion.typeDescription
-            locationNameText.text = "Pokestop: ${invasion.name}"
+            locationNameText.text = ctx.getString(R.string.invasion_item_name, invasion.name)
             val invasionText = invasion.source.lowercase().replaceFirstChar { it.uppercase() }
+            sourceText.text = ctx.getString(R.string.invasion_item_source, invasionText)
 
-            // Bind the source. (Assumes your Invasion data class has a "source" property.)
-            sourceText.text = "Source: $invasionText"
-
-            val coordsFormatted = String.format("%.5f, %.5f", invasion.lat, invasion.lng)
-            coordinatesText.text = "Location: $coordsFormatted"
+            val coordsFormatted = String.format(Locale.getDefault(), "%.5f, %.5f", invasion.lat, invasion.lng)
+            coordinatesText.text = ctx.getString(R.string.invasion_item_coords, coordsFormatted)
             val startTime = dateFormat.format(Date(invasion.invasion_start * 1000))
             val endTime = dateFormat.format(Date(invasion.invasion_end * 1000))
-            timeText.text = "Time: $startTime - $endTime"
+            timeText.text = ctx.getString(R.string.invasion_item_time_range, startTime, endTime)
 
-            // Teleport button
             teleportButton.setOnClickListener {
                 val url = "https://ipogo.app/?coords=${invasion.lat},${invasion.lng}"
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                itemView.context.startActivity(intent)
+                val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+                ctx.startActivity(intent)
                 onDeleteInvasion(invasion)
             }
 
-            // Copy button
             copyButton.setOnClickListener {
                 val coordsText = "${invasion.lat},${invasion.lng}"
-                val clipboard = itemView.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 val clip = ClipData.newPlainText("Coordinates", coordsText)
                 clipboard.setPrimaryClip(clip)
-                Toast.makeText(itemView.context, "Coordinates copied to clipboard", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, R.string.coords_copied, Toast.LENGTH_SHORT).show()
             }
 
-            // Delete button
             deleteButton.setOnClickListener {
                 onDeleteInvasion(invasion)
             }

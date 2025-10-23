@@ -9,7 +9,11 @@
         android:id="@+id/homeFragment"
         android:name="com.mints.projectgammatwo.ui.HomeFragment"
         android:label="Rockets"
-        tools:layout="@layout/fragment_home" />
+        tools:layout="@layout/fragment_home">
+        <action
+            android:id="@+id/action_homeFragment_to_deletedInvasionsFragment"
+            app:destination="@id/deletedInvasionsFragment" />
+    </fragment>
 
     <fragment
         android:id="@+id/filterFragment"
@@ -33,8 +37,9 @@
         android:name="com.mints.projectgammatwo.ui.QuestsFragment"
         android:label="Quests" />
 
-
-
-
-
+    <fragment
+        android:id="@+id/deletedInvasionsFragment"
+        android:name="com.mints.projectgammatwo.ui.DeletedInvasionsFragment"
+        android:label="Journal"
+        tools:layout="@layout/fragment_deleted_invasions" />
 </navigation>

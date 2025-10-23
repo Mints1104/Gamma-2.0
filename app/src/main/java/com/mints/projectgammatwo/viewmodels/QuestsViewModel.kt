@@ -3,7 +3,6 @@ package com.mints.projectgammatwo.viewmodels
 import android.app.Application
 import android.content.Context
 import android.util.Log
-import android.util.Log.e
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -35,7 +34,7 @@ import retrofit2.HttpException
 import java.util.concurrent.TimeUnit
 import androidx.core.content.edit
 import kotlinx.coroutines.withContext
-
+import com.mints.projectgammatwo.R
 
 class QuestsViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -56,6 +55,31 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _error = MutableLiveData<String>()
     val error: LiveData<String> get() = _error
+
+    // Single OkHttpClient reused for all requests
+    private val httpClient: OkHttpClient by lazy {
+        val interceptor = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.NONE }
+        OkHttpClient.Builder()
+            .addInterceptor(interceptor)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+
+    // Cache QuestsApiService per base URL
+    private val serviceCache = mutableMapOf<String, QuestsApiService>()
+
+    private fun getServiceForBase(baseUrl: String): QuestsApiService {
+        return serviceCache.getOrPut(baseUrl) {
+            Retrofit.Builder()
+                .baseUrl(baseUrl)
+                .addConverterFactory(GsonConverterFactory.create())
+                .client(httpClient)
+                .build()
+                .create(QuestsApiService::class.java)
+        }
+    }
 
     // Calculate the distance between two quests using the Haversine formula.
     private fun haversineDistance(a: Quest, b: Quest): Double {
@@ -120,11 +144,25 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         return sorted
     }
 
-    // Save the coordinates of the last visited quest to shared preferences.
+    // Pick nearest N quests to a given point to reduce sort workload
+    private fun nearestNByPoint(quests: List<Quest>, lat: Double, lng: Double, n: Int): List<Quest> {
+        if (quests.size <= n) return quests
+        return quests
+            .asSequence()
+            .map { it to haversineDistanceFromPoint(lat, lng, it) }
+            .sortedBy { it.second }
+            .take(n)
+            .map { it.first }
+            .toList()
+    }
+
+    // Save the coordinates of the last visited quest. Store as string for precision; fallback compatible when reading.
     fun saveLastVisitedCoordinates(quest: Quest) {
         val context = getApplication<Application>().applicationContext
         val prefs = context.getSharedPreferences("last_visited_pref", Context.MODE_PRIVATE)
         prefs.edit().apply {
+            putString("lastVisited", "${quest.lat},${quest.lng}")
+            // Keep old keys for backward compatibility
             putFloat("lastVisitedLat", quest.lat.toFloat())
             putFloat("lastVisitedLng", quest.lng.toFloat())
             apply()
@@ -134,15 +172,6 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
     fun fetchQuests() {
         Log.d("QuestsViewModel", "Starting fetchQuests()")
         val context = getApplication<Application>().applicationContext
-        val interceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.NONE
-        }
-        val client = OkHttpClient.Builder().addInterceptor(interceptor)
-            .connectTimeout(30,TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
-
 
         val filterPreferences = QuestFilterPreferences(context)
         val visitedPreferences = VisitedQuestsPreferences(context)
@@ -154,6 +183,20 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         _filterSizeLiveData.postValue(filtersToUse.size)
         val selectedSources = dataSourcePreferences.getSelectedSources()
 
+        // Load last visited coordinates from shared preferences (support new and old format)
+        val prefs = context.getSharedPreferences("last_visited_pref", Context.MODE_PRIVATE)
+        val lastCombined = prefs.getString("lastVisited", null)
+        val (startLat, startLng) = if (!lastCombined.isNullOrEmpty() && "," in lastCombined) {
+            val parts = lastCombined.split(",")
+            parts.getOrNull(0)?.toDoubleOrNull() to parts.getOrNull(1)?.toDoubleOrNull()
+        } else {
+            val latF = prefs.getFloat("lastVisitedLat", Float.NaN)
+            val lngF = prefs.getFloat("lastVisitedLng", Float.NaN)
+            val lat = if (!latF.isNaN()) latF.toDouble() else null
+            val lng = if (!lngF.isNaN()) lngF.toDouble() else null
+            lat to lng
+        }
+
         viewModelScope.launch {
             try {
                 Log.d("QuestsViewModel", "Selected data sources: $selectedSources")
@@ -161,21 +204,13 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                     ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
                         async(Dispatchers.IO) {
                             try {
-                                val retrofit = Retrofit.Builder()
-                                    .baseUrl(baseUrl)
-                                    .addConverterFactory(GsonConverterFactory.create())
-                                    .client(client)
-                                    .build()
-                                val service = retrofit.create(QuestsApiService::class.java)
-
+                                val service = getServiceForBase(baseUrl)
                                 val response = service.getQuests(filtersToUse, System.currentTimeMillis()).execute()
 
-                                // Check if the response is successful
                                 if (response.isSuccessful) {
                                     Log.d("QuestsViewModel", "API call successful for source $source")
                                     Pair(source, Result.success(response))
                                 } else {
-                                    // Handle HTTP errors (4xx, 5xx)
                                     val errorMsg = "HTTP ${response.code()}: ${response.message()}"
                                     Log.w("QuestsViewModel", "API error for source $source: $errorMsg")
                                     Pair(source, Result.failure<retrofit2.Response<Quests.QuestsResponse>>(
@@ -183,26 +218,21 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                                     ))
                                 }
                             } catch (e: IOException) {
-                                // Network connectivity issues, timeouts
                                 Log.e("QuestsViewModel", "Network error for source $source", e)
                                 Pair(source, Result.failure<retrofit2.Response<Quests.QuestsResponse>>(
                                     IOException("Network error for source $source", e)
                                 ))
-
                             } catch (e: HttpException) {
-                                // HTTP errors (if using suspend functions)
                                 Log.e("QuestsViewModel", "HTTP error for source $source: ${e.code()}", e)
                                 Pair(source, Result.failure<retrofit2.Response<Quests.QuestsResponse>>(
                                     e
                                 ))
                             } catch (e: JsonSyntaxException) {
-                                // JSON parsing errors
                                 Log.e("QuestsViewModel", "JSON parsing error for source $source", e)
                                 Pair(source, Result.failure<retrofit2.Response<Quests.QuestsResponse>>(
                                     IOException("JSON parsing error for source $source", e)
                                 ))
                             } catch (e: Exception) {
-                                // Any other unexpected errors
                                 Log.e("QuestsViewModel", "Unexpected error for source $source", e)
                                 Pair(source, Result.failure<retrofit2.Response<Quests.QuestsResponse>>(
                                     Exception("Unexpected error for source $source", e)
@@ -214,23 +244,20 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
 
                 val responses = deferredList.map { it.await() }
 
-                // Filter successful responses
                 val successfulResponses = responses.mapNotNull { (source, result) ->
                     result.getOrNull()?.let { response ->
                         Pair(source, response)
                     }
                 }
 
-                // If no successful responses, handle the error state
                 if (successfulResponses.isEmpty()) {
                     Log.w("QuestsViewModel", "No successful API responses received")
                     _questsLiveData.postValue(emptyList())
-                     _error.postValue("Unable to fetch quests. Please check your connection.")
+                    _error.postValue(getApplication<Application>().getString(R.string.quests_error_unable_fetch))
                     return@launch
                 }
                 Log.d("QuestsViewModel", "Successfully fetched quests from ${successfulResponses.size} sources")
 
-                // Process successful responses
                 successfulResponses.firstOrNull()?.second?.body()?.filters?.let { filters ->
                     val filtersJson = Gson().toJson(filters)
                     context.getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
@@ -251,34 +278,23 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                     !visited.contains(id)
                 }
                 Log.d("QuestsViewModel", "Filtered quests after removing visited: ${filteredQuests.size}")
-                val spindaForms = filterPreferences.getEnabledSpindaForms()
-                val enabledFormNumbers: List<String> =
-                    filterPreferences
-                        .getEnabledSpindaForms()
-                        .map { it.substringAfterLast("_") }
 
+                val spindaForms = filterPreferences.getEnabledSpindaForms()
+                val enabledFormNumbers: List<String> = spindaForms.map { it.substringAfterLast("_") }
                 Log.d("QuestsViewModel", "Enabled Spinda Form Numbers: $enabledFormNumbers")
                 val formRegex = Regex("Spinda \\((\\d{2})\\)")
 
-                if(spindaForms.isNotEmpty()) {
+                if (spindaForms.isNotEmpty()) {
                     filteredQuests = filterSpindaForms(filteredQuests, formRegex, enabledFormNumbers)
                 }
                 Log.d("QuestsViewModel", "Filtered quests after Spinda form filtering: ${filteredQuests.size}")
 
-
-
-
-
-                filteredQuests = filteredQuests.take(500)
-
-
-
-                // Load last visited coordinates from shared preferences
-                val prefs = context.getSharedPreferences("last_visited_pref", Context.MODE_PRIVATE)
-                val lastVisitedLat = prefs.getFloat("lastVisitedLat", Float.NaN)
-                val lastVisitedLng = prefs.getFloat("lastVisitedLng", Float.NaN)
-                val startLat = if (!lastVisitedLat.isNaN()) lastVisitedLat.toDouble() else null
-                val startLng = if (!lastVisitedLng.isNaN()) lastVisitedLng.toDouble() else null
+                // Pre-limit by proximity to last visited when available to reduce sorting cost
+                filteredQuests = if (startLat != null && startLng != null) {
+                    nearestNByPoint(filteredQuests, startLat, startLng, 500)
+                } else {
+                    filteredQuests.take(500)
+                }
 
                 // Sort the filtered quests using the last visited coordinates
                 val sortedQuests = sortQuestsByNearestNeighbor(filteredQuests, startLat, startLng)
@@ -287,9 +303,9 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                 CurrentQuestData.currentQuests = sortedQuests.toMutableList()
 
             } catch (e: Exception) {
-                e("QuestsViewModel", "Error in fetchQuests", e)
+                Log.e("QuestsViewModel", "Error in fetchQuests", e)
                 _questsLiveData.postValue(emptyList())
-                 _error.postValue("An unexpected error occurred")
+                _error.postValue(getApplication<Application>().getString(R.string.quests_error_unexpected))
             }
         }
     }
@@ -300,17 +316,16 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         enabledFormNumbers: List<String>
     ): List<Quest> {
         return quests.filter { quest ->
-            if (quest.rewardsIds != "327") {
+            val hasSpinda = quest.rewardsIds.split(",").any { it.trim() == "327" }
+            if (!hasSpinda) {
                 true
             } else {
                 val matchResult = formRegex.find(quest.rewardsString)
                 val formNumber = matchResult?.groupValues?.getOrNull(1)
-                // We only keep the Spinda quest if we found its form number AND it's in the enabled list.
                 formNumber != null && enabledFormNumbers.contains(formNumber)
             }
         }
     }
-
 
     fun fetchSpindaFormsFromApi() {
         val context = getApplication<Application>().applicationContext
@@ -356,7 +371,6 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                 val service = retrofit.create(QuestsApiService::class.java)
 
                 Log.d("QuestsViewModel", "Making API call to fetch quests with filters: $filtersToUse")
-                // Switch to IO dispatcher for the blocking call
                 val response = withContext(Dispatchers.IO) {
                     service.getQuests(filtersToUse, System.currentTimeMillis()).execute()
                 }
@@ -403,6 +417,4 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
     }
-
-
 }

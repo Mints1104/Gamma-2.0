@@ -16,6 +16,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -57,8 +58,9 @@ class HomeFragment : Fragment() {
 
             override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
                 return when (menuItem.itemId) {
-                    R.id.action_open_journal -> {
-                        testGetDeletedInvasions()
+
+                    R.id.action_open_history -> {
+                        findNavController().navigate(R.id.action_homeFragment_to_deletedInvasionsFragment)
                         true
                     }
                     else -> false
