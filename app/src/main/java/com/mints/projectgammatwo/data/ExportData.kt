@@ -4,7 +4,6 @@ data class ExportData(
     val dataSources: Set<String>,
     val enabledCharacters: Set<Int>,
     val favorites: List<FavoriteLocation>,
-    val deletedEntries: Set<DeletedEntry>,
     val enabledQuests: Set<String>,
     val homeCoordinates: String,
     val savedRocketFilters: Map<String, Set<Int>>,

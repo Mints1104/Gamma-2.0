@@ -1,6 +1,5 @@
 package com.mints.projectgammatwo.ui
 
-import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -12,6 +11,8 @@ import android.text.method.LinkMovementMethod
 import android.util.Log
 import android.view.*
 import android.widget.*
+import androidx.appcompat.app.AlertDialog
+import androidx.core.content.edit
 import androidx.core.text.HtmlCompat
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -21,17 +22,29 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.DataSourcePreferences
-import com.mints.projectgammatwo.data.DeletedEntry
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
 import com.mints.projectgammatwo.data.FavoriteLocation
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
-import com.mints.projectgammatwo.data.QuestFilterPreferences
-import androidx.core.content.edit
 import com.mints.projectgammatwo.data.ExportData
-import kotlin.jvm.java
 
 class SettingsFragment : Fragment() {
+
+    companion object {
+        private const val FAVORITES_PREFS_NAME = "favorites_prefs"
+        private const val KEY_FAVORITES = "favorites_list"
+        private const val TELEPORT_PREFS_NAME = "teleport_prefs"
+        private const val KEY_TELEPORT_METHOD = "teleport_method"
+
+        private const val SOURCE_NYC = "NYC"
+        private const val SOURCE_LONDON = "LONDON"
+        private const val SOURCE_SINGAPORE = "Singapore"
+        private const val SOURCE_VANCOUVER = "VANCOUVER"
+        private const val SOURCE_SYDNEY = "SYDNEY"
+
+        private const val FILTER_TYPE_ROCKET = "Rocket"
+        private const val FILTER_TYPE_QUEST = "Quest"
+    }
 
     private lateinit var checkboxNYC: CheckBox
     private lateinit var checkboxLondon: CheckBox
@@ -56,11 +69,6 @@ class SettingsFragment : Fragment() {
     private lateinit var customizationManager: com.mints.projectgammatwo.data.OverlayCustomizationManager
 
     private val gson = Gson()
-
-    private val FAVORITES_PREFS_NAME = "favorites_prefs"
-    private val KEY_FAVORITES = "favorites_list"
-    private val TELEPORT_PREFS_NAME = "teleport_prefs"
-    private val KEY_TELEPORT_METHOD = "teleport_method"
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         return inflater.inflate(R.layout.fragment_settings, container, false)
@@ -108,22 +116,22 @@ class SettingsFragment : Fragment() {
     private fun setupDataSourceCheckboxes() {
         // Load data source selections.
         val selectedSources = dataSourcePreferences.getSelectedSources()
-        checkboxNYC.isChecked = selectedSources.contains("NYC")
-        checkboxLondon.isChecked = selectedSources.contains("LONDON")
-        checkboxSG.isChecked = selectedSources.contains("Singapore")
-        checkboxVancouver.isChecked = selectedSources.contains("VANCOUVER")
-        checkboxSydney.isChecked = selectedSources.contains("SYDNEY")
+        checkboxNYC.isChecked = selectedSources.contains(SOURCE_NYC)
+        checkboxLondon.isChecked = selectedSources.contains(SOURCE_LONDON)
+        checkboxSG.isChecked = selectedSources.contains(SOURCE_SINGAPORE)
+        checkboxVancouver.isChecked = selectedSources.contains(SOURCE_VANCOUVER)
+        checkboxSydney.isChecked = selectedSources.contains(SOURCE_SYDNEY)
 
         // Data source check listener.
         val checkListener = View.OnClickListener {
             val newSelection = mutableSetOf<String>()
-            if (checkboxNYC.isChecked) newSelection.add("NYC")
-            if (checkboxLondon.isChecked) newSelection.add("LONDON")
-            if (checkboxSG.isChecked) newSelection.add("Singapore")
-            if (checkboxVancouver.isChecked) newSelection.add("VANCOUVER")
-            if (checkboxSydney.isChecked) newSelection.add("SYDNEY")
+            if (checkboxNYC.isChecked) newSelection.add(SOURCE_NYC)
+            if (checkboxLondon.isChecked) newSelection.add(SOURCE_LONDON)
+            if (checkboxSG.isChecked) newSelection.add(SOURCE_SINGAPORE)
+            if (checkboxVancouver.isChecked) newSelection.add(SOURCE_VANCOUVER)
+            if (checkboxSydney.isChecked) newSelection.add(SOURCE_SYDNEY)
             if (newSelection.isEmpty()) {
-                newSelection.add("NYC")
+                newSelection.add(SOURCE_NYC)
                 checkboxNYC.isChecked = true
             }
             dataSourcePreferences.setSelectedSources(newSelection)
@@ -148,7 +156,6 @@ class SettingsFragment : Fragment() {
     }
 
     private fun setupTeleportMethod() {
-        // Teleport method: load saved method.
         val teleportPrefs = requireContext().getSharedPreferences(TELEPORT_PREFS_NAME, Context.MODE_PRIVATE)
         val savedMethod = teleportPrefs.getString(KEY_TELEPORT_METHOD, "ipogo") ?: "ipogo"
         if (savedMethod == "ipogo") {
@@ -158,17 +165,17 @@ class SettingsFragment : Fragment() {
         }
         radioGroupTeleport.setOnCheckedChangeListener { _, checkedId ->
             val method = if (checkedId == R.id.radio_ipogo) "ipogo" else "joystick"
-            teleportPrefs.edit().putString(KEY_TELEPORT_METHOD, method).apply()
+            teleportPrefs.edit { putString(KEY_TELEPORT_METHOD, method) }
         }
     }
 
     private fun setupHomeCoordinatesField() {
         // Load saved coordinates
-        val savedCoords = homeCoordinatesManager.getHomeCoordinatesString()
-        homeCoordinates.setText(savedCoords)
+        val initialCoords = homeCoordinatesManager.getHomeCoordinatesString()
+        homeCoordinates.setText(initialCoords)
 
         // Set input hint
-        homeCoordinates.hint = "Enter coords (e.g. 40.121, -32.121)"
+        homeCoordinates.hint = getString(R.string.home_coords_hint)
 
         // Set input type for decimal numbers and comma
         homeCoordinates.inputType = InputType.TYPE_CLASS_TEXT
@@ -182,16 +189,17 @@ class SettingsFragment : Fragment() {
                 val coords = homeCoordinates.text.toString().trim()
                 if (homeCoordinatesManager.validateCoordinates(coords)) {
                     homeCoordinatesManager.saveHomeCoordinates(coords)
-                    Toast.makeText(requireContext(), "Coordinates saved: $coords", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), getString(R.string.home_coords_saved, coords), Toast.LENGTH_SHORT).show()
                 } else if (coords.isNotEmpty()) {
                     Toast.makeText(
                         requireContext(),
-                        "Invalid coordinates format. Use: Lat, Long (e.g., 40.7128, -74.0060)",
+                        getString(R.string.home_coords_invalid),
                         Toast.LENGTH_LONG
                     ).show()
-                    // Keep previous valid value if available
-                    if (savedCoords.isNotEmpty() && homeCoordinatesManager.validateCoordinates(savedCoords)) {
-                        homeCoordinates.setText(savedCoords)
+                    // Use latest saved value if available
+                    val previous = homeCoordinatesManager.getHomeCoordinatesString()
+                    if (previous.isNotEmpty() && homeCoordinatesManager.validateCoordinates(previous)) {
+                        homeCoordinates.setText(previous)
                     } else {
                         homeCoordinates.text.clear()
                     }
@@ -246,11 +254,11 @@ class SettingsFragment : Fragment() {
         val currentSize = customizationManager.getButtonSize()
 
         sizeSeekbar.progress = currentSize
-        sizeValue.text = "${currentSize}dp"
+        sizeValue.text = getString(R.string.overlay_size_dp, currentSize)
 
         sizeSeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                sizeValue.text = "${progress}dp"
+                sizeValue.text = getString(R.string.overlay_size_dp, progress)
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
@@ -345,8 +353,8 @@ class SettingsFragment : Fragment() {
             // Update size slider
             val defaultSize = customizationManager.getButtonSize()
             sizeSeekbar.progress = defaultSize
-            sizeValue.text = "${defaultSize}dp"
-            
+            sizeValue.text = getString(R.string.overlay_size_dp, defaultSize)
+
             restartOverlayService()
         }
 
@@ -360,15 +368,15 @@ class SettingsFragment : Fragment() {
 
     private fun getButtonDisplayName(buttonId: String): String {
         return when (buttonId) {
-            "drag_handle" -> "Drag Handle"
-            "close_button" -> "Close"
-            "right_button" -> "Next"
-            "left_button" -> "Previous"
-            "home_button" -> "Home"
-            "refresh_button" -> "Refresh"
-            "switch_modes" -> "Switch Mode"
-            "filter_tab" -> "Filters"
-            "favorites_tab" -> "Favorites"
+            "drag_handle" -> getString(R.string.overlay_button_drag_handle)
+            "close_button" -> getString(R.string.overlay_button_close)
+            "right_button" -> getString(R.string.overlay_button_next)
+            "left_button" -> getString(R.string.overlay_button_previous)
+            "home_button" -> getString(R.string.overlay_button_home)
+            "refresh_button" -> getString(R.string.overlay_button_refresh)
+            "switch_modes" -> getString(R.string.overlay_button_switch_mode)
+            "filter_tab" -> getString(R.string.overlay_button_filters)
+            "favorites_tab" -> getString(R.string.overlay_button_favorites)
             else -> buttonId
         }
     }
@@ -441,9 +449,6 @@ class SettingsFragment : Fragment() {
         val enabledQuests = filterPreferences.getEnabledQuestFilters()
         Log.d("SettingsExport", "Enabled quests: $enabledQuests")
 
-        val deletedEntries = deletedRepo.getDeletedEntries()
-        Log.d("SettingsExport", "Deleted entries count: ${deletedEntries.size}")
-
         // Get home coordinates from manager
         val homeCoords = homeCoordinatesManager.getHomeCoordinatesString()
         Log.d("SettingsExport", "Home coordinates: $homeCoords")
@@ -456,7 +461,6 @@ class SettingsFragment : Fragment() {
         val savedQuestFilters = filterPreferences.getSavedQuestFilters()
         Log.d("SettingsExport", "Saved quest filters: ${savedQuestFilters.keys}")
         val savedQuestSpindaForms = savedQuestFilters.keys.associateWith { name ->
-            // you used QUEST_SPINDA_PREFIX = "spinda_"
             requireContext()
                 .getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
                 .getStringSet("spinda_$name", emptySet())!!
@@ -477,7 +481,6 @@ class SettingsFragment : Fragment() {
             dataSources = dataSources,
             enabledCharacters = enabledCharacters,
             favorites = favorites,
-            deletedEntries = deletedEntries,
             enabledQuests = enabledQuests,
             homeCoordinates = homeCoords,
             savedRocketFilters = savedRocketFilters,
@@ -497,14 +500,14 @@ class SettingsFragment : Fragment() {
 
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
-                putExtra(Intent.EXTRA_SUBJECT, "Exported Settings")
+                putExtra(Intent.EXTRA_SUBJECT, getString(R.string.settings_share_subject))
                 putExtra(Intent.EXTRA_TEXT, exportJson)
             }
             Log.d("SettingsExport", "Starting share intent")
-            startActivity(Intent.createChooser(shareIntent, "Share Settings JSON"))
+            startActivity(Intent.createChooser(shareIntent, getString(R.string.settings_share_chooser_title)))
         } catch (e: Exception) {
             Log.e("SettingsExport", "Error creating JSON: ${e.message}", e)
-            Toast.makeText(requireContext(), "Failed to export settings: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), getString(R.string.settings_export_failed, e.message ?: "Unknown error"), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -523,15 +526,12 @@ class SettingsFragment : Fragment() {
         builder.setView(dialogView)
         val dialog = builder.create()
 
-        // Set up button click listeners
-        cancelButton.setOnClickListener {
-            dialog.dismiss()
-        }
+        cancelButton.setOnClickListener { dialog.dismiss() }
 
         importButton.setOnClickListener {
             val jsonString = editText.text.toString()
             if (jsonString.isBlank()) {
-                Toast.makeText(requireContext(), "Input cannot be empty", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), getString(R.string.settings_import_input_empty), Toast.LENGTH_SHORT).show()
             } else {
                 importSettings(jsonString)
                 dialog.dismiss()
@@ -563,10 +563,7 @@ class SettingsFragment : Fragment() {
 
             val favoritesPrefs = requireContext().getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
             Log.d("SettingsImport", "Importing ${importData.favorites.size} favorites")
-            favoritesPrefs.edit().putString(KEY_FAVORITES, gson.toJson(importData.favorites)).apply()
-
-            Log.d("SettingsImport", "Importing ${importData.deletedEntries.size} deleted entries")
-            deletedRepo.setDeletedEntries(importData.deletedEntries)
+            favoritesPrefs.edit { putString(KEY_FAVORITES, gson.toJson(importData.favorites)) }
 
             // Import home coordinates if available and valid
             Log.d("SettingsImport", "Importing home coordinates: ${importData.homeCoordinates}")
@@ -579,137 +576,102 @@ class SettingsFragment : Fragment() {
                 Log.d("SettingsImport", "Home coordinates empty or invalid")
             }
 
-            // Import saved rocket filters if available
-            if (importData.savedRocketFilters != null) {
-                Log.d("SettingsImport", "Found ${importData.savedRocketFilters.size} rocket filters to import")
+            // Import saved rocket filters (non-null in ExportData)
+            val rocketFilters = importData.savedRocketFilters
+            Log.d("SettingsImport", "Found ${rocketFilters.size} rocket filters to import")
 
-                // Check if savedRocketFilters field exists but is null
-                if (importData.savedRocketFilters == null) {
-                    Log.e("SettingsImport", "savedRocketFilters exists in class but null in instance")
-                }
-
-                // Clear existing filters first
-                val existingFilterNames = filterPreferences.listFilterNames()
-                Log.d("SettingsImport", "Clearing ${existingFilterNames.size} existing rocket filters: $existingFilterNames")
-                for (name in existingFilterNames) {
-                    Log.d("SettingsImport", "Deleting rocket filter: $name")
-                    filterPreferences.deleteFilter(name, "Rocket")
-                }
-
-                // Import the filters
-                for ((name, characters) in importData.savedRocketFilters) {
-                    Log.d("SettingsImport", "Importing rocket filter '$name' with ${characters.size} characters: $characters")
-                    try {
-                        filterPreferences.saveEnabledCharacters(characters)
-                        filterPreferences.saveCurrentAsFilter(name)
-                        Log.d("SettingsImport", "Successfully saved rocket filter: $name")
-                    } catch (e: Exception) {
-                        Log.e("SettingsImport", "Error saving rocket filter '$name': ${e.message}", e)
-                    }
-                }
-
-                // Set active rocket filter if it exists in the imported data
-                Log.d("SettingsImport", "Active rocket filter from import: ${importData.activeRocketFilter}")
-                if (importData.activeRocketFilter.isNotEmpty() &&
-                    importData.savedRocketFilters.containsKey(importData.activeRocketFilter)) {
-                    Log.d("SettingsImport", "Setting active rocket filter: ${importData.activeRocketFilter}")
-                    try {
-                        filterPreferences.setActiveRocketFilter(importData.activeRocketFilter)
-                        // If active, also load it
-                        filterPreferences.loadFilter(importData.activeRocketFilter, "Rocket")
-                        Log.d("SettingsImport", "Successfully activated rocket filter: ${importData.activeRocketFilter}")
-                    } catch (e: Exception) {
-                        Log.e("SettingsImport", "Error activating rocket filter: ${e.message}", e)
-                    }
-                }
-
-                // Verify filters were imported
-                val verifyFilters = filterPreferences.listFilterNames()
-                Log.d("SettingsImport", "Verification - Imported rocket filters: $verifyFilters")
-            } else {
-                Log.d("SettingsImport", "No rocket filters to import (null)")
+            // Clear existing filters first
+            val existingFilterNames = filterPreferences.listFilterNames()
+            Log.d("SettingsImport", "Clearing ${existingFilterNames.size} existing rocket filters: $existingFilterNames")
+            for (name in existingFilterNames) {
+                Log.d("SettingsImport", "Deleting rocket filter: $name")
+                filterPreferences.deleteFilter(name, FILTER_TYPE_ROCKET)
             }
 
-            // Import saved quest filters if available
-            if (importData.savedQuestFilters != null) {
-                Log.d("SettingsImport", "Found ${importData.savedQuestFilters.size} quest filters to import")
-
-                // Clear existing quest filters first
-                val existingQuestFilterNames = filterPreferences.listQuestFilterNames()
-                Log.d("SettingsImport", "Clearing ${existingQuestFilterNames.size} existing quest filters: $existingQuestFilterNames")
-                for (name in existingQuestFilterNames) {
-                    Log.d("SettingsImport", "Deleting quest filter: $name")
-                    filterPreferences.deleteFilter(name, "Quest")
+            // Import the filters
+            for ((name, characters) in rocketFilters) {
+                Log.d("SettingsImport", "Importing rocket filter '$name' with ${characters.size} characters: $characters")
+                try {
+                    filterPreferences.saveEnabledCharacters(characters)
+                    filterPreferences.saveCurrentAsFilter(name)
+                    Log.d("SettingsImport", "Successfully saved rocket filter: $name")
+                } catch (e: Exception) {
+                    Log.e("SettingsImport", "Error saving rocket filter '$name': ${e.message}", e)
                 }
-
-                // Import the quest filters
-                for ((name, questIds) in importData.savedQuestFilters) {
-                    // Convert quest IDs to strings for storage
-                    val questStrings = questIds.map { it.toString() }.toSet()
-                    Log.d("SettingsImport", "Importing quest filter '$name' with ${questStrings.size} quests: $questStrings")
-
-                    try {
-
-                        filterPreferences.saveEnabledQuestFilters(questStrings)
-                        filterPreferences.saveCurrentQuestFilter(name)
-                        val forms = importData.savedQuestSpindaForms[name] ?: emptySet()
-                        filterPreferences.saveEnabledSpindaForms(forms)
-                        val questStringss = questIds.toSet()
-                        filterPreferences.saveEnabledQuestFilters(questStringss)
-                        filterPreferences.saveCurrentQuestFilter(name)
-
-                        Log.d("SettingsImport", "Successfully saved quest filter: $name")
-                    } catch (e: Exception) {
-                        Log.e("SettingsImport", "Error saving quest filter '$name': ${e.message}", e)
-                    }
-                }
-
-                // Set active quest filter if it exists in the imported data
-                Log.d("SettingsImport", "Active quest filter from import: ${importData.activeQuestFilter}")
-                if (importData.activeQuestFilter.isNotEmpty() &&
-                    importData.savedQuestFilters.containsKey(importData.activeQuestFilter)) {
-                    Log.d("SettingsImport", "Setting active quest filter: ${importData.activeQuestFilter}")
-                    try {
-                        filterPreferences.setActiveQuestFilter(importData.activeQuestFilter)
-                        // If active, also load it
-                        filterPreferences.loadFilter(importData.activeQuestFilter, "Quest")
-                        Log.d("SettingsImport", "Successfully activated quest filter: ${importData.activeQuestFilter}")
-                    } catch (e: Exception) {
-                        Log.e("SettingsImport", "Error activating quest filter: ${e.message}", e)
-                    }
-                }
-
-                // Verify filters were imported
-                val verifyQuestFilters = filterPreferences.listQuestFilterNames()
-                Log.d("SettingsImport", "Verification - Imported quest filters: $verifyQuestFilters")
-            } else {
-                Log.d("SettingsImport", "No quest filters to import (null)")
             }
 
-            // Update UI checkboxes.
-            checkboxNYC.isChecked = importData.dataSources.contains("NYC")
-            checkboxLondon.isChecked = importData.dataSources.contains("LONDON")
-            checkboxSG.isChecked = importData.dataSources.contains("Singapore")
-            checkboxVancouver.isChecked = importData.dataSources.contains("VANCOUVER")
-            checkboxSydney.isChecked = importData.dataSources.contains("SYDNEY")
+            // Set active rocket filter if it exists in the imported data
+            Log.d("SettingsImport", "Active rocket filter from import: ${importData.activeRocketFilter}")
+            if (importData.activeRocketFilter.isNotEmpty() &&
+                rocketFilters.containsKey(importData.activeRocketFilter)) {
+                Log.d("SettingsImport", "Setting active rocket filter: ${importData.activeRocketFilter}")
+                try {
+                    filterPreferences.setActiveRocketFilter(importData.activeRocketFilter)
+                    // If active, also load it
+                    filterPreferences.loadFilter(importData.activeRocketFilter, FILTER_TYPE_ROCKET)
+                    Log.d("SettingsImport", "Successfully activated rocket filter: ${importData.activeRocketFilter}")
+                } catch (e: Exception) {
+                    Log.e("SettingsImport", "Error activating rocket filter: ${e.message}", e)
+                }
+            }
 
-            // Import overlay customization settings
-            Log.d("SettingsImport", "Importing overlay button size: ${importData.overlayButtonSize}")
+            // Import saved quest filters (non-null in ExportData)
+            val questFilters = importData.savedQuestFilters
+            Log.d("SettingsImport", "Found ${questFilters.size} quest filters to import")
+
+            // Clear existing quest filters first
+            val existingQuestFilterNames = filterPreferences.listQuestFilterNames()
+            Log.d("SettingsImport", "Clearing ${existingQuestFilterNames.size} existing quest filters: $existingQuestFilterNames")
+            for (name in existingQuestFilterNames) {
+                Log.d("SettingsImport", "Deleting quest filter: $name")
+                filterPreferences.deleteFilter(name, FILTER_TYPE_QUEST)
+            }
+
+            // Import the quest filters
+            for ((name, questIds) in questFilters) {
+                val questStrings = questIds.toSet() // already Set<String>
+                Log.d("SettingsImport", "Importing quest filter '$name' with ${questStrings.size} quests: $questStrings")
+                try {
+                    filterPreferences.saveEnabledQuestFilters(questStrings)
+                    val forms: Set<String> = importData.savedQuestSpindaForms[name] ?: emptySet()
+                    filterPreferences.saveEnabledSpindaForms(forms)
+                    filterPreferences.saveCurrentQuestFilter(name)
+                    Log.d("SettingsImport", "Successfully saved quest filter: $name")
+                } catch (e: Exception) {
+                    Log.e("SettingsImport", "Error saving quest filter '$name': ${e.message}", e)
+                }
+            }
+
+            // Set active quest filter if it exists in the imported data
+            Log.d("SettingsImport", "Active quest filter from import: ${importData.activeQuestFilter}")
+            if (importData.activeQuestFilter.isNotEmpty() &&
+                questFilters.containsKey(importData.activeQuestFilter)) {
+                Log.d("SettingsImport", "Setting active quest filter: ${importData.activeQuestFilter}")
+                try {
+                    filterPreferences.setActiveQuestFilter(importData.activeQuestFilter)
+                    // If active, also load it
+                    filterPreferences.loadFilter(importData.activeQuestFilter, FILTER_TYPE_QUEST)
+                    Log.d("SettingsImport", "Successfully activated quest filter: ${importData.activeQuestFilter}")
+                } catch (e: Exception) {
+                    Log.e("SettingsImport", "Error activating quest filter: ${e.message}", e)
+                }
+            }
+
+            // Update UI checkboxes and overlay customization
+            checkboxNYC.isChecked = importData.dataSources.contains(SOURCE_NYC)
+            checkboxLondon.isChecked = importData.dataSources.contains(SOURCE_LONDON)
+            checkboxSG.isChecked = importData.dataSources.contains(SOURCE_SINGAPORE)
+            checkboxVancouver.isChecked = importData.dataSources.contains(SOURCE_VANCOUVER)
+            checkboxSydney.isChecked = importData.dataSources.contains(SOURCE_SYDNEY)
+
             customizationManager.saveButtonSize(importData.overlayButtonSize)
-
-            Log.d("SettingsImport", "Importing overlay button order: ${importData.overlayButtonOrder}")
             customizationManager.saveButtonOrder(importData.overlayButtonOrder)
-
-            Log.d("SettingsImport", "Importing overlay button visibility: ${importData.overlayButtonVisibility}")
             customizationManager.saveButtonVisibility(importData.overlayButtonVisibility)
 
-            Log.d("SettingsImport", "Settings import completed successfully")
-            Toast.makeText(requireContext(), "Settings imported successfully", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), getString(R.string.settings_import_success), Toast.LENGTH_LONG).show()
         } catch (ex: Exception) {
             Log.e("SettingsImport", "Import failed with exception: ${ex.message}", ex)
-            Log.e("SettingsImport", "JSON that caused failure: ${jsonString.take(200)}...")
-            ex.printStackTrace()
-            Toast.makeText(requireContext(), "Failed to import settings: ${ex.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(requireContext(), getString(R.string.settings_import_failed, ex.message ?: "Unknown error"), Toast.LENGTH_LONG).show()
         }
     }
 }

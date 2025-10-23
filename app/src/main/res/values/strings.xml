@@ -16,4 +16,23 @@
     <string name="no_quest_filters_message">No quest filters enabled. Please go to the filter tab to filter quests.</string>
     <string name="no_quests_available_message">No quests available. Please check your filters or change the data source in the Settings.</string>
     <string name="total_quests">Total Quests: %1$d</string>
+    <string name="settings_share_subject">Exported Settings</string>
+    <string name="settings_share_chooser_title">Share Settings JSON</string>
+    <string name="settings_export_failed">Failed to export settings: %1$s</string>
+    <string name="settings_import_input_empty">Input cannot be empty</string>
+    <string name="settings_import_success">Settings imported successfully</string>
+    <string name="settings_import_failed">Failed to import settings: %1$s</string>
+    <string name="home_coords_hint">Enter coords (e.g. 40.121, -32.121)</string>
+    <string name="home_coords_saved">Coordinates saved: %1$s</string>
+    <string name="home_coords_invalid">Invalid coordinates format. Use: Lat, Long (e.g., 40.7128, -74.0060)</string>
+    <string name="overlay_size_dp">%1$ddp</string>
+    <string name="overlay_button_drag_handle">Drag Handle</string>
+    <string name="overlay_button_close">Close</string>
+    <string name="overlay_button_next">Next</string>
+    <string name="overlay_button_previous">Previous</string>
+    <string name="overlay_button_home">Home</string>
+    <string name="overlay_button_refresh">Refresh</string>
+    <string name="overlay_button_switch_mode">Switch Mode</string>
+    <string name="overlay_button_filters">Filters</string>
+    <string name="overlay_button_favorites">Favorites</string>
 </resources>
