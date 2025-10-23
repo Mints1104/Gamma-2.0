@@ -1,7 +1,6 @@
 package com.mints.projectgammatwo.ui
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
@@ -12,7 +11,6 @@ import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -25,7 +23,7 @@ import com.mints.projectgammatwo.data.VisitedQuestsPreferences
 import com.mints.projectgammatwo.helpers.OverlayServiceManager
 import com.mints.projectgammatwo.recyclerviews.QuestsAdapter
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
-import com.mints.projectgammatwo.services.OverlayService
+import androidx.core.net.toUri
 
 
 class QuestsFragment : Fragment() {
@@ -38,6 +36,10 @@ class QuestsFragment : Fragment() {
     private lateinit var serviceManager: OverlayServiceManager
     private lateinit var scrollToTopFab: FloatingActionButton
     private lateinit var questErrorHandler: TextView
+
+    // Track listeners to properly unregister on view teardown
+    private var scrollListener: RecyclerView.OnScrollListener? = null
+    private var dataObserver: RecyclerView.AdapterDataObserver? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -77,11 +79,11 @@ class QuestsFragment : Fragment() {
 
             if(questsViewModel.filterSizeLiveData.value == 0) {
                 questErrorHandler.visibility = View.VISIBLE
-                questErrorHandler.text = "No quest filters enabled. Please go to the filter tab to filter quests."
+                questErrorHandler.setText(R.string.no_quest_filters_message)
 
             } else if(quests.isEmpty()) {
                 questErrorHandler.visibility = View.VISIBLE
-                questErrorHandler.text = "No quests available. Please check your filters or change the data source in the Settings."
+                questErrorHandler.setText(R.string.no_quests_available_message)
             } else {
                 questErrorHandler.visibility = View.GONE
             }
@@ -114,20 +116,32 @@ class QuestsFragment : Fragment() {
         questsViewModel.fetchQuests()
     }
 
+    override fun onDestroyView() {
+        // Unregister listeners to avoid leaks and duplicate callbacks when the view is recreated
+        scrollListener?.let { recyclerView.removeOnScrollListener(it) }
+        scrollListener = null
+        dataObserver?.let { questsAdapter.unregisterAdapterDataObserver(it) }
+        dataObserver = null
+        super.onDestroyView()
+    }
+
     private fun setupScrollToTop() {
-        // Show/hide FAB based on scroll position
-        recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+        // Remove existing listener if any (defensive in case of multiple calls)
+        scrollListener?.let { recyclerView.removeOnScrollListener(it) }
+        val newScrollListener = object : RecyclerView.OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(recyclerView, dx, dy)
                 checkAndUpdateFabVisibility()
             }
-        })
+        }
+        recyclerView.addOnScrollListener(newScrollListener)
+        scrollListener = newScrollListener
 
-        // Also monitor adapter data changes
-        questsAdapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
+        // Unregister previous observer if any, then add a new one tied to this view lifecycle
+        dataObserver?.let { questsAdapter.unregisterAdapterDataObserver(it) }
+        val newObserver = object : RecyclerView.AdapterDataObserver() {
             override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
                 super.onItemRangeInserted(positionStart, itemCount)
-                // Post to ensure RecyclerView has updated
                 recyclerView.post { checkAndUpdateFabVisibility() }
             }
 
@@ -140,33 +154,23 @@ class QuestsFragment : Fragment() {
                 super.onChanged()
                 recyclerView.post { checkAndUpdateFabVisibility() }
             }
-        })
+        }
+        questsAdapter.registerAdapterDataObserver(newObserver)
+        dataObserver = newObserver
 
         // Handle FAB click
         scrollToTopFab.setOnClickListener {
-            // Smooth scroll to top
-            recyclerView.scrollToPosition(0)
-
+            recyclerView.smoothScrollToPosition(0)
         }
     }
 
     private fun checkAndUpdateFabVisibility() {
-        val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return
-
-        // Make sure adapter has items before checking positions
-        if (questsAdapter.itemCount == 0) {
+        // Hide when there's nothing to scroll or we are at the top
+        if (questsAdapter.itemCount == 0 || !recyclerView.canScrollVertically(-1)) {
             scrollToTopFab.hide()
             return
         }
-
-        val firstVisibleItem = layoutManager.findFirstVisibleItemPosition()
-
-
-        if (firstVisibleItem != RecyclerView.NO_POSITION && firstVisibleItem > 2) {
-            scrollToTopFab.show()
-        } else {
-            scrollToTopFab.hide()
-        }
+        scrollToTopFab.show()
     }
 
     private fun handleStartServiceClick() {
@@ -196,7 +200,7 @@ class QuestsFragment : Fragment() {
         openSettingsButton.setOnClickListener {
             val intent = Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:${requireContext().packageName}")
+                "package:${requireContext().packageName}".toUri()
             )
             startActivity(intent)
             dialog.dismiss()
@@ -210,14 +214,14 @@ class QuestsFragment : Fragment() {
         Log.d("PermissionStatus", "Overlay permission: $overlayPermission")
 
         if (!overlayPermission) {
-            button.text = "Enable Overlay Permissions"
+            button.setText(R.string.enable_overlay_permissions)
         } else {
-            button.text = "Enable Overlay"
+            button.setText(R.string.enable_overlay)
         }
     }
 
     private fun updateQuestsCount(count: Int) {
-        questsCountText.text = "Total Quests: $count"
+        questsCountText.text = getString(R.string.total_quests, count)
     }
 
     override fun onResume() {

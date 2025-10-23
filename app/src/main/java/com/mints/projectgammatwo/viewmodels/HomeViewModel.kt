@@ -8,6 +8,7 @@ import com.google.gson.JsonSyntaxException
 import com.mints.projectgammatwo.data.ApiClient
 import com.mints.projectgammatwo.data.CurrentInvasionData
 import com.mints.projectgammatwo.data.DataSourcePreferences
+import com.mints.projectgammatwo.data.DeletedEntry
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
@@ -127,6 +128,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getInvasions(): List<Invasion>? {
         return _invasions.value
+    }
+
+    fun getDeletedInvasions(): Set<DeletedEntry> {
+        return deletedRepo.getDeletedEntries()
     }
 
 

@@ -7,5 +7,13 @@
     <string name="refresh_quest_filters">Refresh Quest Filters</string>
     <string name="save_rocket_filter">Save Rocket Filter</string>
     <string name="save_quest_filter">Save Quest Filter</string>
-
+    <string name="open_journal">Open Journal</string>
+    <string name="no_rocket_filters_message">No rocket filters enabled. Please go to the filter tab to select characters.</string>
+    <string name="no_invasions_available_message">No invasions available. Please check your filters or change the data source in Settings.</string>
+    <string name="battles_last_24h">Battled in last 24h: %1$d</string>
+    <string name="enable_overlay_permissions">Enable Overlay Permissions</string>
+    <string name="enable_overlay">Enable Overlay</string>
+    <string name="no_quest_filters_message">No quest filters enabled. Please go to the filter tab to filter quests.</string>
+    <string name="no_quests_available_message">No quests available. Please check your filters or change the data source in the Settings.</string>
+    <string name="total_quests">Total Quests: %1$d</string>
 </resources>

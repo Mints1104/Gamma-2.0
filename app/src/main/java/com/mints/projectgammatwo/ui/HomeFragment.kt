@@ -1,11 +1,13 @@
 package com.mints.projectgammatwo.ui
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -23,7 +25,8 @@ import com.mints.projectgammatwo.helpers.OverlayServiceManager
 import com.mints.projectgammatwo.recyclerviews.InvasionsAdapter
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
 import androidx.core.net.toUri
-
+import androidx.core.view.MenuProvider
+import com.mints.projectgammatwo.data.DataMappings
 class HomeFragment : Fragment() {
 
     private val viewModel: HomeViewModel by viewModels()
@@ -33,6 +36,9 @@ class HomeFragment : Fragment() {
     private lateinit var scrollToTopFab: FloatingActionButton
     private lateinit var recyclerView: RecyclerView
     private lateinit var errorHandlerText: TextView
+    // Track listeners to properly unregister on view teardown
+    private var scrollListener: RecyclerView.OnScrollListener? = null
+    private var dataObserver: RecyclerView.AdapterDataObserver? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -44,7 +50,21 @@ class HomeFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        requireActivity().addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+                menuInflater.inflate(R.menu.rockets_nav_menu, menu)
+            }
 
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
+                return when (menuItem.itemId) {
+                    R.id.action_open_journal -> {
+                        testGetDeletedInvasions()
+                        true
+                    }
+                    else -> false
+                }
+            }
+        }, viewLifecycleOwner)
         serviceManager = OverlayServiceManager(requireContext())
 
         recyclerView = view.findViewById(R.id.invasionsRecyclerView)
@@ -71,10 +91,10 @@ class HomeFragment : Fragment() {
             val filterSize = viewModel.currentFilterSize.value
             if (filterSize == 0) {
                 errorHandlerText.visibility = View.VISIBLE
-                errorHandlerText.text = "No rocket filters enabled. Please go to the filter tab to select characters."
+                errorHandlerText.setText(R.string.no_rocket_filters_message)
             } else if (invasions.isEmpty()) {
                 errorHandlerText.visibility = View.VISIBLE
-                errorHandlerText.text = "No invasions available. Please check your filters or change the data source in Settings."
+                errorHandlerText.setText(R.string.no_invasions_available_message)
             } else {
                 errorHandlerText.visibility = View.GONE
             }
@@ -91,7 +111,7 @@ class HomeFragment : Fragment() {
 
         val deletedCountTextView = view.findViewById<TextView>(R.id.deletedCountText)
         viewModel.deletedCount.observe(viewLifecycleOwner) { count ->
-            deletedCountTextView.text = "Battled in last 24h: $count"
+            deletedCountTextView.text = getString(R.string.battles_last_24h, count)
         }
 
         val startServiceButton = view.findViewById<Button>(R.id.startServiceButton)
@@ -103,6 +123,21 @@ class HomeFragment : Fragment() {
         updateServiceButtonState(startServiceButton)
     }
 
+    private fun testGetDeletedInvasions() {
+        val deletedInvasions = viewModel.getDeletedInvasions()
+        deletedInvasions.forEach { deletedEntry ->
+            val characterName = deletedEntry.character?.let {
+                DataMappings.characterNamesMap[it]
+            } ?: "Unknown Character"
+
+            val typeDescription = deletedEntry.type.let {
+                DataMappings.typeDescriptionsMap[it]
+            } ?: "Unknown Type"
+
+            Log.d("Test","DeletedInvasion: ${deletedEntry.name} from source ${deletedEntry.source}, Name: $characterName, Type: $typeDescription")
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         view?.findViewById<Button>(R.id.startServiceButton)?.let {
@@ -111,15 +146,30 @@ class HomeFragment : Fragment() {
         checkAndUpdateFabVisibility()
     }
 
+    override fun onDestroyView() {
+        // Unregister listeners to avoid leaks and duplicate callbacks when the view is recreated
+        scrollListener?.let { recyclerView.removeOnScrollListener(it) }
+        scrollListener = null
+        dataObserver?.let { adapter.unregisterAdapterDataObserver(it) }
+        dataObserver = null
+        super.onDestroyView()
+    }
+
     private fun setupScrollToTop() {
-        recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+        // Remove existing listener if any (defensive in case of multiple calls)
+        scrollListener?.let { recyclerView.removeOnScrollListener(it) }
+        val newScrollListener = object : RecyclerView.OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(recyclerView, dx, dy)
                 checkAndUpdateFabVisibility()
             }
-        })
+        }
+        recyclerView.addOnScrollListener(newScrollListener)
+        scrollListener = newScrollListener
 
-        adapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
+        // Unregister previous observer if any, then add a new one tied to this view lifecycle
+        dataObserver?.let { adapter.unregisterAdapterDataObserver(it) }
+        val newObserver = object : RecyclerView.AdapterDataObserver() {
             override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
                 super.onItemRangeInserted(positionStart, itemCount)
                 recyclerView.post { checkAndUpdateFabVisibility() }
@@ -134,36 +184,22 @@ class HomeFragment : Fragment() {
                 super.onChanged()
                 recyclerView.post { checkAndUpdateFabVisibility() }
             }
-        })
+        }
+        adapter.registerAdapterDataObserver(newObserver)
+        dataObserver = newObserver
 
         scrollToTopFab.setOnClickListener {
-            recyclerView.scrollToPosition(0)
-
+            recyclerView.smoothScrollToPosition(0)
         }
     }
 
     private fun checkAndUpdateFabVisibility() {
-        val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return
-
-        if (adapter.itemCount == 0) {
-            Log.d("FAB_DEBUG", "No items, hiding FAB")
+        // Hide when there's nothing to scroll or we are at the top
+        if (adapter.itemCount == 0 || !recyclerView.canScrollVertically(-1)) {
             scrollToTopFab.hide()
             return
         }
-
-        val firstVisibleItem = layoutManager.findFirstVisibleItemPosition()
-        Log.d(
-            "FAB_DEBUG",
-            "First visible item: $firstVisibleItem, Total items: ${adapter.itemCount}"
-        )
-
-        if (firstVisibleItem != RecyclerView.NO_POSITION && firstVisibleItem > 2) {
-            Log.d("FAB_DEBUG", "Showing FAB")
-            scrollToTopFab.show()
-        } else {
-            Log.d("FAB_DEBUG", "Hiding FAB")
-            scrollToTopFab.hide()
-        }
+        scrollToTopFab.show()
     }
 
     private fun handleStartServiceClick() {
@@ -204,9 +240,9 @@ class HomeFragment : Fragment() {
         Log.d("PermissionStatus", "Overlay permission: $overlayPermission")
 
         if (!overlayPermission) {
-            button.text = "Enable Overlay Permissions"
+            button.setText(R.string.enable_overlay_permissions)
         } else {
-            button.text = "Enable Overlay"
+            button.setText(R.string.enable_overlay)
         }
     }
 }
