@@ -2,11 +2,10 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <!-- Existing history item -->
     <item
-        android:id="@+id/action_open_history"
-        android:title="@string/history"
+        android:id="@+id/action_open_visited_quests"
+        android:title="@string/visited_quests"
         android:icon="@drawable/history_24px"
         app:showAsAction="ifRoom"/>
-
 </menu>
+

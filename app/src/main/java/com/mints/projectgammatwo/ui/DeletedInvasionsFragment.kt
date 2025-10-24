@@ -1,9 +1,7 @@
 package com.mints.projectgammatwo.ui
 
 import android.os.Bundle
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
+import android.view.*
 import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -15,6 +13,11 @@ import com.mints.projectgammatwo.data.DataMappings
 import com.mints.projectgammatwo.data.DeletedEntry
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
 import com.mints.projectgammatwo.recyclerviews.DeletedInvasionsAdapter
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import androidx.appcompat.app.AlertDialog
 
 class DeletedInvasionsFragment : Fragment() {
 
@@ -31,6 +34,11 @@ class DeletedInvasionsFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View? {
         return inflater.inflate(R.layout.fragment_deleted_invasions, container, false)
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setHasOptionsMenu(true)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -59,33 +67,71 @@ class DeletedInvasionsFragment : Fragment() {
         loadData()
     }
 
-    private fun loadData() {
-        val repo = DeletedInvasionsRepository(requireContext())
-        val entries: List<DeletedEntry> = repo.getDeletedEntries()
-            .sortedByDescending { it.timestamp }
-            .toList()
+    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
+        inflater.inflate(R.menu.menu_deleted_history, menu)
+        super.onCreateOptionsMenu(menu, inflater)
+    }
 
-        // Map optional fields to display strings with explicit type for lambda param
-        val mapped = entries.map { e: DeletedEntry ->
-            val characterName = e.character?.let { DataMappings.characterNamesMap[it] } ?: getString(R.string.deleted_unknown_character)
-            val typeDesc = e.type?.let { DataMappings.typeDescriptionsMap[it] } ?: getString(R.string.deleted_unknown_type)
-            DeletedInvasionsAdapter.UIModel(
-                name = e.name ?: getString(R.string.deleted_unknown_stop),
-                source = e.source ?: getString(R.string.deleted_unknown_source),
-                characterName = characterName,
-                typeDescription = typeDesc,
-                lat = e.lat,
-                lng = e.lng,
-                timestamp = e.timestamp
-            )
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_clear_history -> {
+                confirmClearHistory()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
         }
+    }
 
-        adapter.submitList(mapped)
-        swipeRefresh.isRefreshing = false
+    private fun confirmClearHistory() {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.delete_all_invasions_title)
+            .setMessage(R.string.delete_all_invasions_message)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_delete) { dialog, _ ->
+                val repo = DeletedInvasionsRepository(requireContext())
+                repo.resetDeletedInvasions()
+                loadData()
+                dialog.dismiss()
+            }
+            .show()
+    }
 
-        countText.text = resources.getQuantityString(R.plurals.deleted_count, mapped.size, mapped.size)
-        emptyText.visibility = if (mapped.isEmpty()) View.VISIBLE else View.GONE
-        checkFab()
+    private fun loadData() {
+        swipeRefresh.isRefreshing = true
+        viewLifecycleOwner.lifecycleScope.launch {
+            // Capture string resources on main thread for safe use off-thread
+            val unknownCharacter = getString(R.string.deleted_unknown_character)
+            val unknownType = getString(R.string.deleted_unknown_type)
+            val unknownStop = getString(R.string.deleted_unknown_stop)
+            val unknownSource = getString(R.string.deleted_unknown_source)
+
+            val mapped = withContext(Dispatchers.IO) {
+                val repo = DeletedInvasionsRepository(requireContext())
+                val entries: List<DeletedEntry> = repo.getDeletedEntries()
+                    .sortedByDescending { it.timestamp }
+                    .toList()
+                entries.map { e: DeletedEntry ->
+                    val characterName = e.character?.let { DataMappings.characterNamesMap[it] } ?: unknownCharacter
+                    val typeDesc = e.type?.let { DataMappings.typeDescriptionsMap[it] } ?: unknownType
+                    DeletedInvasionsAdapter.UIModel(
+                        name = e.name ?: unknownStop,
+                        source = e.source ?: unknownSource,
+                        characterName = characterName,
+                        typeDescription = typeDesc,
+                        lat = e.lat,
+                        lng = e.lng,
+                        timestamp = e.timestamp
+                    )
+                }
+            }
+
+            adapter.submitList(mapped)
+            swipeRefresh.isRefreshing = false
+
+            countText.text = resources.getQuantityString(R.plurals.deleted_count, mapped.size, mapped.size)
+            emptyText.visibility = if (mapped.isEmpty()) View.VISIBLE else View.GONE
+            checkFab()
+        }
     }
 
     private fun checkFab() {

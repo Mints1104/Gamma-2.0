@@ -51,14 +51,18 @@ class InvasionsAdapter(
 
         fun bind(invasion: Invasion) {
             val ctx = itemView.context
+
+            // Bind main texts using resources
             characterNameText.text = invasion.characterName
             typeText.text = invasion.typeDescription
-            locationNameText.text = ctx.getString(R.string.invasion_item_name, invasion.name)
+            locationNameText.text = ctx.getString(R.string.invasion_item_name, invasion.name ?: "—")
+
             val invasionText = invasion.source.lowercase().replaceFirstChar { it.uppercase() }
             sourceText.text = ctx.getString(R.string.invasion_item_source, invasionText)
 
             val coordsFormatted = String.format(Locale.getDefault(), "%.5f, %.5f", invasion.lat, invasion.lng)
             coordinatesText.text = ctx.getString(R.string.invasion_item_coords, coordsFormatted)
+
             val startTime = dateFormat.format(Date(invasion.invasion_start * 1000))
             val endTime = dateFormat.format(Date(invasion.invasion_end * 1000))
             timeText.text = ctx.getString(R.string.invasion_item_time_range, startTime, endTime)
@@ -67,6 +71,7 @@ class InvasionsAdapter(
                 val url = "https://ipogo.app/?coords=${invasion.lat},${invasion.lng}"
                 val intent = Intent(Intent.ACTION_VIEW, url.toUri())
                 ctx.startActivity(intent)
+                // Optionally mark as handled/deleted if that's the intended behavior
                 onDeleteInvasion(invasion)
             }
 

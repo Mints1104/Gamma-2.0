@@ -1,5 +1,5 @@
 [versions]
-agp = "8.10.0"
+agp = "8.13.0"
 fragmentKtx = "1.8.5"
 kotlin = "1.9.24"
 coreKtx = "1.15.0"
@@ -44,6 +44,4 @@ androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
-kotlin-kapt = { id = "org.jetbrains.kotlin.kapt", version = "1.9.21" }
-
-
+kotlin-kapt = { id = "org.jetbrains.kotlin.kapt", version = "1.9.24" }

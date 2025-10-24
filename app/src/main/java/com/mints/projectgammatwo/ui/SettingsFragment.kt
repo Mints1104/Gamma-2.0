@@ -449,6 +449,9 @@ class SettingsFragment : Fragment() {
         val enabledQuests = filterPreferences.getEnabledQuestFilters()
         Log.d("SettingsExport", "Enabled quests: $enabledQuests")
 
+        val deletedEntries = deletedRepo.getDeletedEntries()
+        Log.d("SettingsExport", "Deleted entries count: ${deletedEntries.size}")
+
         // Get home coordinates from manager
         val homeCoords = homeCoordinatesManager.getHomeCoordinatesString()
         Log.d("SettingsExport", "Home coordinates: $homeCoords")
@@ -458,9 +461,11 @@ class SettingsFragment : Fragment() {
         Log.d("SettingsExport", "Saved rocket filters: ${savedRocketFilters.keys}")
 
         // Get all saved quest filters
+            // you used QUEST_SPINDA_PREFIX = "spinda_"
         val savedQuestFilters = filterPreferences.getSavedQuestFilters()
         Log.d("SettingsExport", "Saved quest filters: ${savedQuestFilters.keys}")
         val savedQuestSpindaForms = savedQuestFilters.keys.associateWith { name ->
+            // you used QUEST_SPINDA_PREFIX = "spinda_"
             requireContext()
                 .getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
                 .getStringSet("spinda_$name", emptySet())!!
@@ -481,6 +486,7 @@ class SettingsFragment : Fragment() {
             dataSources = dataSources,
             enabledCharacters = enabledCharacters,
             favorites = favorites,
+            deletedEntries = deletedEntries,
             enabledQuests = enabledQuests,
             homeCoordinates = homeCoords,
             savedRocketFilters = savedRocketFilters,
@@ -560,10 +566,16 @@ class SettingsFragment : Fragment() {
 
             Log.d("SettingsImport", "Importing enabled quests: ${importData.enabledQuests}")
             filterPreferences.saveEnabledQuestFilters(importData.enabledQuests)
+            Log.d("SettingsImport", "Importing ${importData.deletedEntries.size} deleted entries")
+            deletedRepo.setDeletedEntries(importData.deletedEntries)
+
 
             val favoritesPrefs = requireContext().getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
             Log.d("SettingsImport", "Importing ${importData.favorites.size} favorites")
             favoritesPrefs.edit { putString(KEY_FAVORITES, gson.toJson(importData.favorites)) }
+
+            Log.d("SettingsImport", "Importing ${importData.deletedEntries.size} deleted entries")
+            deletedRepo.setDeletedEntries(importData.deletedEntries)
 
             // Import home coordinates if available and valid
             Log.d("SettingsImport", "Importing home coordinates: ${importData.homeCoordinates}")
@@ -667,6 +679,7 @@ class SettingsFragment : Fragment() {
             customizationManager.saveButtonSize(importData.overlayButtonSize)
             customizationManager.saveButtonOrder(importData.overlayButtonOrder)
             customizationManager.saveButtonVisibility(importData.overlayButtonVisibility)
+
 
             Toast.makeText(requireContext(), getString(R.string.settings_import_success), Toast.LENGTH_LONG).show()
         } catch (ex: Exception) {

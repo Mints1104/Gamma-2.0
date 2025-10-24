@@ -47,6 +47,8 @@ class DeletedInvasionsRepository(context: Context) {
     // Gson instance for JSON (de)serialization
     private val gson = Gson()
 
+    private fun cutoff24h(): Long = System.currentTimeMillis() - 24 * 60 * 60 * 1000
+
     /**
      * Record a deletion for the given invasion.
      *
@@ -83,7 +85,7 @@ class DeletedInvasionsRepository(context: Context) {
      */
     fun getDeletedEntries(): Set<DeletedEntry> {
         val set = prefs.getStringSet(key, emptySet()) ?: emptySet()
-        return set.mapNotNull { raw ->
+        val parsed = set.mapNotNull { raw ->
             val entry = raw.trim()
             try {
                 if (entry.startsWith("{")) {
@@ -103,7 +105,13 @@ class DeletedInvasionsRepository(context: Context) {
                 // Skip malformed or legacy entries we cannot parse
                 null
             }
-        }.toSet()
+        }
+        val cutoff = cutoff24h()
+        val pruned = parsed.filter { it.timestamp >= cutoff }.toSet()
+        // Persist pruned set back to storage
+        val stringSet = pruned.map { gson.toJson(it) }.toSet()
+        prefs.edit { putStringSet(key, stringSet) }
+        return pruned
     }
 
     /**
@@ -119,7 +127,7 @@ class DeletedInvasionsRepository(context: Context) {
      * Count entries deleted within the last 24 hours (rolling window).
      */
     fun getDeletionCountLast24Hours(): Int {
-        val twentyFourHoursAgo = System.currentTimeMillis() - 24 * 60 * 60 * 1000
+        val twentyFourHoursAgo = cutoff24h()
         return getDeletedEntries().count { it.timestamp >= twentyFourHoursAgo }
     }
 
@@ -135,7 +143,10 @@ class DeletedInvasionsRepository(context: Context) {
      * Entries are encoded to JSON for storage.
      */
     fun setDeletedEntries(entries: Set<DeletedEntry>) {
-        val stringSet = entries.map { gson.toJson(it) }.toSet()
+        // When writing externally provided entries, also enforce 24h retention
+        val cutoff = cutoff24h()
+        val filtered = entries.filter { it.timestamp >= cutoff }.toSet()
+        val stringSet = filtered.map { gson.toJson(it) }.toSet()
         prefs.edit { putStringSet(key, stringSet) }
     }
 }

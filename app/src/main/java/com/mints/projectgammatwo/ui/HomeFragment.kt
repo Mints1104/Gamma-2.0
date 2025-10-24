@@ -5,9 +5,6 @@ import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
 import android.view.LayoutInflater
-import android.view.Menu
-import android.view.MenuInflater
-import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -26,8 +23,9 @@ import com.mints.projectgammatwo.helpers.OverlayServiceManager
 import com.mints.projectgammatwo.recyclerviews.InvasionsAdapter
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
 import androidx.core.net.toUri
-import androidx.core.view.MenuProvider
 import com.mints.projectgammatwo.data.DataMappings
+import androidx.lifecycle.Lifecycle
+
 class HomeFragment : Fragment() {
 
     private val viewModel: HomeViewModel by viewModels()
@@ -51,22 +49,6 @@ class HomeFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        requireActivity().addMenuProvider(object : MenuProvider {
-            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
-                menuInflater.inflate(R.menu.rockets_nav_menu, menu)
-            }
-
-            override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
-                return when (menuItem.itemId) {
-
-                    R.id.action_open_history -> {
-                        findNavController().navigate(R.id.action_homeFragment_to_deletedInvasionsFragment)
-                        true
-                    }
-                    else -> false
-                }
-            }
-        }, viewLifecycleOwner)
         serviceManager = OverlayServiceManager(requireContext())
 
         recyclerView = view.findViewById(R.id.invasionsRecyclerView)

@@ -18,20 +18,20 @@ import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
 import java.util.Date
 
-class DeletedInvasionsAdapter : ListAdapter<DeletedInvasionsAdapter.UIModel, DeletedInvasionsAdapter.VH>(Diff()) {
+class DeletedQuestsAdapter : ListAdapter<DeletedQuestsAdapter.UIModel, DeletedQuestsAdapter.VH>(Diff()) {
 
     data class UIModel(
         val name: String,
-        val source: String,
-        val characterName: String,
-        val typeDescription: String,
         val lat: Double,
         val lng: Double,
         val timestamp: Long,
+        val source: String = "",
+        val rewards: String = "",
+        val conditions: String = "",
     )
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-        val v = LayoutInflater.from(parent.context).inflate(R.layout.item_deleted_invasion, parent, false)
+        val v = LayoutInflater.from(parent.context).inflate(R.layout.item_deleted_quest, parent, false)
         return VH(v)
     }
 
@@ -39,36 +39,50 @@ class DeletedInvasionsAdapter : ListAdapter<DeletedInvasionsAdapter.UIModel, Del
 
     class VH(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val name: TextView = itemView.findViewById(R.id.nameText)
-        private val source: TextView = itemView.findViewById(R.id.sourceText)
-        private val character: TextView = itemView.findViewById(R.id.characterText)
-        private val type: TextView = itemView.findViewById(R.id.typeText)
         private val coords: TextView = itemView.findViewById(R.id.coordsText)
         private val time: TextView = itemView.findViewById(R.id.timeText)
+        private val source: TextView = itemView.findViewById(R.id.sourceText)
+        private val rewards: TextView = itemView.findViewById(R.id.rewardsText)
+        private val conditions: TextView = itemView.findViewById(R.id.conditionsText)
         private val btnCopy: Button = itemView.findViewById(R.id.copyButton)
         private val btnTeleport: Button = itemView.findViewById(R.id.teleportButton)
 
-        // Cache date/time formatters per ViewHolder to avoid repeated lookups
-        private val dateFormatter = DateFormat.getMediumDateFormat(itemView.context)
-        private val timeFormatter = DateFormat.getTimeFormat(itemView.context)
-
         fun bind(m: UIModel) {
             val ctx = itemView.context
-            name.text = ctx.getString(R.string.deleted_item_name, m.name)
-            source.text = ctx.getString(R.string.deleted_item_source, m.source.replaceFirstChar { it.uppercase() })
-            character.text = ctx.getString(R.string.deleted_item_character, m.characterName)
-            type.text = ctx.getString(R.string.deleted_item_type, m.typeDescription)
-            coords.text = ctx.getString(R.string.deleted_item_coords, m.lat, m.lng)
+            name.text = ctx.getString(R.string.visited_item_name, m.name)
+            coords.text = ctx.getString(R.string.visited_item_coords, m.lat, m.lng)
 
-            val date = Date(m.timestamp)
-            val timeStr = dateFormatter.format(date) + " " + timeFormatter.format(date)
-            time.text = ctx.getString(R.string.deleted_item_time, timeStr)
+            val timeStr = DateFormat.getMediumDateFormat(ctx).format(Date(m.timestamp)) + " " +
+                    DateFormat.getTimeFormat(ctx).format(Date(m.timestamp))
+            time.text = ctx.getString(R.string.visited_item_time, timeStr)
+
+            // Bind optional fields; hide when empty
+            if (m.source.isNullOrBlank()) {
+                source.visibility = View.GONE
+            } else {
+                source.visibility = View.VISIBLE
+                source.text = ctx.getString(R.string.visited_item_source, m.source)
+            }
+
+            if (m.rewards.isNullOrBlank()) {
+                rewards.visibility = View.GONE
+            } else {
+                rewards.visibility = View.VISIBLE
+                rewards.text = ctx.getString(R.string.visited_item_rewards, m.rewards)
+            }
+
+            if (m.conditions.isNullOrBlank()) {
+                conditions.visibility = View.GONE
+            } else {
+                conditions.visibility = View.VISIBLE
+                conditions.text = ctx.getString(R.string.visited_item_conditions, m.conditions)
+            }
 
             btnCopy.setOnClickListener {
                 val c = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 val text = "${m.lat},${m.lng}"
                 c.setPrimaryClip(ClipData.newPlainText("Coordinates", text))
-                val toast = Toast.makeText(ctx, R.string.coords_copied, Toast.LENGTH_SHORT)
-                toast.show()
+                Toast.makeText(ctx, R.string.coords_copied, Toast.LENGTH_SHORT).show()
             }
             btnTeleport.setOnClickListener {
                 val url = "https://ipogo.app/?coords=${m.lat},${m.lng}"

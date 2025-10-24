@@ -71,4 +71,28 @@
     <string name="invasion_item_source">Source: %1$s</string>
     <string name="invasion_item_coords">Location: %1$s</string>
     <string name="invasion_item_time_range">Time: %1$s - %2$s</string>
+    <string name="visited_item_name">Quest: %1$s</string>
+    <string name="visited_item_coords">Location: %1$.5f, %2$.5f</string>
+    <string name="visited_item_time">Visited: %1$s</string>
+    <string name="visited_item_source">Source: %1$s</string>
+    <string name="visited_item_rewards">Rewards: %1$s</string>
+    <string name="visited_item_conditions">Conditions: %1$s</string>
+    <string name="visited_empty">No visited quests in the last 24 hours.</string>
+    <plurals name="visited_count">
+        <item quantity="one">%1$d visited quest in the last 24h</item>
+        <item quantity="other">%1$d visited quests in the last 24h</item>
+    </plurals>
+    <string name="visited_quests">Visited Quests</string>
+    <string name="clear_history">Clear history</string>
+
+    <!-- Confirm clear visited quests -->
+    <string name="delete_all_visited_quests_title">Delete all visited quests?</string>
+    <string name="delete_all_visited_quests_message">This will remove all visited quests from the journal. This action cannot be undone.</string>
+
+    <!-- Confirm clear deleted invasions -->
+    <string name="delete_all_invasions_title">Delete all deleted invasions?</string>
+    <string name="delete_all_invasions_message">This will remove all deleted invasions from the journal. This action cannot be undone.</string>
+
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
 </resources>

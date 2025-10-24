@@ -12,10 +12,10 @@ import com.mints.projectgammatwo.data.DeletedEntry
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
-import com.mints.projectgammatwo.data.Quests
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import okio.`-DeprecatedOkio`.source
+import kotlinx.coroutines.withContext
 import okio.IOException
 import retrofit2.HttpException
 
@@ -56,7 +56,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                                 ApiClient.getApiForBaseUrl(baseUrl)
                                     .getInvasions().invasions
                                     .map { invasion -> invasion.copy(source = source) }
-                            }catch(e: IOException) {
+                            } catch(e: IOException) {
                                 e(TAG, "Network error: ${e.message}", e)
                                 _error.value = "Network error: ${e.message}"
                                 emptyList()
@@ -76,7 +76,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-
                 val combinedInvasions = deferredList
                     .mapNotNull {
                         try {
@@ -88,41 +87,55 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     .flatten()
                     .toMutableList()
-                val enabledCharacters = filterPreferences.getEnabledCharacters()
+
+                // Load preferences and deleted entries off the main thread
+                val enabledCharacters = withContext(Dispatchers.IO) {
+                    filterPreferences.getEnabledCharacters()
+                }
                 _currentFilterSize.value = enabledCharacters.size
 
-                val filteredAndSorted = combinedInvasions
-                    .map { invasion ->
-                        when (invasion.type) {
-                            8 -> invasion.copy(character = 1)
-                            9 -> invasion.copy(character = 0)
-                            else -> invasion
+                // Retrieve deleted entries once and use a fast lookup set
+                val deletedEntries = withContext(Dispatchers.IO) {
+                    deletedRepo.getDeletedEntries()
+                }
+                val deletedKeySet = deletedEntries.map { it.lat to it.lng }.toHashSet()
+
+                // Perform CPU-bound mapping/filtering off the main thread
+                val filteredAndSorted = withContext(Dispatchers.Default) {
+                    combinedInvasions
+                        .asSequence()
+                        .map { invasion ->
+                            when (invasion.type) {
+                                8 -> invasion.copy(character = 1)
+                                9 -> invasion.copy(character = 0)
+                                else -> invasion
+                            }
                         }
-                    }
-                    .filter { invasion ->
-                        invasion.character in enabledCharacters &&
-                                !deletedRepo.isInvasionDeleted(invasion)
-                    }
-                    .sortedBy { it.invasion_start }
-                    .reversed()
+                        .filter { invasion ->
+                            invasion.character in enabledCharacters &&
+                                    !(invasion.lat to invasion.lng in deletedKeySet)
+                        }
+                        .sortedBy { it.invasion_start }
+                        .toList()
+                        .asReversed()
+                }
 
                 _invasions.value = filteredAndSorted
                 _currentInvasionCount.value = filteredAndSorted.size
 
                 CurrentInvasionData.currentInvasions = filteredAndSorted.toMutableList()
-                _deletedCount.value = deletedRepo.getDeletionCountLast24Hours()
+
+                // deletedEntries is already pruned to last 24h by repo
+                _deletedCount.value = deletedEntries.size
 
                 Log.d(
                     TAG,
                     "Fetched invasions from ${selectedSources.size} sources. Total items: ${filteredAndSorted.size}"
                 )
-
-
             } catch (e: Exception) {
                 e(TAG, "Error fetching invasions: ${e.message}", e)
                 _error.value = "Failed to fetch invasions: ${e.message}"
             }
-
         }
     }
 
@@ -134,11 +147,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         return deletedRepo.getDeletedEntries()
     }
 
-
     // When an invasion is deleted.
     fun deleteInvasion(invasion: Invasion) {
-        deletedRepo.addDeletedInvasion(invasion)
-        _invasions.value = _invasions.value?.toMutableList()?.apply { remove(invasion) }
-        _deletedCount.value = deletedRepo.getDeletionCountLast24Hours()
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                deletedRepo.addDeletedInvasion(invasion)
+            }
+            _invasions.value = _invasions.value?.toMutableList()?.apply { remove(invasion) }
+            // Refresh the count efficiently using one repo read on IO
+            val count = withContext(Dispatchers.IO) { deletedRepo.getDeletionCountLast24Hours() }
+            _deletedCount.value = count
+        }
     }
 }

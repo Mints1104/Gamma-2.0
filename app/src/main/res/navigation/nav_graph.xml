@@ -40,6 +40,12 @@
     <fragment
         android:id="@+id/deletedInvasionsFragment"
         android:name="com.mints.projectgammatwo.ui.DeletedInvasionsFragment"
-        android:label="Journal"
+        android:label="Visited Invasions"
         tools:layout="@layout/fragment_deleted_invasions" />
+
+    <fragment
+        android:id="@+id/deletedQuestsFragment"
+        android:name="com.mints.projectgammatwo.ui.DeletedQuestsFragment"
+        android:label="Visited Quests"
+        tools:layout="@layout/fragment_deleted_quests" />
 </navigation>

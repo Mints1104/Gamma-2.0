@@ -11,8 +11,10 @@ import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
+import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -23,7 +25,6 @@ import com.mints.projectgammatwo.data.VisitedQuestsPreferences
 import com.mints.projectgammatwo.helpers.OverlayServiceManager
 import com.mints.projectgammatwo.recyclerviews.QuestsAdapter
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
-import androidx.core.net.toUri
 
 
 class QuestsFragment : Fragment() {
@@ -50,6 +51,8 @@ class QuestsFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        // Removed fragment menu provider; MainActivity owns the app bar menu
+
         serviceManager = OverlayServiceManager(requireContext())
         swipeRefresh = view.findViewById(R.id.swipeRefresh)
         questsCountText = view.findViewById(R.id.questsCountText)
@@ -60,7 +63,13 @@ class QuestsFragment : Fragment() {
 
             val questId = "${quest.name}|${quest.lat}|${quest.lng}"
             val visitedPreferences = VisitedQuestsPreferences(requireContext())
-            visitedPreferences.addVisitedQuest(questId)
+            // Persist richer details for the deleted/visited UI
+            visitedPreferences.addVisitedQuest(
+                questId = questId,
+                rewards = quest.rewardsString,
+                conditions = quest.conditionsString,
+                source = quest.source
+            )
             val currentList = questsAdapter.currentList.toMutableList()
             currentList.remove(quest)
             questsAdapter.submitList(currentList)
@@ -98,9 +107,6 @@ class QuestsFragment : Fragment() {
             Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
             swipeRefresh.isRefreshing = false
         }
-
-
-
 
         swipeRefresh.setOnRefreshListener {
             questsViewModel.fetchQuests()
