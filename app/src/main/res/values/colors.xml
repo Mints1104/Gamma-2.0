@@ -11,4 +11,7 @@
 
     <!-- If you want to keep some lilac but darker -->
     <color name="dark_lilac">#6B4C87</color>
+
+    <!-- Link color (light theme) -->
+    <color name="link_color">#1E88E5</color>
 </resources>

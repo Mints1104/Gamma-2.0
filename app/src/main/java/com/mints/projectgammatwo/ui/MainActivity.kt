@@ -9,10 +9,10 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
+import androidx.navigation.navOptions
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
-import androidx.navigation.ui.setupWithNavController
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.mints.projectgammatwo.R
 import androidx.appcompat.widget.Toolbar
@@ -35,10 +35,6 @@ class MainActivity : AppCompatActivity() {
             .findFragmentById(R.id.nav_host_fragment) as NavHostFragment
         navController = navHostFragment.navController
 
-        // Set up Bottom Navigation
-        findViewById<BottomNavigationView>(R.id.bottomNav)
-            .setupWithNavController(navController)
-
         // Configure AppBar
         appBarConfiguration = AppBarConfiguration(
             setOf(
@@ -51,15 +47,55 @@ class MainActivity : AppCompatActivity() {
         )
         setupActionBarWithNavController(navController, appBarConfiguration)
 
+        // Set up Bottom Navigation with custom handling to avoid history back stack issues
+        val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNav)
+        bottomNav.setOnItemSelectedListener { item ->
+            val destinationId = item.itemId
+            if (navController.currentDestination?.id == destinationId) return@setOnItemSelectedListener true
+
+            // Always clear the entire back stack when switching bottom tabs
+            val opts = navOptions {
+                launchSingleTop = true
+                restoreState = false
+                popUpTo(navController.graph.startDestinationId) {
+                    inclusive = true
+                }
+            }
+            return@setOnItemSelectedListener runCatching {
+                navController.navigate(destinationId, null, opts)
+                true
+            }.getOrDefault(false)
+        }
+
+        // Update bottom nav selection based on destination; clear highlight for non-bottom destinations
+        navController.addOnDestinationChangedListener { _, destination, _ ->
+            val menu = bottomNav.menu
+            when (destination.id) {
+                R.id.deletedInvasionsFragment -> {
+                    // Highlight Rockets/Home without triggering navigation
+                    menu.findItem(R.id.homeFragment)?.isChecked = true
+                }
+                R.id.deletedQuestsFragment -> {
+                    // Highlight Quests without triggering navigation
+                    menu.findItem(R.id.questsFragment)?.isChecked = true
+                }
+                R.id.homeFragment, R.id.filterFragment, R.id.settingsFragment, R.id.favoritesFragment, R.id.questsFragment -> {
+                    menu.findItem(destination.id)?.isChecked = true
+                }
+                else -> {
+                    // Leave current check state as-is for non-bottom destinations
+                }
+            }
+            // Invalidate the options menu whenever the destination changes
+            invalidateOptionsMenu()
+        }
+
         // Edge-to-edge
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
-
-        // Invalidate the options menu whenever the destination changes (so onPrepareOptionsMenu runs)
-        navController.addOnDestinationChangedListener { _, _, _ -> invalidateOptionsMenu() }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

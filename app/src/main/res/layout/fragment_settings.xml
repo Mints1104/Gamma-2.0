@@ -140,7 +140,8 @@
             android:textAlignment="center"
             android:focusable="true"
             android:focusableInTouchMode="true"
-            android:textSize="14sp" />
+            android:textSize="14sp"
+            android:textColorLink="@color/link_color" />
 
         <!-- Teleport Method Selection (hidden) -->
         <TextView

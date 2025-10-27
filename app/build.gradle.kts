@@ -11,7 +11,7 @@ android {
         applicationId = "com.mints.projectgammatwo"
         minSdk = 24
         targetSdk = 35
-        versionCode = 5
+        versionCode = 6
         versionName = "3.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

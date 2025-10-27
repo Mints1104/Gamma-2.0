@@ -358,7 +358,7 @@ class SettingsFragment : Fragment() {
             restartOverlayService()
         }
 
-        // Set up close button
+        // Set up Apply button (closes the dialog; changes are applied live)
         dialogView.findViewById<Button>(R.id.close_button).setOnClickListener {
             dialog.dismiss()
         }
