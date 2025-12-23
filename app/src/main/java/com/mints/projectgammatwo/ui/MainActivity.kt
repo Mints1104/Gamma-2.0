@@ -115,6 +115,9 @@ class MainActivity : AppCompatActivity() {
         menu.findItem(R.id.action_open_history)?.isVisible = isHome && !inHistory
         // Show Visited Quests only on Quests, hide otherwise and always hide while in history screens
         menu.findItem(R.id.action_open_visited_quests)?.isVisible = isQuests && !inHistory
+        // Show sort options only on Home
+        menu.findItem(R.id.action_sort_by_time)?.isVisible = isHome
+        menu.findItem(R.id.action_sort_by_distance)?.isVisible = isHome
         return super.onPrepareOptionsMenu(menu)
     }
 

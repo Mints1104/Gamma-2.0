@@ -1,5 +1,8 @@
 package com.mints.projectgammatwo.data
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class ExportData(
     val dataSources: Set<String>,
     val enabledCharacters: Set<Int>,

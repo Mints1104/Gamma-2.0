@@ -2,6 +2,7 @@ package com.mints.projectgammatwo.data
 
 import java.io.Serializable
 
+@kotlinx.serialization.Serializable
 data class FavoriteLocation(
     var name: String,
     var lat: Double,

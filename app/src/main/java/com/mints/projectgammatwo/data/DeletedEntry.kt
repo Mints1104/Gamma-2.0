@@ -5,16 +5,7 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.google.gson.Gson
 
-/**
- * Represents a single record of a user-deleted invasion.
- * @property lat Latitude of the invasion at time of deletion
- * @property lng Longitude of the invasion at time of deletion
- * @property timestamp Epoch millis when the deletion was recorded
- * @property name Optional Pokéstop/invasion display name at time of deletion
- * @property source Optional source key from which this invasion was fetched
- * @property character Optional character ID associated with the invasion
- * @property type Optional invasion type ID
- */
+@kotlinx.serialization.Serializable
 data class DeletedEntry(
     val lat: Double,
     val lng: Double,

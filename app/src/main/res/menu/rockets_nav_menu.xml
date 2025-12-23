@@ -9,4 +9,17 @@
         android:icon="@drawable/history_24px"
         app:showAsAction="ifRoom"/>
 
+    <item
+        android:id="@+id/action_sort_by_time"
+        android:title="Sort by time"
+        android:icon="@drawable/history_24px"
+        app:showAsAction="never"/>
+
+    <item
+        android:id="@+id/action_sort_by_distance"
+        android:title="Sort by distance"
+        android:icon="@drawable/history_24px"
+        app:showAsAction="never"/>
+
+
 </menu>

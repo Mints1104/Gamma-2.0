@@ -5,6 +5,9 @@ import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -38,6 +41,12 @@ class HomeFragment : Fragment() {
     // Track listeners to properly unregister on view teardown
     private var scrollListener: RecyclerView.OnScrollListener? = null
     private var dataObserver: RecyclerView.AdapterDataObserver? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Ensure this fragment contributes to the options menu
+        setHasOptionsMenu(true)
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -85,6 +94,8 @@ class HomeFragment : Fragment() {
 
             recyclerView.post {
                 checkAndUpdateFabVisibility()
+                // Scroll to top on list updates to prevent jumping to bottom
+                recyclerView.scrollToPosition(0)
             }
         }
 
@@ -105,6 +116,11 @@ class HomeFragment : Fragment() {
 
         viewModel.fetchInvasions()
         updateServiceButtonState(startServiceButton)
+
+        // Observe sort mode changes to update menu
+        viewModel.sortByDistance.observe(viewLifecycleOwner) {
+            requireActivity().invalidateOptionsMenu()
+        }
     }
 
     private fun testGetDeletedInvasions() {
@@ -173,7 +189,41 @@ class HomeFragment : Fragment() {
         dataObserver = newObserver
 
         scrollToTopFab.setOnClickListener {
-            recyclerView.smoothScrollToPosition(0)
+            recyclerView.scrollToPosition(0)
+        }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
+        // Menu is already inflated in MainActivity
+        super.onCreateOptionsMenu(menu, inflater)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+           R.id.action_sort_by_distance -> {
+               viewModel.sortInvasions(true)
+               true
+           }
+            R.id.action_sort_by_time -> {
+                viewModel.sortInvasions(false)
+
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    override fun onPrepareOptionsMenu(menu: Menu) {
+        super.onPrepareOptionsMenu(menu)
+        val sortByDistance = viewModel.sortByDistance.value ?: false
+        val sortMenuItem = menu.findItem(R.id.action_sort_by_distance)
+        val timeMenuItem = menu.findItem(R.id.action_sort_by_time)
+        if (sortByDistance) {
+            sortMenuItem?.title = "✓ Sorted by Distance"
+            timeMenuItem?.title = "Sort by Time"
+        } else {
+            sortMenuItem?.title = "Sort by Distance"
+            timeMenuItem?.title = "✓ Sorted by Time"
         }
     }
 

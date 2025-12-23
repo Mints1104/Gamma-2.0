@@ -27,6 +27,9 @@ import com.mints.projectgammatwo.data.FavoriteLocation
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.data.ExportData
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 class SettingsFragment : Fragment() {
 
@@ -69,6 +72,13 @@ class SettingsFragment : Fragment() {
     private lateinit var customizationManager: com.mints.projectgammatwo.data.OverlayCustomizationManager
 
     private val gson = Gson()
+    private val kxJson: Json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+        explicitNulls = false
+        allowTrailingComma = true
+        prettyPrint = false
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         return inflater.inflate(R.layout.fragment_settings, container, false)
@@ -461,11 +471,9 @@ class SettingsFragment : Fragment() {
         Log.d("SettingsExport", "Saved rocket filters: ${savedRocketFilters.keys}")
 
         // Get all saved quest filters
-            // you used QUEST_SPINDA_PREFIX = "spinda_"
         val savedQuestFilters = filterPreferences.getSavedQuestFilters()
         Log.d("SettingsExport", "Saved quest filters: ${savedQuestFilters.keys}")
         val savedQuestSpindaForms = savedQuestFilters.keys.associateWith { name ->
-            // you used QUEST_SPINDA_PREFIX = "spinda_"
             requireContext()
                 .getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
                 .getStringSet("spinda_$name", emptySet())!!
@@ -500,7 +508,7 @@ class SettingsFragment : Fragment() {
         )
 
         try {
-            val exportJson = gson.toJson(exportData)
+            val exportJson = kxJson.encodeToString(exportData)
             Log.d("SettingsExport", "JSON created successfully, length: ${exportJson.length}")
             Log.d("SettingsExport", "JSON sample: ${exportJson.take(100)}...")
 
@@ -554,7 +562,14 @@ class SettingsFragment : Fragment() {
         try {
             Log.d("SettingsImport", "Starting import process with JSON: ${jsonString.take(100)}...")
 
-            val importData = gson.fromJson(jsonString, ExportData::class.java)
+            val importData: ExportData = try {
+                val parsed = kxJson.decodeFromString<ExportData>(jsonString)
+                Log.d("SettingsImport", "Parsed with kotlinx.serialization")
+                parsed
+            } catch (e: Exception) {
+                Log.w("SettingsImport", "kotlinx.serialization failed: ${e.message}. Falling back to Gson")
+                gson.fromJson(jsonString, ExportData::class.java)
+            }
             Log.d("SettingsImport", "Successfully parsed JSON into ExportData")
 
             // Basic settings import
@@ -641,7 +656,7 @@ class SettingsFragment : Fragment() {
 
             // Import the quest filters
             for ((name, questIds) in questFilters) {
-                val questStrings = questIds.toSet() // already Set<String>
+                val questStrings = questIds.toSet()
                 Log.d("SettingsImport", "Importing quest filter '$name' with ${questStrings.size} quests: $questStrings")
                 try {
                     filterPreferences.saveEnabledQuestFilters(questStrings)
