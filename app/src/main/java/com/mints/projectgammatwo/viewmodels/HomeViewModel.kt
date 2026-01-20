@@ -54,6 +54,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     // Job to cancel ongoing fetch if new one is started
     private var fetchJob: kotlinx.coroutines.Job? = null
 
+    // Cache for last invasion coordinates to avoid repeated SharedPreferences reads
+    private var cachedLastInvasionCoords: Pair<Double?, Double?>? = null
+
     companion object {
         private const val TAG = "HomeViewModel"
     }
@@ -117,10 +120,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val deletedKeySet = deletedEntries.map { it.lat to it.lng }.toHashSet()
 
-                // Perform CPU-bound mapping/filtering off the main thread
-                val baseList = withContext(Dispatchers.Default) {
+                // Perform CPU-bound mapping/filtering AND sorting off the main thread
+                val finalList = withContext(Dispatchers.Default) {
                     val currentTimeSeconds = System.currentTimeMillis() / 1000
-                    combinedInvasions
+                    val baseList = combinedInvasions
                         .asSequence()
                         .map { invasion ->
                             when (invasion.type) {
@@ -135,10 +138,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                                     invasion.invasion_end > currentTimeSeconds
                         }
                         .toList()
-                }
 
-                // Apply sorting according to current mode
-                val finalList = applySorting(baseList)
+                    // Apply sorting on background thread
+                    applySorting(baseList)
+                }
 
                 _invasions.value = finalList
                 _currentInvasionCount.value = finalList.size
@@ -161,23 +164,25 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     // Apply time or distance sort based on current sortByDistance flag
     private fun applySorting(list: List<Invasion>): List<Invasion> {
         if (list.isEmpty()) return list
+
+        // Limit to 500 items before sorting to reduce processing time
+        val limitedList = list.take(500)
+        Log.d(TAG, "Limited invasions from ${list.size} to ${limitedList.size} before sorting")
+
         return if (sortByDistanceInternal) {
             val (lat, lng) = loadLastInvasionCoordinates()
             if (lat != null && lng != null) {
-                Log.d(TAG, "Sorting by distance using stored coordinates: ($lat, $lng)")
-                list.sortedBy { haversineDistanceFromPoint(lat, lng, it) }
-            } else if (list.isNotEmpty()) {
-                // Use the first invasion's coordinates as fallback
-                val first = list.first()
-                Log.d(TAG, "Sorting by distance using first invasion coordinates as fallback: (${first.lat}, ${first.lng})")
-                list.sortedBy { haversineDistanceFromPoint(first.lat, first.lng, it) }
+                Log.d(TAG, "Sorting by distance using stored last invasion coordinates: ($lat, $lng)")
+                limitedList.sortedBy { haversineDistanceFromPoint(lat, lng, it) }
             } else {
-                Log.d(TAG, "No coordinates available for distance sorting, returning unsorted list")
-                list
+                // Fallback to first invasion's coordinates
+                val first = limitedList.first()
+                Log.d(TAG, "Sorting by distance using first invasion coordinates (no stored coords): (${first.lat}, ${first.lng})")
+                limitedList.sortedBy { haversineDistanceFromPoint(first.lat, first.lng, it) }
             }
         } else {
             Log.d(TAG, "Sorting by time (reversed)")
-            list.sortedBy { it.invasion_start }.asReversed()
+            limitedList.sortedBy { it.invasion_start }.asReversed()
         }
     }
 
@@ -194,66 +199,61 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         return R * c
     }
 
-    // Load last invasion coordinates (fallback to quests key if present)
+    // Load last invasion coordinates from cache or SharedPreferences (NO quest fallback)
     private fun loadLastInvasionCoordinates(): Pair<Double?, Double?> {
+        // Return cached value if available
+        cachedLastInvasionCoords?.let { return it }
+
+        // Otherwise load from SharedPreferences
         val context = getApplication<Application>().applicationContext
         val prefs = context.getSharedPreferences("last_invasion_pref", Context.MODE_PRIVATE)
         val combined = prefs.getString("lastInvasion", null)
-        if (!combined.isNullOrEmpty() && "," in combined) {
+        val result = if (!combined.isNullOrEmpty() && "," in combined) {
             val parts = combined.split(",")
             val lat = parts.getOrNull(0)?.toDoubleOrNull()
             val lng = parts.getOrNull(1)?.toDoubleOrNull()
-            return lat to lng
-        }
-        // Fallback: use quests last visited if available
-        val qp = context.getSharedPreferences("last_visited_pref", Context.MODE_PRIVATE)
-        val qCombined = qp.getString("lastVisited", null)
-        return if (!qCombined.isNullOrEmpty() && "," in qCombined) {
-            val parts = qCombined.split(",")
-            parts.getOrNull(0)?.toDoubleOrNull() to parts.getOrNull(1)?.toDoubleOrNull()
-        } else {
-            val latF = qp.getFloat("lastVisitedLat", Float.NaN)
-            val lngF = qp.getFloat("lastVisitedLng", Float.NaN)
-            val lat = if (!latF.isNaN()) latF.toDouble() else null
-            val lng = if (!lngF.isNaN()) lngF.toDouble() else null
+            Log.d(TAG, "Loaded last invasion coordinates from SharedPreferences: ($lat, $lng)")
             lat to lng
+        } else {
+            Log.d(TAG, "No stored last invasion coordinates found")
+            null to null
         }
+
+        // Cache the result
+        cachedLastInvasionCoords = result
+        return result
     }
 
-    // Persist last invasion coordinate when user handles one (e.g., teleport/delete)
-    private fun saveLastInvasionCoordinates(invasion: Invasion) {
-        val context = getApplication<Application>().applicationContext
-        val prefs = context.getSharedPreferences("last_invasion_pref", Context.MODE_PRIVATE)
-        prefs.edit().apply {
-            putString("lastInvasion", "${invasion.lat},${invasion.lng}")
-            putFloat("lastInvasionLat", invasion.lat.toFloat())
-            putFloat("lastInvasionLng", invasion.lng.toFloat())
-            apply()
+    // Save last invasion coordinates to SharedPreferences on background thread
+    private suspend fun saveLastInvasionCoordinates(invasion: Invasion) {
+        withContext(Dispatchers.IO) {
+            val context = getApplication<Application>().applicationContext
+            val prefs = context.getSharedPreferences("last_invasion_pref", Context.MODE_PRIVATE)
+            prefs.edit().apply {
+                putString("lastInvasion", "${invasion.lat},${invasion.lng}")
+                putFloat("lastInvasionLat", invasion.lat.toFloat())
+                putFloat("lastInvasionLng", invasion.lng.toFloat())
+                apply()
+            }
+            Log.d(TAG, "Saved last invasion coordinates: (${invasion.lat}, ${invasion.lng})")
         }
+        // Update cache immediately
+        cachedLastInvasionCoords = invasion.lat to invasion.lng
     }
 
     fun sortInvasions(sortType: Boolean) {
         when (sortType) {
-            true -> Log.d(TAG, "Filter by distance")
-            else -> Log.d(TAG, "Filter by time")
+            true -> Log.d(TAG, "Switching to sort by distance")
+            else -> Log.d(TAG, "Switching to sort by time")
         }
 
-        // Update mode and resort current list asynchronously, filtering out expired invasions
+        // Update the sort mode
         sortByDistanceInternal = sortType
         _sortByDistance.value = sortType
-        viewModelScope.launch(Dispatchers.Default) {
-            val current = _invasions.value ?: emptyList()
-            val currentTimeSeconds = System.currentTimeMillis() / 1000
-            Log.d(TAG, "Current time seconds: $currentTimeSeconds")
-            if (current.isNotEmpty()) {
-                Log.d(TAG, "Sample invasion_end: ${current.first().invasion_end}")
-            }
-            val filtered = current.filter { it.invasion_end > currentTimeSeconds }
-            Log.d(TAG, "Filtered from ${current.size} to ${filtered.size} invasions")
-            val sorted = applySorting(filtered)
-            _invasions.postValue(sorted)
-            _currentInvasionCount.postValue(sorted.size)
-        }
+
+        // Auto-refresh invasions to get fresh data with the new sort mode
+        Log.d(TAG, "Auto-refreshing invasions after sort mode change")
+        fetchInvasions()
     }
 
     fun getInvasions(): List<Invasion>? {
