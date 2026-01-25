@@ -13,6 +13,7 @@ import com.mints.projectgammatwo.data.DataSourcePreferences
 import com.mints.projectgammatwo.data.RaidApiService
 import com.mints.projectgammatwo.data.Raids
 import com.mints.projectgammatwo.data.Raids.Raid
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
@@ -126,6 +127,10 @@ class RaidsViewModel(application: Application) : AndroidViewModel(application) {
                 _raidsLiveData.postValue(sorted)
                 _raidsCountLiveData.postValue(sorted.size)
 
+            } catch (e: CancellationException) {
+                // Coroutine was cancelled - this is normal behavior, don't treat it as an error
+                Log.d(tag, "Fetch raids was cancelled")
+                throw e // Re-throw to properly propagate cancellation
             } catch (e: Exception) {
                 Log.e(tag, "Error in fetchRaids", e)
                 _raidsLiveData.postValue(emptyList())

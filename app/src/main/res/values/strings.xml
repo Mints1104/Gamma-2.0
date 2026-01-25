@@ -95,4 +95,14 @@
 
     <string name="action_cancel">Cancel</string>
     <string name="action_delete">Delete</string>
+
+    <!-- Deeplink Settings -->
+    <string name="deeplink_method">Deeplink Method</string>
+    <string name="deeplink_ipogo">iPogo</string>
+    <string name="deeplink_pokemod">Pokemod</string>
+    <string name="deeplink_custom">Custom</string>
+    <string name="deeplink_custom_url_hint">Enter custom URL (use %s for coordinates)</string>
+    <string name="deeplink_custom_url_example">Example: https://example.com/?coords=%s</string>
+    <string name="deeplink_custom_url_saved">Custom deeplink URL saved</string>
+    <string name="deeplink_custom_url_invalid">Custom URL should contain %s placeholder for coordinates</string>
 </resources>

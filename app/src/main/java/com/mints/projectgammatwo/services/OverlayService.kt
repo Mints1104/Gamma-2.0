@@ -44,6 +44,7 @@ import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.OverlayCustomizationManager
+import com.mints.projectgammatwo.data.DeeplinkManager
 import com.mints.projectgammatwo.helpers.DragTouchListener
 import com.mints.projectgammatwo.helpers.ItemTouchHelperAdapter
 import com.mints.projectgammatwo.helpers.ItemTouchHelperCallback
@@ -457,7 +458,8 @@ class OverlayService : Service() {
 
     private fun launchHome(lat: Double, lng: Double) {
         Log.d(TAG, "Launching home with coords: $lat, $lng")
-        val url = "https://ipogo.app/?coords=$lat,$lng"
+        val deeplinkManager = DeeplinkManager.getInstance(application)
+        val url = deeplinkManager.generateDeeplink(lat, lng)
         Intent(Intent.ACTION_VIEW, url.toUri())
             .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
             .also(::startActivity)
@@ -465,7 +467,8 @@ class OverlayService : Service() {
 
     private fun launchMap(inv: Invasion) {
         Log.d(TAG, "Launching map with coords: ${inv.lat}, ${inv.lng}")
-        val url = "https://ipogo.app/?coords=${inv.lat},${inv.lng}"
+        val deeplinkManager = DeeplinkManager.getInstance(application)
+        val url = deeplinkManager.generateDeeplink(inv.lat, inv.lng)
         Intent(Intent.ACTION_VIEW, url.toUri())
             .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
             .also(::startActivity)
@@ -473,7 +476,8 @@ class OverlayService : Service() {
 
     private fun launchQuest(quest: com.mints.projectgammatwo.data.Quests.Quest) {
         Log.d(TAG, "Launching quest map with coords: ${quest.lat}, ${quest.lng}")
-        val url = "https://ipogo.app/?coords=${quest.lat},${quest.lng}"
+        val deeplinkManager = DeeplinkManager.getInstance(application)
+        val url = deeplinkManager.generateDeeplink(quest.lat, quest.lng)
         Intent(Intent.ACTION_VIEW, url.toUri())
             .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
             .also(::startActivity)
@@ -571,7 +575,8 @@ class OverlayService : Service() {
             onTeleportFavorite = { favorite ->
                 // Teleport to location
                 hideFilterOverlay()
-                val url = "https://ipogo.app/?coords=${favorite.lat},${favorite.lng}"
+                val deeplinkManager = DeeplinkManager.getInstance(application)
+                val url = deeplinkManager.generateDeeplink(favorite.lat, favorite.lng)
                 showOverlayToast("Teleporting to ${favorite.name}")
                 Intent(Intent.ACTION_VIEW, url.toUri())
                     .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }

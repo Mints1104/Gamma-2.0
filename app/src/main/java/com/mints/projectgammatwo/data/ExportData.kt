@@ -17,5 +17,7 @@ data class ExportData(
     val activeQuestFilter: String,
     val overlayButtonSize: Int,
     val overlayButtonOrder: List<String>,
-    val overlayButtonVisibility: Map<String, Boolean>
+    val overlayButtonVisibility: Map<String, Boolean>,
+    val deeplinkType: String = "ipogo",
+    val deeplinkCustomUrl: String = ""
 )

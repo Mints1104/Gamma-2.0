@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.Invasion
+import com.mints.projectgammatwo.data.DeeplinkManager
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -68,7 +69,8 @@ class InvasionsAdapter(
             timeText.text = ctx.getString(R.string.invasion_item_time_range, startTime, endTime)
 
             teleportButton.setOnClickListener {
-                val url = "https://ipogo.app/?coords=${invasion.lat},${invasion.lng}"
+                val deeplinkManager = DeeplinkManager.getInstance(ctx)
+                val url = deeplinkManager.generateDeeplink(invasion.lat, invasion.lng)
                 val intent = Intent(Intent.ACTION_VIEW, url.toUri())
                 ctx.startActivity(intent)
                 // Optionally mark as handled/deleted if that's the intended behavior

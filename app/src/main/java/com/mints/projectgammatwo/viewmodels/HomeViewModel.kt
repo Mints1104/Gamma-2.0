@@ -13,6 +13,7 @@ import com.mints.projectgammatwo.data.DeletedEntry
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
@@ -154,6 +155,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     TAG,
                     "Fetched invasions from ${selectedSources.size} sources. Total items: ${finalList.size}"
                 )
+            } catch (e: CancellationException) {
+                // Coroutine was cancelled - this is normal behavior, don't treat it as an error
+                Log.d(TAG, "Fetch invasions was cancelled")
+                throw e // Re-throw to properly propagate cancellation
             } catch (e: Exception) {
                 e(TAG, "Error fetching invasions: ${e.message}", e)
                 _error.value = "Failed to fetch invasions: ${e.message}"

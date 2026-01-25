@@ -27,6 +27,7 @@ import com.mints.projectgammatwo.data.FavoriteLocation
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.data.ExportData
+import com.mints.projectgammatwo.data.DeeplinkManager
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -60,12 +61,20 @@ class SettingsFragment : Fragment() {
     private lateinit var radioIpogo: RadioButton
     private lateinit var radioJoystick: RadioButton
 
+    private lateinit var radioGroupDeeplink: RadioGroup
+    private lateinit var radioDeeplinkIpogo: RadioButton
+    private lateinit var radioDeeplinkPokemod: RadioButton
+    private lateinit var radioDeeplinkCustom: RadioButton
+    private lateinit var customDeeplinkUrl: EditText
+    private lateinit var customDeeplinkExample: TextView
+
     private lateinit var dataSourcePreferences: DataSourcePreferences
     private lateinit var filterPreferences: FilterPreferences
     private lateinit var deletedRepo: DeletedInvasionsRepository
     private lateinit var discordTextView: TextView
     private lateinit var homeCoordinates: EditText
     private lateinit var homeCoordinatesManager: HomeCoordinatesManager
+    private lateinit var deeplinkManager: DeeplinkManager
 
     // Overlay customization views
     private lateinit var btnCustomizeOverlay: Button
@@ -90,6 +99,7 @@ class SettingsFragment : Fragment() {
         deletedRepo = DeletedInvasionsRepository(requireContext())
         homeCoordinatesManager = HomeCoordinatesManager.getInstance(requireContext())
         customizationManager = com.mints.projectgammatwo.data.OverlayCustomizationManager(requireContext())
+        deeplinkManager = DeeplinkManager.getInstance(requireContext())
 
         checkboxNYC = view.findViewById(R.id.checkbox_nyc)
         checkboxLondon = view.findViewById(R.id.checkbox_london)
@@ -101,6 +111,12 @@ class SettingsFragment : Fragment() {
         radioGroupTeleport = view.findViewById(R.id.radioGroupTeleport)
         radioIpogo = view.findViewById(R.id.radio_ipogo)
         radioJoystick = view.findViewById(R.id.radio_joystick)
+        radioGroupDeeplink = view.findViewById(R.id.radioGroupDeeplink)
+        radioDeeplinkIpogo = view.findViewById(R.id.radio_deeplink_ipogo)
+        radioDeeplinkPokemod = view.findViewById(R.id.radio_deeplink_pokemod)
+        radioDeeplinkCustom = view.findViewById(R.id.radio_deeplink_custom)
+        customDeeplinkUrl = view.findViewById(R.id.customDeeplinkUrl)
+        customDeeplinkExample = view.findViewById(R.id.customDeeplinkExample)
         discordTextView = view.findViewById(R.id.discordInvite)
         homeCoordinates = view.findViewById(R.id.homeCoordinates)
         btnCustomizeOverlay = view.findViewById(R.id.btnCustomizeOverlay)
@@ -109,6 +125,7 @@ class SettingsFragment : Fragment() {
         setupDataSourceCheckboxes()
         setupExportImportButtons()
         setupTeleportMethod()
+        setupDeeplinkMethod()
         setupHomeCoordinatesField()
         setupOverlayCustomization()
     }
@@ -176,6 +193,67 @@ class SettingsFragment : Fragment() {
         radioGroupTeleport.setOnCheckedChangeListener { _, checkedId ->
             val method = if (checkedId == R.id.radio_ipogo) "ipogo" else "joystick"
             teleportPrefs.edit { putString(KEY_TELEPORT_METHOD, method) }
+        }
+    }
+
+    private fun setupDeeplinkMethod() {
+        // Load saved deeplink type
+        val savedType = deeplinkManager.getDeeplinkType()
+        when (savedType) {
+            DeeplinkManager.TYPE_IPOGO -> radioDeeplinkIpogo.isChecked = true
+            DeeplinkManager.TYPE_POKEMOD -> radioDeeplinkPokemod.isChecked = true
+            DeeplinkManager.TYPE_CUSTOM -> {
+                radioDeeplinkCustom.isChecked = true
+                customDeeplinkUrl.visibility = View.VISIBLE
+                customDeeplinkExample.visibility = View.VISIBLE
+            }
+        }
+
+        // Load saved custom URL
+        customDeeplinkUrl.setText(deeplinkManager.getCustomUrl())
+
+        // Handle radio button changes
+        radioGroupDeeplink.setOnCheckedChangeListener { _, checkedId ->
+            when (checkedId) {
+                R.id.radio_deeplink_ipogo -> {
+                    deeplinkManager.setDeeplinkType(DeeplinkManager.TYPE_IPOGO)
+                    customDeeplinkUrl.visibility = View.GONE
+                    customDeeplinkExample.visibility = View.GONE
+                }
+                R.id.radio_deeplink_pokemod -> {
+                    deeplinkManager.setDeeplinkType(DeeplinkManager.TYPE_POKEMOD)
+                    customDeeplinkUrl.visibility = View.GONE
+                    customDeeplinkExample.visibility = View.GONE
+                }
+                R.id.radio_deeplink_custom -> {
+                    deeplinkManager.setDeeplinkType(DeeplinkManager.TYPE_CUSTOM)
+                    customDeeplinkUrl.visibility = View.VISIBLE
+                    customDeeplinkExample.visibility = View.VISIBLE
+                }
+            }
+        }
+
+        // Handle custom URL changes
+        customDeeplinkUrl.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                val url = customDeeplinkUrl.text.toString().trim()
+                if (url.isNotEmpty()) {
+                    deeplinkManager.setCustomUrl(url)
+                    if (!url.contains("%s")) {
+                        Toast.makeText(
+                            requireContext(),
+                            getString(R.string.deeplink_custom_url_invalid),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        Toast.makeText(
+                            requireContext(),
+                            getString(R.string.deeplink_custom_url_saved),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
         }
     }
 
@@ -490,6 +568,11 @@ class SettingsFragment : Fragment() {
         val overlayButtonVisibility = customizationManager.getButtonVisibility()
         Log.d("SettingsExport", "Overlay customization - Size: $overlayButtonSize, Order: $overlayButtonOrder")
 
+        // Get deeplink preferences
+        val deeplinkType = deeplinkManager.getDeeplinkType()
+        val deeplinkCustomUrl = deeplinkManager.getCustomUrl()
+        Log.d("SettingsExport", "Deeplink settings - Type: $deeplinkType, Custom URL: $deeplinkCustomUrl")
+
         val exportData = ExportData(
             dataSources = dataSources,
             enabledCharacters = enabledCharacters,
@@ -504,7 +587,9 @@ class SettingsFragment : Fragment() {
             activeQuestFilter = activeQuestFilter,
             overlayButtonSize = overlayButtonSize,
             overlayButtonOrder = overlayButtonOrder,
-            overlayButtonVisibility = overlayButtonVisibility
+            overlayButtonVisibility = overlayButtonVisibility,
+            deeplinkType = deeplinkType,
+            deeplinkCustomUrl = deeplinkCustomUrl
         )
 
         try {
@@ -695,6 +780,22 @@ class SettingsFragment : Fragment() {
             customizationManager.saveButtonOrder(importData.overlayButtonOrder)
             customizationManager.saveButtonVisibility(importData.overlayButtonVisibility)
 
+            // Import deeplink preferences
+            Log.d("SettingsImport", "Importing deeplink settings - Type: ${importData.deeplinkType}, Custom URL: ${importData.deeplinkCustomUrl}")
+            deeplinkManager.setDeeplinkType(importData.deeplinkType)
+            deeplinkManager.setCustomUrl(importData.deeplinkCustomUrl)
+
+            // Update deeplink UI
+            when (importData.deeplinkType) {
+                DeeplinkManager.TYPE_IPOGO -> radioDeeplinkIpogo.isChecked = true
+                DeeplinkManager.TYPE_POKEMOD -> radioDeeplinkPokemod.isChecked = true
+                DeeplinkManager.TYPE_CUSTOM -> {
+                    radioDeeplinkCustom.isChecked = true
+                    customDeeplinkUrl.setText(importData.deeplinkCustomUrl)
+                    customDeeplinkUrl.visibility = View.VISIBLE
+                    customDeeplinkExample.visibility = View.VISIBLE
+                }
+            }
 
             Toast.makeText(requireContext(), getString(R.string.settings_import_success), Toast.LENGTH_LONG).show()
         } catch (ex: Exception) {

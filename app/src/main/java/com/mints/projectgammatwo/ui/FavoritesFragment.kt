@@ -22,6 +22,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.FavoriteLocation
+import com.mints.projectgammatwo.data.DeeplinkManager
 import com.mints.projectgammatwo.recyclerviews.FavoritesAdapter
 import java.util.Collections
 import androidx.core.content.edit
@@ -361,7 +362,8 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         val method = teleportPrefs.getString("teleport_method", "ipogo") ?: "ipogo"
 
         if (method == "ipogo") {
-            val url = "https://ipogo.app/?coords=${favorite.lat},${favorite.lng}"
+            val deeplinkManager = DeeplinkManager.getInstance(context)
+            val url = deeplinkManager.generateDeeplink(favorite.lat, favorite.lng)
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
             startActivity(intent)
             return

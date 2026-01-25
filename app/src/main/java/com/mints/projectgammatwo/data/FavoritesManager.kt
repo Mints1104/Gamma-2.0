@@ -55,7 +55,8 @@ object FavoritesManager {
         val method = teleportPrefs.getString("teleport_method", "ipogo") ?: "ipogo"
 
         if (method == "ipogo") {
-            val url = "https://ipogo.app/?coords=${favorite.lat},${favorite.lng}"
+            val deeplinkManager = DeeplinkManager.getInstance(context)
+            val url = deeplinkManager.generateDeeplink(favorite.lat, favorite.lng)
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                 .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
             context.startActivity(intent)

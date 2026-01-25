@@ -109,11 +109,7 @@
             android:text="Import Settings" />
 
         <!-- Divider -->
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="?android:attr/listDivider"
-            android:layout_marginVertical="16dp" />
+
 
         <LinearLayout
             android:id="@+id/typeFiltersLayout"
@@ -121,13 +117,74 @@
             android:layout_height="wrap_content"
             android:orientation="vertical" />
 
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/deeplink_method"
+            android:textStyle="bold"
+            android:textSize="16sp" />
+
+        <RadioGroup
+            android:id="@+id/radioGroupDeeplink"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <RadioButton
+                android:id="@+id/radio_deeplink_ipogo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/deeplink_ipogo" />
+
+            <RadioButton
+                android:id="@+id/radio_deeplink_pokemod"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/deeplink_pokemod" />
+
+            <RadioButton
+                android:id="@+id/radio_deeplink_custom"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/deeplink_custom" />
+        </RadioGroup>
+
+        <EditText
+            android:id="@+id/customDeeplinkUrl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/deeplink_custom_url_hint"
+            android:inputType="textUri"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/customDeeplinkExample"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/deeplink_custom_url_example"
+            android:textSize="12sp"
+            android:textStyle="italic"
+            android:visibility="gone"
+            android:layout_marginTop="4dp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?android:attr/listDivider"
+            android:layout_marginVertical="16dp" />
+
+
         <!-- Version and attribution info -->
         <TextView
             android:id="@+id/versionInfoText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Gamma by Mints&#10;Version: 3.5"
+            android:text="Gamma by Mints&#10;Version: 3.6"
             android:textAlignment="center"
             android:textSize="14sp" />
 
@@ -143,7 +200,10 @@
             android:textSize="14sp"
             android:textColorLink="@color/link_color" />
 
-        <!-- Teleport Method Selection (hidden) -->
+        <!-- Deeplink Method Selection -->
+
+
+        <!-- Teleport Method Selection (hidden, kept for GPS Joystick compatibility) -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

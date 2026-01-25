@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.Raids.Raid
+import com.mints.projectgammatwo.data.DeeplinkManager
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -70,7 +71,8 @@ class RaidsAdapter(
             coordinatesText.text = "${raid.lat}, ${raid.lng}"
 
             teleportButton.setOnClickListener {
-                val url = "https://ipogo.app/?coords=${raid.lat},${raid.lng}"
+                val deeplinkManager = DeeplinkManager.getInstance(itemView.context)
+                val url = deeplinkManager.generateDeeplink(raid.lat, raid.lng)
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                 itemView.context.startActivity(intent)
             }

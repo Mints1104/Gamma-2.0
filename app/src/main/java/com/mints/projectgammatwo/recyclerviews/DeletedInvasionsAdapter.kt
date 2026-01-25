@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
+import com.mints.projectgammatwo.data.DeeplinkManager
 import java.util.Date
 
 class DeletedInvasionsAdapter : ListAdapter<DeletedInvasionsAdapter.UIModel, DeletedInvasionsAdapter.VH>(Diff()) {
@@ -71,7 +72,8 @@ class DeletedInvasionsAdapter : ListAdapter<DeletedInvasionsAdapter.UIModel, Del
                 toast.show()
             }
             btnTeleport.setOnClickListener {
-                val url = "https://ipogo.app/?coords=${m.lat},${m.lng}"
+                val deeplinkManager = DeeplinkManager.getInstance(ctx)
+                val url = deeplinkManager.generateDeeplink(m.lat, m.lng)
                 val intent = Intent(Intent.ACTION_VIEW, url.toUri())
                 ctx.startActivity(intent)
             }

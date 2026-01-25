@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.Quests.Quest
+import com.mints.projectgammatwo.data.DeeplinkManager
 
 class QuestsAdapter(
     private val onQuestVisited: (Quest) -> Unit
@@ -55,7 +56,8 @@ class QuestsAdapter(
             sourceText.text = "Source: $questText"
 
             teleportButton.setOnClickListener {
-                val url = "https://ipogo.app/?coords=${quest.lat},${quest.lng}"
+                val deeplinkManager = DeeplinkManager.getInstance(itemView.context)
+                val url = deeplinkManager.generateDeeplink(quest.lat, quest.lng)
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                 itemView.context.startActivity(intent)
                 // Notify that this quest was visited
