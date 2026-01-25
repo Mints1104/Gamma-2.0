@@ -189,7 +189,7 @@ class HomeFragment : Fragment() {
         dataObserver = newObserver
 
         scrollToTopFab.setOnClickListener {
-            recyclerView.scrollToPosition(0)
+            recyclerView.smoothScrollToPosition(0)
         }
     }
 
