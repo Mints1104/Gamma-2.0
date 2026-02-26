@@ -38,6 +38,7 @@ class Quests {
         val t4: List<String>,
         val t2: List<String>,
         val t7: List<String>,
+        val t9: List<String> = emptyList(),
         val t12: List<String>
     )
 }

@@ -549,6 +549,7 @@ class FilterFragment : Fragment() {
                             listOfNotNull(
                                 filtersFromApi.t3 to "Stardust",
                                 filtersFromApi.t4 to "Pokémon Candy",
+                                (filtersFromApi.t9 ?: emptyList()) to "Pokémon Candy XL",
                                 filtersFromApi.t12 to "Mega Energy",
                                 filtersFromApi.t7 to "Pokémon Encounter",
                                 filtersFromApi.t2 to "Item"
@@ -596,6 +597,7 @@ class FilterFragment : Fragment() {
 
             addFilterSection(parent, "Stardust", filters.t3)
             addFilterSection(parent, "Pokémon Candy", filters.t4)
+            addFilterSection(parent, "Pokémon Candy XL", filters.t9 ?: emptyList())
             addFilterSection(parent, "Mega Energy", filters.t12)
 
             addFilterSection(parent, "Pokémon Encounter", filters.t7, spindaFormsMap)
@@ -671,6 +673,7 @@ class FilterFragment : Fragment() {
             "Pokémon Encounter" -> "7,0,$rawValue"
             "Item" -> "2,0,$rawValue"
             "Pokémon Candy" -> "4,0,$rawValue"
+            "Pokémon Candy XL" -> "9,0,$rawValue"
             else -> rawValue
         }
     }
@@ -691,7 +694,7 @@ class FilterFragment : Fragment() {
         } else {
             // Sort differently if it’s one of the special categories; else alphabetical
             val sortedList = when (sectionName) {
-                "Pokémon Encounter", "Mega Energy", "Pokémon Candy" ->
+                "Pokémon Encounter", "Mega Energy", "Pokémon Candy", "Pokémon Candy XL" ->
                     filterList.sortedBy { DataMappings.pokemonEncounterMapNew[it] ?: it }
                 else ->
                     filterList.sorted()
@@ -707,6 +710,8 @@ class FilterFragment : Fragment() {
                         ?: "Energy for ID: $rawValue"
                     "Pokémon Candy"     -> DataMappings.pokemonEncounterMapNew[rawValue]
                         ?: "Candy for ID: $rawValue"
+                    "Pokémon Candy XL"  -> DataMappings.pokemonEncounterMapNew[rawValue]
+                        ?: "XL Candy for ID: $rawValue"
                     else                -> rawValue
                 }
 
