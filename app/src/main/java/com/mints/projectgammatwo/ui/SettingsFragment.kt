@@ -28,8 +28,10 @@ import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.data.ExportData
 import com.mints.projectgammatwo.data.DeeplinkManager
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
+import com.mints.projectgammatwo.data.decodeConditionMap
+import com.mints.projectgammatwo.data.decodeConditionSet
+import com.mints.projectgammatwo.data.encodeConditionMap
+import com.mints.projectgammatwo.data.encodeConditionSet
 import kotlinx.serialization.json.Json
 
 class SettingsFragment : Fragment() {
@@ -534,9 +536,8 @@ class SettingsFragment : Fragment() {
         val favorites: List<FavoriteLocation> = gson.fromJson(favoritesJson, favoritesType)
         Log.d("SettingsExport", "Favorites count: ${favorites.size}")
 
-        val enabledQuests = filterPreferences.getEnabledQuestFilters()
-        Log.d("SettingsExport", "Enabled quests: $enabledQuests")
-
+        val enabledEncounterConditions = filterPreferences.getEnabledEncounterConditions()
+        Log.d("SettingsExport", "Enabled encounter conditions: ${enabledEncounterConditions.size}")
         val deletedEntries = deletedRepo.getDeletedEntries()
         Log.d("SettingsExport", "Deleted entries count: ${deletedEntries.size}")
 
@@ -548,14 +549,11 @@ class SettingsFragment : Fragment() {
         val savedRocketFilters = filterPreferences.getAllSavedFilters()
         Log.d("SettingsExport", "Saved rocket filters: ${savedRocketFilters.keys}")
 
-        // Get all saved quest filters
+        // Get all saved quest filters and their encounter condition snapshots
         val savedQuestFilters = filterPreferences.getSavedQuestFilters()
         Log.d("SettingsExport", "Saved quest filters: ${savedQuestFilters.keys}")
-        val savedQuestSpindaForms = savedQuestFilters.keys.associateWith { name ->
-            requireContext()
-                .getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
-                .getStringSet("spinda_$name", emptySet())!!
-        }
+        val savedQuestEncounterConditions = filterPreferences.getSavedQuestEncounterConditions()
+        Log.d("SettingsExport", "Saved quest encounter conditions: ${savedQuestEncounterConditions.keys}")
 
         // Get active filter names
         val activeRocketFilter = filterPreferences.getActiveRocketFilter()
@@ -578,11 +576,11 @@ class SettingsFragment : Fragment() {
             enabledCharacters = enabledCharacters,
             favorites = favorites,
             deletedEntries = deletedEntries,
-            enabledQuests = enabledQuests,
+            enabledEncounterConditionsB64 = encodeConditionSet(enabledEncounterConditions),
             homeCoordinates = homeCoords,
             savedRocketFilters = savedRocketFilters,
             savedQuestFilters = savedQuestFilters,
-            savedQuestSpindaForms = savedQuestSpindaForms,
+            savedQuestEncounterConditionsB64 = encodeConditionMap(savedQuestEncounterConditions),
             activeRocketFilter = activeRocketFilter,
             activeQuestFilter = activeQuestFilter,
             overlayButtonSize = overlayButtonSize,
@@ -657,52 +655,49 @@ class SettingsFragment : Fragment() {
             }
             Log.d("SettingsImport", "Successfully parsed JSON into ExportData")
 
-            // Basic settings import
+            // Basic settings import — guard every field with ?: in case Gson returned
+            // null for a missing key (Gson does not apply Kotlin default parameter values).
             Log.d("SettingsImport", "Importing data sources: ${importData.dataSources}")
-            dataSourcePreferences.setSelectedSources(importData.dataSources)
+            dataSourcePreferences.setSelectedSources(importData.dataSources ?: emptySet())
 
             Log.d("SettingsImport", "Importing enabled characters: ${importData.enabledCharacters}")
-            filterPreferences.saveEnabledCharacters(importData.enabledCharacters)
+            filterPreferences.saveEnabledCharacters(importData.enabledCharacters ?: emptySet())
 
-            Log.d("SettingsImport", "Importing enabled quests: ${importData.enabledQuests}")
-            filterPreferences.saveEnabledQuestFilters(importData.enabledQuests)
-            Log.d("SettingsImport", "Importing ${importData.deletedEntries.size} deleted entries")
-            deletedRepo.setDeletedEntries(importData.deletedEntries)
-
+            Log.d("SettingsImport", "Importing ${importData.deletedEntries?.size ?: 0} deleted entries")
+            deletedRepo.setDeletedEntries(importData.deletedEntries ?: emptySet())
 
             val favoritesPrefs = requireContext().getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
-            Log.d("SettingsImport", "Importing ${importData.favorites.size} favorites")
-            favoritesPrefs.edit { putString(KEY_FAVORITES, gson.toJson(importData.favorites)) }
-
-            Log.d("SettingsImport", "Importing ${importData.deletedEntries.size} deleted entries")
-            deletedRepo.setDeletedEntries(importData.deletedEntries)
+            Log.d("SettingsImport", "Importing ${importData.favorites?.size ?: 0} favorites")
+            favoritesPrefs.edit { putString(KEY_FAVORITES, gson.toJson(importData.favorites ?: emptyList<FavoriteLocation>())) }
 
             // Import home coordinates if available and valid
             Log.d("SettingsImport", "Importing home coordinates: ${importData.homeCoordinates}")
-            if (importData.homeCoordinates.isNotEmpty() &&
-                homeCoordinatesManager.validateCoordinates(importData.homeCoordinates)) {
-                homeCoordinatesManager.saveHomeCoordinates(importData.homeCoordinates)
-                homeCoordinates.setText(importData.homeCoordinates)
+            val homeCoords = importData.homeCoordinates ?: ""
+            if (homeCoords.isNotEmpty() && homeCoordinatesManager.validateCoordinates(homeCoords)) {
+                homeCoordinatesManager.saveHomeCoordinates(homeCoords)
+                homeCoordinates.setText(homeCoords)
                 Log.d("SettingsImport", "Home coordinates imported successfully")
             } else {
                 Log.d("SettingsImport", "Home coordinates empty or invalid")
             }
 
-            // Import saved rocket filters (non-null in ExportData)
-            val rocketFilters = importData.savedRocketFilters
+            // Import saved rocket filters
+            val rocketFilters = importData.savedRocketFilters ?: emptyMap()
             Log.d("SettingsImport", "Found ${rocketFilters.size} rocket filters to import")
 
             // Clear existing filters first
             val existingFilterNames = filterPreferences.listFilterNames()
             Log.d("SettingsImport", "Clearing ${existingFilterNames.size} existing rocket filters: $existingFilterNames")
             for (name in existingFilterNames) {
-                Log.d("SettingsImport", "Deleting rocket filter: $name")
                 filterPreferences.deleteFilter(name, FILTER_TYPE_ROCKET)
             }
 
-            // Import the filters
+            // Clear active rocket filter before the import loop so saveEnabledCharacters
+            // doesn't auto-overwrite the previously active filter's snapshot on each iteration.
+            filterPreferences.clearActiveRocketFilter()
+
             for ((name, characters) in rocketFilters) {
-                Log.d("SettingsImport", "Importing rocket filter '$name' with ${characters.size} characters: $characters")
+                Log.d("SettingsImport", "Importing rocket filter '$name' with ${characters.size} characters")
                 try {
                     filterPreferences.saveEnabledCharacters(characters)
                     filterPreferences.saveCurrentAsFilter(name)
@@ -712,41 +707,43 @@ class SettingsFragment : Fragment() {
                 }
             }
 
-            // Set active rocket filter if it exists in the imported data
-            Log.d("SettingsImport", "Active rocket filter from import: ${importData.activeRocketFilter}")
-            if (importData.activeRocketFilter.isNotEmpty() &&
-                rocketFilters.containsKey(importData.activeRocketFilter)) {
-                Log.d("SettingsImport", "Setting active rocket filter: ${importData.activeRocketFilter}")
+            // Set active rocket filter
+            val activeRocketFilter = importData.activeRocketFilter ?: ""
+            Log.d("SettingsImport", "Active rocket filter from import: $activeRocketFilter")
+            if (activeRocketFilter.isNotEmpty() && rocketFilters.containsKey(activeRocketFilter)) {
+                Log.d("SettingsImport", "Setting active rocket filter: $activeRocketFilter")
                 try {
-                    filterPreferences.setActiveRocketFilter(importData.activeRocketFilter)
-                    // If active, also load it
-                    filterPreferences.loadFilter(importData.activeRocketFilter, FILTER_TYPE_ROCKET)
-                    Log.d("SettingsImport", "Successfully activated rocket filter: ${importData.activeRocketFilter}")
+                    filterPreferences.setActiveRocketFilter(activeRocketFilter)
+                    filterPreferences.loadFilter(activeRocketFilter, FILTER_TYPE_ROCKET)
+                    Log.d("SettingsImport", "Successfully activated rocket filter: $activeRocketFilter")
                 } catch (e: Exception) {
                     Log.e("SettingsImport", "Error activating rocket filter: ${e.message}", e)
                 }
             }
 
-            // Import saved quest filters (non-null in ExportData)
-            val questFilters = importData.savedQuestFilters
+            // Import saved quest filters
+            val questFilters = importData.savedQuestFilters ?: emptyMap()
             Log.d("SettingsImport", "Found ${questFilters.size} quest filters to import")
 
             // Clear existing quest filters first
             val existingQuestFilterNames = filterPreferences.listQuestFilterNames()
-            Log.d("SettingsImport", "Clearing ${existingQuestFilterNames.size} existing quest filters: $existingQuestFilterNames")
+            Log.d("SettingsImport", "Clearing ${existingQuestFilterNames.size} existing quest filters")
             for (name in existingQuestFilterNames) {
-                Log.d("SettingsImport", "Deleting quest filter: $name")
                 filterPreferences.deleteFilter(name, FILTER_TYPE_QUEST)
             }
 
-            // Import the quest filters
+            // Decode per-filter encounter condition snapshots (B64 field, fallback to legacy).
+            val decodedQuestEncounterConditions = decodeConditionMap(
+                importData.savedQuestEncounterConditionsB64,
+                importData.savedQuestEncounterConditions
+            )
             for ((name, questIds) in questFilters) {
                 val questStrings = questIds.toSet()
-                Log.d("SettingsImport", "Importing quest filter '$name' with ${questStrings.size} quests: $questStrings")
+                val encounterConditions = decodedQuestEncounterConditions[name] ?: emptySet()
+                Log.d("SettingsImport", "Importing quest filter '$name' with ${questStrings.size} quests and ${encounterConditions.size} encounter conditions")
                 try {
                     filterPreferences.saveEnabledQuestFilters(questStrings)
-                    val forms: Set<String> = importData.savedQuestSpindaForms[name] ?: emptySet()
-                    filterPreferences.saveEnabledSpindaForms(forms)
+                    filterPreferences.saveEnabledEncounterConditions(encounterConditions)
                     filterPreferences.saveCurrentQuestFilter(name)
                     Log.d("SettingsImport", "Successfully saved quest filter: $name")
                 } catch (e: Exception) {
@@ -754,44 +751,59 @@ class SettingsFragment : Fragment() {
                 }
             }
 
-            // Set active quest filter if it exists in the imported data
-            Log.d("SettingsImport", "Active quest filter from import: ${importData.activeQuestFilter}")
-            if (importData.activeQuestFilter.isNotEmpty() &&
-                questFilters.containsKey(importData.activeQuestFilter)) {
-                Log.d("SettingsImport", "Setting active quest filter: ${importData.activeQuestFilter}")
+            // Set active quest filter
+            val activeQuestFilter = importData.activeQuestFilter ?: ""
+            Log.d("SettingsImport", "Active quest filter from import: $activeQuestFilter")
+            val activeQuestLoaded = activeQuestFilter.isNotEmpty() && questFilters.containsKey(activeQuestFilter)
+            if (activeQuestLoaded) {
+                Log.d("SettingsImport", "Setting active quest filter: $activeQuestFilter")
                 try {
-                    filterPreferences.setActiveQuestFilter(importData.activeQuestFilter)
-                    // If active, also load it
-                    filterPreferences.loadFilter(importData.activeQuestFilter, FILTER_TYPE_QUEST)
-                    Log.d("SettingsImport", "Successfully activated quest filter: ${importData.activeQuestFilter}")
+                    filterPreferences.setActiveQuestFilter(activeQuestFilter)
+                    filterPreferences.loadFilter(activeQuestFilter, FILTER_TYPE_QUEST)
+                    Log.d("SettingsImport", "Successfully activated quest filter: $activeQuestFilter")
                 } catch (e: Exception) {
                     Log.e("SettingsImport", "Error activating quest filter: ${e.message}", e)
                 }
             }
 
-            // Update UI checkboxes and overlay customization
-            checkboxNYC.isChecked = importData.dataSources.contains(SOURCE_NYC)
-            checkboxLondon.isChecked = importData.dataSources.contains(SOURCE_LONDON)
-            checkboxSG.isChecked = importData.dataSources.contains(SOURCE_SINGAPORE)
-            checkboxVancouver.isChecked = importData.dataSources.contains(SOURCE_VANCOUVER)
-            checkboxSydney.isChecked = importData.dataSources.contains(SOURCE_SYDNEY)
+            // Restore the live active encounter conditions only when no active named filter
+            // was loaded — loadFilter already wrote the correct conditions from the snapshot.
+            if (!activeQuestLoaded) {
+                val importedEncounterConditions = decodeConditionSet(
+                    importData.enabledEncounterConditionsB64,
+                    importData.enabledEncounterConditions
+                )
+                if (importedEncounterConditions.isNotEmpty()) {
+                    filterPreferences.saveEnabledEncounterConditions(importedEncounterConditions)
+                    Log.d("SettingsImport", "Restored ${importedEncounterConditions.size} active encounter conditions")
+                }
+            }
 
-            customizationManager.saveButtonSize(importData.overlayButtonSize)
-            customizationManager.saveButtonOrder(importData.overlayButtonOrder)
-            customizationManager.saveButtonVisibility(importData.overlayButtonVisibility)
+            // Update UI checkboxes
+            val sources = importData.dataSources ?: emptySet()
+            checkboxNYC.isChecked = sources.contains(SOURCE_NYC)
+            checkboxLondon.isChecked = sources.contains(SOURCE_LONDON)
+            checkboxSG.isChecked = sources.contains(SOURCE_SINGAPORE)
+            checkboxVancouver.isChecked = sources.contains(SOURCE_VANCOUVER)
+            checkboxSydney.isChecked = sources.contains(SOURCE_SYDNEY)
+
+            customizationManager.saveButtonSize(importData.overlayButtonSize ?: 48)
+            customizationManager.saveButtonOrder(importData.overlayButtonOrder ?: emptyList())
+            customizationManager.saveButtonVisibility(importData.overlayButtonVisibility ?: emptyMap())
 
             // Import deeplink preferences
-            Log.d("SettingsImport", "Importing deeplink settings - Type: ${importData.deeplinkType}, Custom URL: ${importData.deeplinkCustomUrl}")
-            deeplinkManager.setDeeplinkType(importData.deeplinkType)
-            deeplinkManager.setCustomUrl(importData.deeplinkCustomUrl)
+            val dlType = importData.deeplinkType ?: "ipogo"
+            val dlUrl  = importData.deeplinkCustomUrl ?: ""
+            Log.d("SettingsImport", "Importing deeplink settings - Type: $dlType, Custom URL: $dlUrl")
+            deeplinkManager.setDeeplinkType(dlType)
+            deeplinkManager.setCustomUrl(dlUrl)
 
-            // Update deeplink UI
-            when (importData.deeplinkType) {
+            when (dlType) {
                 DeeplinkManager.TYPE_IPOGO -> radioDeeplinkIpogo.isChecked = true
                 DeeplinkManager.TYPE_POKEMOD -> radioDeeplinkPokemod.isChecked = true
                 DeeplinkManager.TYPE_CUSTOM -> {
                     radioDeeplinkCustom.isChecked = true
-                    customDeeplinkUrl.setText(importData.deeplinkCustomUrl)
+                    customDeeplinkUrl.setText(dlUrl)
                     customDeeplinkUrl.visibility = View.VISIBLE
                     customDeeplinkExample.visibility = View.VISIBLE
                 }

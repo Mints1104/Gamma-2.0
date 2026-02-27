@@ -6,7 +6,6 @@ import android.content.SharedPreferences
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
-import android.text.InputType
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -18,7 +17,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
-import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
@@ -32,12 +30,13 @@ import androidx.lifecycle.ViewModelProvider
 import com.google.android.material.button.MaterialButton
 import com.google.gson.Gson
 import com.mints.projectgammatwo.R
-import com.mints.projectgammatwo.data.CurrentQuestData
 import com.mints.projectgammatwo.data.DataMappings
 import com.mints.projectgammatwo.data.FilterPreferences
-// Removed PokemonRepository as it's unused in this fragment
 import com.mints.projectgammatwo.data.Quests
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
+import java.text.DateFormat
+import java.util.Date
+import java.util.Locale
 
 class FilterFragment : Fragment() {
 
@@ -47,12 +46,16 @@ class FilterFragment : Fragment() {
     private var currentFilterType = "Rocket"
     private lateinit var questPrefs: SharedPreferences
     private val enabledQuestFilters = mutableSetOf<String>()
+    private val enabledEncounterConditions = mutableSetOf<String>()
     private lateinit var questLayout: LinearLayout
+    private lateinit var questLoadingGroup: LinearLayout
+    private lateinit var filterLastRefreshedText: TextView
     private lateinit var rocketLayoutGlobal: LinearLayout
     private lateinit var currentFilterTextView: TextView
-    private var originalSettingsOfLoadedRocketFilter: Set<Int>? = null
-    private var originalSettingsOfLoadedQuestFilter: Set<String>? = null
-
+    /** Set to true once DataMappings.initializePokemonData completes. */
+    private var pokemonDataReady = false
+    /** Guard to avoid persisting state while rebuilding the quest filter UI. */
+    private var isRebuildingQuestFilters = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,47 +77,39 @@ class FilterFragment : Fragment() {
         currentFilterTextView = view.findViewById(R.id.currentFilterText)
         rocketLayoutGlobal = view.findViewById(R.id.rocketFiltersLayout)
         questLayout = view.findViewById(R.id.questFiltersLayout)
+        questLoadingGroup = view.findViewById(R.id.questLoadingGroup)
+        filterLastRefreshedText = view.findViewById(R.id.filterLastRefreshedText)
         enabledRocketFilters.clear()
         enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
 
         enabledQuestFilters.clear()
         enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters())
+        enabledEncounterConditions.clear()
+        enabledEncounterConditions.addAll(filterPreferences.getEnabledEncounterConditions())
 
-        questsViewModel = ViewModelProvider(this)[QuestsViewModel::class.java]
-        questsViewModel.fetchSpindaFormsFromApi()
+        questsViewModel = ViewModelProvider(requireActivity())[QuestsViewModel::class.java]
 
-        questsViewModel.spindaFormsLiveData.observe(viewLifecycleOwner) { spindaFormsMap ->
-            Log.d("FilterFragment", "spindaFormsLiveData emitted: ${spindaFormsMap.keys}")
-            DataMappings.initializePokemonData(requireContext()) {
-                if (!isAdded) return@initializePokemonData
-                Log.d("App", "Pokemon data loaded with ${DataMappings.pokemonEncounterMapNew.size} entries")
+        questsViewModel.variantsLoadingLiveData.observe(viewLifecycleOwner) { isLoading ->
+            updateQuestLoadingVisibility(isLoading)
+        }
 
+        // Initialise Pokemon name data then build the filter UI once with whatever
+        // sub-variants are already cached; the observer below will rebuild if fresh
+        // data arrives from the network.
+        DataMappings.initializePokemonData(requireContext()) {
+            pokemonDataReady = true
+            if (isAdded) setupQuestFilters(questLayout)
+        }
+
+        questsViewModel.rewardSubVariantsLiveData.observe(viewLifecycleOwner) {
+            // Only rebuild the quest filter UI when the quest tab is active AND pokemon
+            // data is ready. Rebuilding while on another tab can overwrite user state.
+            if (isAdded && pokemonDataReady && currentFilterType == "Quest") {
                 setupQuestFilters(questLayout)
             }
-
-        }
-
-        val testList = CurrentQuestData.currentQuests
-        Log.d("FilterFragment", "Current quests size: ${testList.size}")
-
-        val spindaQuests = testList.filter { quest ->
-            quest.rewardsIds.split(",").any { it == "327" }
-        }
-        val spindaType1 = spindaQuests.filter { quest ->
-            quest.rewardsString.contains("01")
-
-        }
-        val spindaType2 = spindaQuests.filter { quest ->
-            quest.rewardsString.contains("02")
-        }
-
-        Log.d("FilterFragment", "Spinda (01) quests: ${spindaType1.size}")
-        Log.d("FilterFragment", "Spinda (02) quests: ${spindaType2.size}")
-
-
-        getAvailableSpindaForms()
-        questsViewModel.questsLiveData.observe(viewLifecycleOwner) { quests ->
-            getAvailableSpindaForms()
+            // Read the timestamp that the ViewModel wrote alongside the fresh network data.
+            val lastRefreshed = questPrefs.getLong("filters_last_refreshed", 0L)
+            if (lastRefreshed > 0L) updateFiltersLastRefreshed(lastRefreshed)
         }
 
         val radioGroup = view.findViewById<RadioGroup>(R.id.filterTypeRadioGroup)
@@ -128,7 +123,8 @@ class FilterFragment : Fragment() {
                     radioGroup.check(R.id.rbQuest)
                     updateCurrentQuestFilter()
                     currentFilterType = "Quest"
-                    Log.d("Test","Current filter type: $currentFilterType")
+                    val initialLastRefreshed = questPrefs.getLong("filters_last_refreshed", 0L)
+                    if (initialLastRefreshed > 0L) updateFiltersLastRefreshed(initialLastRefreshed)
                 }
                 isRocketVisible -> {
                     radioGroup.check(R.id.rbRocket)
@@ -140,12 +136,9 @@ class FilterFragment : Fragment() {
                     questLayout.visibility = View.GONE
                     updateCurrentRocketFilter()
                     currentFilterType = "Rocket"
-                    Log.d("Test","Current filter type: $currentFilterType")
-
                 }
             }
             activity?.invalidateOptionsMenu()
-
 
             radioGroup.setOnCheckedChangeListener { _, checkedId ->
                 when (checkedId) {
@@ -154,36 +147,24 @@ class FilterFragment : Fragment() {
                         questLayout.visibility = View.GONE
                         currentFilterType = "Rocket"
                         updateCurrentRocketFilter()
+                        updateQuestLoadingVisibility(false)
+                        filterLastRefreshedText.visibility = View.GONE
                     }
                     R.id.rbQuest -> {
                         rocketLayoutGlobal.visibility = View.GONE
                         questLayout.visibility = View.VISIBLE
                         currentFilterType = "Quest"
-
                         updateCurrentQuestFilter()
+                        updateQuestLoadingVisibility(questsViewModel.variantsLoadingLiveData.value == true)
+                        val ts = questPrefs.getLong("filters_last_refreshed", 0L)
+                        if (ts > 0L) updateFiltersLastRefreshed(ts)
+                        // Rebuild the quest filter UI to reflect any state changes that
+                        // occurred while the Rocket tab was active (e.g. onResume re-read
+                        // prefs but skipped rebuilding the quest view tree).
+                        if (pokemonDataReady) setupQuestFilters(questLayout)
                     }
                 }
                 activity?.invalidateOptionsMenu()
-            }
-        }
-
-
-
-
-
-
-
-        val initialActiveRocketFilter = filterPreferences.getActiveRocketFilter()
-        if (initialActiveRocketFilter.isNotEmpty()) {
-            if (originalSettingsOfLoadedRocketFilter == null) {
-                originalSettingsOfLoadedRocketFilter = HashSet(filterPreferences.getEnabledCharacters())
-            }
-        }
-
-        val initialActiveQuestFilter = filterPreferences.getActiveQuestFilter()
-        if (initialActiveQuestFilter.isNotEmpty()) {
-            if (originalSettingsOfLoadedQuestFilter == null) {
-                originalSettingsOfLoadedQuestFilter = HashSet(filterPreferences.getEnabledQuestFilters())
             }
         }
 
@@ -192,8 +173,6 @@ class FilterFragment : Fragment() {
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.filter_nav_menu, menu)
-
-
         super.onCreateOptionsMenu(menu, inflater)
     }
 
@@ -208,27 +187,11 @@ class FilterFragment : Fragment() {
         refreshFiltersItem?.isVisible = (currentFilterType == "Quest")
     }
 
-
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.action_save_rocket -> {
-                showSaveFilterDialog(true)
-                true
-            }
-            R.id.action_save_quest -> {
-                showSaveFilterDialog(false)
-                true
-            }
-            R.id.action_refresh_filters -> {
-                questsViewModel.fetchQuests()
-                if (::questLayout.isInitialized) {
-                    setupQuestFilters(questLayout)
-                }
-                if (::rocketLayoutGlobal.isInitialized) {
-                    setupRocketFilters(rocketLayoutGlobal)
-                }
-                true
-            }
+            R.id.action_save_rocket -> { showSaveFilterDialog(true); true }
+            R.id.action_save_quest  -> { showSaveFilterDialog(false); true }
+            R.id.action_refresh_filters -> { questsViewModel.fetchQuests(); true }
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -238,70 +201,144 @@ class FilterFragment : Fragment() {
         val inflater = requireActivity().layoutInflater
         val dialogView = inflater.inflate(R.layout.dialog_save_filter, null)
 
-        val titleTextView = dialogView.findViewById<TextView>(R.id.saveFilterTitle)
-        val editText = dialogView.findViewById<EditText>(R.id.editFilterName)
-        val cancelButton = dialogView.findViewById<Button>(R.id.cancelFilterButton)
-        val saveButton = dialogView.findViewById<Button>(R.id.saveFilterButton)
+        val titleTextView    = dialogView.findViewById<TextView>(R.id.saveFilterTitle)
+        val editText         = dialogView.findViewById<EditText>(R.id.editFilterName)
+        val cancelButton     = dialogView.findViewById<Button>(R.id.cancelFilterButton)
+        val saveAsNewButton  = dialogView.findViewById<Button>(R.id.saveAsNewFilterButton)
+        val saveButton       = dialogView.findViewById<Button>(R.id.saveFilterButton)
 
-        // Set the dynamic title
-        val type = if(isRocket) "rocket" else "quest"
-        titleTextView.text = "Enter a name for the new $type filter"
-
+        val type = if (isRocket) "rocket" else "quest"
         builder.setView(dialogView)
         val dialog = builder.create()
 
-        // Set up button click listeners
-        cancelButton.setOnClickListener {
-            dialog.dismiss()
-        }
+        // Cancel always just closes the dialog.
+        cancelButton.setOnClickListener { dialog.dismiss() }
 
-        saveButton.setOnClickListener {
-            val newFilterName = editText.text.toString().trim()
-            if (newFilterName.isEmpty()) {
-                Toast.makeText(requireContext(), "Please enter a name", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
+        if (isRocket) {
+            val activeFilterName = filterPreferences.getActiveRocketFilter()
+            val hasActiveFilter = activeFilterName.isNotEmpty()
 
-            if (isRocket) {
-                filterPreferences.saveEnabledCharacters(enabledRocketFilters)
-                filterPreferences.saveCurrentAsFilter(newFilterName)
-                Toast.makeText(requireContext(), "Filter '$newFilterName' saved", Toast.LENGTH_SHORT).show()
-                val activeFilterNameToRevert = filterPreferences.getActiveRocketFilter()
+            if (hasActiveFilter) {
+                // Editing an existing filter: pre-fill name, show all three buttons.
+                titleTextView.text = "Editing: $activeFilterName"
+                editText.setText(activeFilterName)
+                editText.hint = "New name for Save as New"
+                saveButton.text = "Update"
+                saveAsNewButton.visibility = View.VISIBLE
 
-                if (activeFilterNameToRevert.isNotEmpty() && originalSettingsOfLoadedRocketFilter != null) {
-                    enabledRocketFilters.clear()
-                    enabledRocketFilters.addAll(originalSettingsOfLoadedRocketFilter!!)
-                    filterPreferences.saveEnabledCharacters(enabledRocketFilters)
-                } else {
-                    filterPreferences.setActiveRocketFilter(newFilterName)
-                    originalSettingsOfLoadedRocketFilter = HashSet(enabledRocketFilters)
+                // Update — overwrite the existing snapshot in-place.
+                saveButton.setOnClickListener {
+                    saveRocketFilterSnapshot(activeFilterName, dialog)
+                    Toast.makeText(requireContext(), "Filter '$activeFilterName' updated", Toast.LENGTH_SHORT).show()
                 }
-                setupRocketFilters(rocketLayoutGlobal)
 
+                // Save as New — require a different name, leave the original untouched.
+                saveAsNewButton.setOnClickListener {
+                    val newName = editText.text.toString().trim()
+                    if (newName.isEmpty() || newName == activeFilterName) {
+                        Toast.makeText(requireContext(), "Enter a different name to save as new", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+                    saveRocketFilterSnapshot(newName, dialog)
+                    Toast.makeText(requireContext(), "Filter '$newName' saved", Toast.LENGTH_SHORT).show()
+                }
             } else {
-                filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                filterPreferences.saveCurrentQuestFilter(newFilterName)
-                Log.d("SaveFilter","Current enabled spinda forms: ${filterPreferences.getEnabledSpindaForms()}")
-
-                Toast.makeText(requireContext(), "Filter '$newFilterName' saved", Toast.LENGTH_SHORT).show()
-
-                val activeFilterNameToRevert = filterPreferences.getActiveQuestFilter()
-                if (activeFilterNameToRevert.isNotEmpty() && originalSettingsOfLoadedQuestFilter != null) {
-                    enabledQuestFilters.clear()
-                    enabledQuestFilters.addAll(originalSettingsOfLoadedQuestFilter!!)
-                    filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                } else {
-                    filterPreferences.setActiveQuestFilter(newFilterName)
-                    originalSettingsOfLoadedQuestFilter = HashSet(enabledQuestFilters)
+                // No active filter — standard save flow, two buttons only.
+                titleTextView.text = "Enter a name for the new rocket filter"
+                saveButton.setOnClickListener {
+                    val newFilterName = editText.text.toString().trim()
+                    if (newFilterName.isEmpty()) {
+                        Toast.makeText(requireContext(), "Please enter a name", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+                    saveRocketFilterSnapshot(newFilterName, dialog)
+                    Toast.makeText(requireContext(), "Filter '$newFilterName' saved", Toast.LENGTH_SHORT).show()
                 }
-                setupQuestFilters(questLayout)
             }
-            dialog.dismiss()
+        } else {
+            val activeFilterName = filterPreferences.getActiveQuestFilter()
+            val hasActiveFilter = activeFilterName.isNotEmpty()
+
+            if (hasActiveFilter) {
+                // Editing an existing filter: pre-fill name, show all three buttons.
+                titleTextView.text = "Editing: $activeFilterName"
+                editText.setText(activeFilterName)
+                editText.hint = "New name for Save as New"
+                saveButton.text = "Update"
+                saveAsNewButton.visibility = View.VISIBLE
+
+                // Update — overwrite the existing snapshot in-place.
+                saveButton.setOnClickListener {
+                    saveQuestFilterSnapshot(activeFilterName, dialog)
+                    Toast.makeText(requireContext(), "Filter '$activeFilterName' updated", Toast.LENGTH_SHORT).show()
+                }
+
+                // Save as New — require a different name, leave the original untouched.
+                saveAsNewButton.setOnClickListener {
+                    val newName = editText.text.toString().trim()
+                    if (newName.isEmpty() || newName == activeFilterName) {
+                        Toast.makeText(requireContext(), "Enter a different name to save as new", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+                    saveQuestFilterSnapshot(newName, dialog)
+                    Toast.makeText(requireContext(), "Filter '$newName' saved", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                // No active filter — standard save flow, two buttons only.
+                titleTextView.text = "Enter a name for the new $type filter"
+                saveButton.setOnClickListener {
+                    val newFilterName = editText.text.toString().trim()
+                    if (newFilterName.isEmpty()) {
+                        Toast.makeText(requireContext(), "Please enter a name", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+                    saveQuestFilterSnapshot(newFilterName, dialog)
+                    Toast.makeText(requireContext(), "Filter '$newFilterName' saved", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
 
         dialog.show()
     }
 
+    /**
+     * Writes the current live rocket filter state as a named snapshot and sets it as
+     * the active filter. Clears the active name before writing so no auto-update hook
+     * in saveEnabledCharacters can fire against the old active filter during the save.
+     */
+    private fun saveRocketFilterSnapshot(name: String, dialog: AlertDialog) {
+        filterPreferences.clearActiveRocketFilter()
+        filterPreferences.saveEnabledCharacters(enabledRocketFilters)
+        filterPreferences.saveCurrentAsFilter(name)
+        filterPreferences.setActiveRocketFilter(name)
+        setupRocketFilters(rocketLayoutGlobal)
+        dialog.dismiss()
+    }
+
+    /**
+     * Writes the current live quest filter state (enabledQuestFilters +
+     * enabledEncounterConditions) as a named snapshot and sets it as the
+     * active filter. Safe to call regardless of whether a filter was
+     * previously active — it always clears the active name before writing
+     * so the save path is corruption-free.
+     */
+    private fun saveQuestFilterSnapshot(name: String, dialog: AlertDialog) {
+        // Clear active first so no auto-update hook can fire during the writes.
+        Log.d("QuestFilterDebug", "Saving quest filter '$name' (before) -> enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size}")
+        filterPreferences.clearActiveQuestFilter()
+        filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+        filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
+        filterPreferences.saveCurrentQuestFilter(name)
+        filterPreferences.setActiveQuestFilter(name)
+        Log.d("QuestFilterDebug", "Saved quest filter '$name' (after) -> enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size}")
+        // Do NOT call setupQuestFilters here. The UI already shows exactly what the
+        // user selected — tearing down and rebuilding all checkboxes during/after a
+        // dialog interaction causes Android to re-evaluate isEnabled/isChecked on
+        // newly-created views, which re-ticks variants the user had explicitly unticked.
+        // Just refresh the "Current filter:" label instead.
+        updateCurrentQuestFilter()
+        dialog.dismiss()
+    }
 
     private fun setupRocketFilters(parent: LinearLayout) {
         parent.removeAllViews()
@@ -309,49 +346,48 @@ class FilterFragment : Fragment() {
         addToggleAllButton(parent, "Rocket")
         addSectionHeader(parent, "Rocket Filters")
         addSelectFilterButton(parent, "Rocket")
-
         updateCurrentRocketFilter()
-
         DataMappings.characterNamesMap.forEach { (id, name) ->
             addCheckBox(parent, name, id, enabledRocketFilters) { checked ->
                 if (checked) enabledRocketFilters.add(id) else enabledRocketFilters.remove(id)
-
                 filterPreferences.saveEnabledCharacters(enabledRocketFilters)
             }
         }
     }
 
     private fun updateCurrentRocketFilter() {
-
-        if(currentFilterType != "Rocket") {
-            updateCurrentQuestFilter()
-        }
+        if (currentFilterType != "Rocket") { updateCurrentQuestFilter(); return }
         val currentFilterName = filterPreferences.getActiveRocketFilter()
-        if (currentFilterName.isNotEmpty()) {
-            currentFilterTextView.visibility = View.VISIBLE
-            currentFilterTextView.text = "Current selected filter: $currentFilterName"
-        } else {
-            currentFilterTextView.visibility = View.VISIBLE
-            currentFilterTextView.text = "Current selected filter: Unsaved"
-        }
+        currentFilterTextView.visibility = View.VISIBLE
+        currentFilterTextView.text = if (currentFilterName.isNotEmpty())
+            "Current selected filter: $currentFilterName"
+        else
+            "Current selected filter: Unsaved"
     }
+
     private fun updateCurrentQuestFilter() {
-
-        if(currentFilterType != "Quest") {
-            updateCurrentRocketFilter()
-        }
-
-
+        if (currentFilterType != "Quest") { updateCurrentRocketFilter(); return }
         val currentFilterName = filterPreferences.getActiveQuestFilter()
-        if (currentFilterName.isNotEmpty()) {
-            currentFilterTextView.visibility = View.VISIBLE
-            currentFilterTextView.text = "Current selected filter: $currentFilterName"
-        } else {
-            currentFilterTextView.visibility = View.VISIBLE
-            currentFilterTextView.text = "Current selected filter: Unsaved"
-        }
+        currentFilterTextView.visibility = View.VISIBLE
+        currentFilterTextView.text = if (currentFilterName.isNotEmpty())
+            "Current selected filter: $currentFilterName"
+        else
+            "Current selected filter: Unsaved"
     }
 
+    private fun updateQuestLoadingVisibility(isLoading: Boolean) {
+        questLoadingGroup.visibility = if (currentFilterType == "Quest" && isLoading) View.VISIBLE else View.GONE
+    }
+
+    private fun updateFiltersLastRefreshed(timestampMillis: Long) {
+        if (timestampMillis <= 0L || currentFilterType != "Quest") {
+            filterLastRefreshedText.visibility = View.GONE
+            return
+        }
+        val formatter = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT, Locale.getDefault())
+        filterLastRefreshedText.text = "Filters Last Refreshed: ${formatter.format(Date(timestampMillis))}"
+        filterLastRefreshedText.visibility = View.VISIBLE
+    }
 
     private fun addResetButton(parent: LinearLayout, filterType: String) {
         val resetButton = MaterialButton(requireContext()).apply {
@@ -361,12 +397,16 @@ class FilterFragment : Fragment() {
                 when (filterType) {
                     "Rocket" -> {
                         enabledRocketFilters.clear()
+                        filterPreferences.clearActiveRocketFilter()
                         filterPreferences.saveEnabledCharacters(enabledRocketFilters)
                         setupRocketFilters(parent)
                     }
                     "Quest" -> {
                         enabledQuestFilters.clear()
+                        enabledEncounterConditions.clear()
+                        filterPreferences.clearActiveQuestFilter()
                         filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+                        filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
                         setupQuestFilters(parent)
                     }
                 }
@@ -379,9 +419,7 @@ class FilterFragment : Fragment() {
         val selectButton = MaterialButton(requireContext()).apply {
             text = "Select $filterType Filter"
             setPadding(16, 8, 16, 8)
-            setOnClickListener {
-                showSelectFilterDialog(parent, filterType)
-            }
+            setOnClickListener { showSelectFilterDialog(parent, filterType) }
         }
         parent.addView(selectButton, 1)
     }
@@ -396,23 +434,16 @@ class FilterFragment : Fragment() {
         val cancelButton = dialogView.findViewById<Button>(R.id.cancelSelectButton)
 
         title.text = "Select $filterType Filter"
-
         builder.setView(dialogView)
         val dialog = builder.create()
-
-        // Set up cancel button
-        cancelButton.setOnClickListener {
-            dialog.dismiss()
-        }
+        cancelButton.setOnClickListener { dialog.dismiss() }
 
         fun updateDialogContent() {
             listContainer.removeAllViews()
-
-            val filterNames: Array<String> = if (filterType == "Rocket") {
+            val filterNames: Array<String> = if (filterType == "Rocket")
                 filterPreferences.listFilterNames().toTypedArray()
-            } else {
+            else
                 filterPreferences.listQuestFilterNames().toTypedArray()
-            }
 
             if (filterNames.isEmpty()) {
                 val emptyView = TextView(requireContext()).apply {
@@ -439,17 +470,14 @@ class FilterFragment : Fragment() {
                         filterPreferences.loadFilter(filterName, "Rocket")
                         enabledRocketFilters.clear()
                         enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
-                        filterPreferences.getEnabledSpindaForms()
-                        Log.d("SelectingFilter","Spinda forms enabled: ${filterPreferences.getEnabledSpindaForms()}")
-
-                        originalSettingsOfLoadedRocketFilter = HashSet(enabledRocketFilters)
                         setupRocketFilters(parentLayoutForRefresh)
                     } else {
                         filterPreferences.loadFilter(filterName, "Quest")
                         enabledQuestFilters.clear()
                         enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters())
-
-                        originalSettingsOfLoadedQuestFilter = HashSet(enabledQuestFilters)
+                        enabledEncounterConditions.clear()
+                        enabledEncounterConditions.addAll(filterPreferences.getEnabledEncounterConditions())
+                        Log.d("QuestFilterDebug", "Loaded quest filter '$filterName' -> enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size}")
                         setupQuestFilters(parentLayoutForRefresh)
                     }
                     Toast.makeText(requireContext(), "Filter '$filterName' applied", Toast.LENGTH_SHORT).show()
@@ -461,12 +489,12 @@ class FilterFragment : Fragment() {
                         if (filterType == "Rocket") {
                             enabledRocketFilters.clear()
                             enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
-                            originalSettingsOfLoadedRocketFilter = null
                             setupRocketFilters(parentLayoutForRefresh)
                         } else {
                             enabledQuestFilters.clear()
                             enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters())
-                            originalSettingsOfLoadedQuestFilter = null
+                            enabledEncounterConditions.clear()
+                            enabledEncounterConditions.addAll(filterPreferences.getEnabledEncounterConditions())
                             setupQuestFilters(parentLayoutForRefresh)
                         }
                         updateDialogContent()
@@ -480,11 +508,7 @@ class FilterFragment : Fragment() {
         dialog.show()
     }
 
-    private fun showDeleteConfirmationDialog(
-        filterName: String,
-        filterType: String,
-        onDeleted: () -> Unit
-    ) {
+    private fun showDeleteConfirmationDialog(filterName: String, filterType: String, onDeleted: () -> Unit) {
         val builder = AlertDialog.Builder(requireContext())
         val inflater = requireActivity().layoutInflater
         val dialogView = inflater.inflate(R.layout.dialog_delete_filter, null)
@@ -494,28 +518,25 @@ class FilterFragment : Fragment() {
         val deleteButton = dialogView.findViewById<Button>(R.id.confirmDeleteButton)
 
         filterNameDisplay.text = filterName
-
         builder.setView(dialogView)
         val dialog = builder.create()
 
-        // Set up button listeners
-        cancelButton.setOnClickListener {
-            dialog.dismiss()
-        }
+        cancelButton.setOnClickListener { dialog.dismiss() }
 
         deleteButton.setOnClickListener {
             val wasActiveRocket = filterType == "Rocket" && filterName == filterPreferences.getActiveRocketFilter()
-            val wasActiveQuest = filterType == "Quest" && filterName == filterPreferences.getActiveQuestFilter()
-
+            val wasActiveQuest  = filterType == "Quest"  && filterName == filterPreferences.getActiveQuestFilter()
             filterPreferences.deleteFilter(filterName, filterType)
-
             if (wasActiveRocket) {
-                originalSettingsOfLoadedRocketFilter = null
+                enabledRocketFilters.clear()
+                enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
             }
             if (wasActiveQuest) {
-                originalSettingsOfLoadedQuestFilter = null
+                enabledQuestFilters.clear()
+                enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters())
+                enabledEncounterConditions.clear()
+                enabledEncounterConditions.addAll(filterPreferences.getEnabledEncounterConditions())
             }
-
             Toast.makeText(requireContext(), "Filter '$filterName' deleted", Toast.LENGTH_SHORT).show()
             dialog.dismiss()
             onDeleted()
@@ -532,46 +553,58 @@ class FilterFragment : Fragment() {
                 when (filterType) {
                     "Rocket" -> {
                         val allSelected = DataMappings.characterNamesMap.keys.all { it in enabledRocketFilters }
-                        if (allSelected) {
-                            enabledRocketFilters.clear()
-                        } else {
-                            enabledRocketFilters.clear()
-                            enabledRocketFilters.addAll(DataMappings.characterNamesMap.keys)
-                        }
+                        if (allSelected) enabledRocketFilters.clear()
+                        else { enabledRocketFilters.clear(); enabledRocketFilters.addAll(DataMappings.characterNamesMap.keys) }
+                        filterPreferences.clearActiveRocketFilter()
                         filterPreferences.saveEnabledCharacters(enabledRocketFilters)
                         setupRocketFilters(parent)
                     }
                     "Quest" -> {
-                        val filtersJson = questPrefs.getString("quest_api_filters", null)
-                        if (filtersJson != null) {
-                            val filtersFromApi = Gson().fromJson(filtersJson, Quests.Filters::class.java)
-                            val allPossibleQuestFilters = mutableSetOf<String>()
-                            listOfNotNull(
-                                filtersFromApi.t3 to "Stardust",
-                                filtersFromApi.t4 to "Pokémon Candy",
-                                (filtersFromApi.t9 ?: emptyList()) to "Pokémon Candy XL",
-                                filtersFromApi.t12 to "Mega Energy",
-                                filtersFromApi.t7 to "Pokémon Encounter",
-                                filtersFromApi.t2 to "Item"
-                            ).forEach { (list, section) ->
-                                list.forEach { rawValue ->
-                                    allPossibleQuestFilters.add(buildQuestFilterString(section, rawValue))
-                                }
-                            }
+                        val filtersJson = questPrefs.getString("quest_api_filters", null) ?: return@setOnClickListener
+                        val filtersFromApi = Gson().fromJson(filtersJson, Quests.Filters::class.java)
+                        val subVariants = questsViewModel.rewardSubVariantsLiveData.value ?: emptyMap()
+                        val allPossibleQuestFilters = mutableSetOf<String>()
 
-                            if (allPossibleQuestFilters.isNotEmpty()) {
-                                val allCurrentlySelected = enabledQuestFilters.containsAll(allPossibleQuestFilters) &&
-                                        enabledQuestFilters.size == allPossibleQuestFilters.size
-
-                                if (allCurrentlySelected) {
-                                    enabledQuestFilters.clear()
+                        fun addFiltersForSection(list: List<String>, section: String) {
+                            list.forEach { rawValue ->
+                                val baseFilter = buildQuestFilterString(section, rawValue)
+                                val variants = subVariants[baseFilter]
+                                if (!variants.isNullOrEmpty()) {
+                                    // Use base filter + condition keys so variants with the same amount
+                                    // don't collapse into a single filterString.
+                                    allPossibleQuestFilters.add(baseFilter)
+                                    variants.forEach { variant ->
+                                        enabledEncounterConditions.add(
+                                            buildConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward)
+                                        )
+                                    }
                                 } else {
-                                    enabledQuestFilters.clear()
-                                    enabledQuestFilters.addAll(allPossibleQuestFilters)
+                                    allPossibleQuestFilters.add(baseFilter)
                                 }
-                                filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                                setupQuestFilters(parent)
                             }
+                        }
+
+                        addFiltersForSection(filtersFromApi.t3, "Stardust")
+                        addFiltersForSection(filtersFromApi.t4, "Pokémon Candy")
+                        addFiltersForSection(filtersFromApi.t9 ?: emptyList(), "Pokémon Candy XL")
+                        addFiltersForSection(filtersFromApi.t12, "Mega Energy")
+                        addFiltersForSection(filtersFromApi.t7, "Pokémon Encounter")
+                        addFiltersForSection(filtersFromApi.t2, "Item")
+
+                        if (allPossibleQuestFilters.isNotEmpty()) {
+                            val allCurrentlySelected = enabledQuestFilters.containsAll(allPossibleQuestFilters) &&
+                                    enabledQuestFilters.size == allPossibleQuestFilters.size
+                            if (allCurrentlySelected) {
+                                enabledQuestFilters.clear()
+                                enabledEncounterConditions.clear()
+                            } else {
+                                enabledQuestFilters.clear()
+                                enabledQuestFilters.addAll(allPossibleQuestFilters)
+                            }
+                            filterPreferences.clearActiveQuestFilter()
+                            filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+                            filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
+                            setupQuestFilters(parent)
                         }
                     }
                 }
@@ -581,35 +614,37 @@ class FilterFragment : Fragment() {
     }
 
     private fun setupQuestFilters(parent: LinearLayout) {
+        isRebuildingQuestFilters = true
+        Log.d("QuestFilterDebug", "setupQuestFilters: start (enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size})")
         parent.removeAllViews()
         addResetButton(parent, "Quest")
         addToggleAllButton(parent, "Quest")
         addSectionHeader(parent, "Quest Filters")
         addSelectFilterButton(parent, "Quest")
-        if(currentFilterType == "Quest") updateCurrentQuestFilter()
+        if (currentFilterType == "Quest") updateCurrentQuestFilter()
 
         val filtersJson = questPrefs.getString("quest_api_filters", null)
         if (filtersJson != null) {
             val filters = Gson().fromJson(filtersJson, Quests.Filters::class.java)
+            val subVariants: Map<String, List<QuestsViewModel.SubVariant>> =
+                questsViewModel.rewardSubVariantsLiveData.value ?: emptyMap()
+            Log.d("QuestFilterDebug", "setupQuestFilters: subVariants keys=${subVariants.size}")
 
-            val spindaFormsMap: Map<String, Int> = questsViewModel.spindaFormsLiveData.value ?: emptyMap()
-            Log.d("FilterFragment", "All available Spinda forms (cached): ${spindaFormsMap.keys}")
+            reconcileVariantSelections(subVariants)
 
-            addFilterSection(parent, "Stardust", filters.t3)
-            addFilterSection(parent, "Pokémon Candy", filters.t4)
-            addFilterSection(parent, "Pokémon Candy XL", filters.t9 ?: emptyList())
-            addFilterSection(parent, "Mega Energy", filters.t12)
-
-            addFilterSection(parent, "Pokémon Encounter", filters.t7, spindaFormsMap)
-
-            addFilterSection(parent, "Item", filters.t2)
+            addFilterSectionWithVariants(parent, "Stardust",        filters.t3,                subVariants)
+            addFilterSectionWithVariants(parent, "Pokémon Candy",   filters.t4,                subVariants)
+            addFilterSectionWithVariants(parent, "Pokémon Candy XL",filters.t9 ?: emptyList(), subVariants)
+            addFilterSectionWithVariants(parent, "Mega Energy",     filters.t12,               subVariants)
+            addFilterSectionWithVariants(parent, "Pokémon Encounter",filters.t7,               subVariants)
+            addFilterSectionWithVariants(parent, "Item",            filters.t2,                subVariants)
         } else {
             questsViewModel.fetchQuests()
             addSectionHeader(parent, "Please open quests tab to update data (or data loading)")
         }
+        isRebuildingQuestFilters = false
+        Log.d("QuestFilterDebug", "setupQuestFilters: end (enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size})")
     }
-
-
 
     private fun addSectionHeader(parent: LinearLayout, text: String) {
         TextView(context).apply {
@@ -632,11 +667,8 @@ class FilterFragment : Fragment() {
             isChecked = id in enabledSet
             setPadding(32, 8, 16, 8)
             setOnCheckedChangeListener { _, checked ->
-                if (checked) {
-                    enabledSet.add(id)
-                } else {
-                    enabledSet.remove(id)
-                }
+                if (isRebuildingQuestFilters) return@setOnCheckedChangeListener
+                if (checked) enabledSet.add(id) else enabledSet.remove(id)
                 onCheckedChangeExternal(checked)
             }
             parent.addView(this)
@@ -655,11 +687,8 @@ class FilterFragment : Fragment() {
             isChecked = id in enabledSet
             setPadding(32, 8, 16, 8)
             setOnCheckedChangeListener { _, checked ->
-                if (checked) {
-                    enabledSet.add(id)
-                } else {
-                    enabledSet.remove(id)
-                }
+                if (isRebuildingQuestFilters) return@setOnCheckedChangeListener
+                if (checked) enabledSet.add(id) else enabledSet.remove(id)
                 onCheckedChangeExternal(checked)
             }
             parent.addView(this)
@@ -668,74 +697,102 @@ class FilterFragment : Fragment() {
 
     private fun buildQuestFilterString(section: String, rawValue: String): String {
         return when (section) {
-            "Stardust" -> "3,$rawValue,0"
-            "Mega Energy" -> "12,0,$rawValue"
-            "Pokémon Encounter" -> "7,0,$rawValue"
-            "Item" -> "2,0,$rawValue"
-            "Pokémon Candy" -> "4,0,$rawValue"
+            "Stardust"         -> "3,$rawValue,0"
+            "Mega Energy"      -> "12,0,$rawValue"
+            "Pokémon Encounter"-> "7,0,$rawValue"
+            "Item"             -> "2,0,$rawValue"
+            "Pokémon Candy"    -> "4,0,$rawValue"
             "Pokémon Candy XL" -> "9,0,$rawValue"
-            else -> rawValue
+            else               -> rawValue
         }
     }
 
-    private fun addFilterSection(
-        parent: LinearLayout,
-        sectionName: String,
-        filterList: List<String>
+    private fun buildConditionKey(type: String, id: String, amount: String, condition: String, reward: String): String {
+        return "$type|$id|$amount|$condition|$reward"
+    }
+
+    private fun ensureVariantSelectionConsistency(variants: List<QuestsViewModel.SubVariant>) {
+        // Intentionally empty — variant/condition pairs are written together atomically.
+    }
+
+    private fun ensureEncounterSelectionConsistency(
+        baseFilter: String,
+        variants: List<QuestsViewModel.SubVariant>
     ) {
-        addSectionHeader(parent, sectionName)
+        // Intentionally empty — see ensureVariantSelectionConsistency.
+    }
 
-        if (filterList.isEmpty()) {
-            TextView(context).apply {
-                text = "None available for $sectionName"
-                setPadding(16) // consistent 16dp padding around text
-                parent.addView(this)
-            }
-        } else {
-            // Sort differently if it’s one of the special categories; else alphabetical
-            val sortedList = when (sectionName) {
-                "Pokémon Encounter", "Mega Energy", "Pokémon Candy", "Pokémon Candy XL" ->
-                    filterList.sortedBy { DataMappings.pokemonEncounterMapNew[it] ?: it }
-                else ->
-                    filterList.sorted()
+    private fun reconcileVariantSelections(subVariants: Map<String, List<QuestsViewModel.SubVariant>>) {
+        if (subVariants.isEmpty()) return
+
+        var changed = false
+        var addedFilters = 0
+
+        subVariants.forEach { (baseFilter, variants) ->
+            if (variants.isEmpty()) return@forEach
+            val isEncounter = baseFilter.startsWith("7,")
+            val encounterPrefix = if (isEncounter) {
+                "7|${variants.first().id}|"
+            } else {
+                ""
             }
 
-            sortedList.forEach { rawValue ->
-                val displayText = when (sectionName) {
-                    "Pokémon Encounter" -> DataMappings.pokemonEncounterMapNew[rawValue]
-                        ?: "ID: $rawValue"
-                    "Item"              -> DataMappings.itemMap["item$rawValue"]
-                        ?: "Item ID: $rawValue"
-                    "Mega Energy"       -> DataMappings.pokemonEncounterMapNew[rawValue]
-                        ?: "Energy for ID: $rawValue"
-                    "Pokémon Candy"     -> DataMappings.pokemonEncounterMapNew[rawValue]
-                        ?: "Candy for ID: $rawValue"
-                    "Pokémon Candy XL"  -> DataMappings.pokemonEncounterMapNew[rawValue]
-                        ?: "XL Candy for ID: $rawValue"
-                    else                -> rawValue
+            // Remove legacy base filter keys (non-encounters only).
+            if (!isEncounter && enabledQuestFilters.remove(baseFilter)) {
+                // We'll add it back only if a condition key exists.
+                changed = true
+            }
+
+            // Migrate any legacy variant filterStrings to the base filter.
+            if (!isEncounter) {
+                val hadLegacyVariant = variants.any { it.filterString in enabledQuestFilters }
+                if (hadLegacyVariant) {
+                    variants.forEach { enabledQuestFilters.remove(it.filterString) }
+                    // Base filter will be re-added below if any condition key exists.
+                    changed = true
                 }
+            }
 
-                val compositeValue = buildQuestFilterString(sectionName, rawValue)
+            // Ensure base filter exists when any condition key is present; remove it otherwise.
+            val hasAnyCondition = variants.any { variant ->
+                buildConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward) in enabledEncounterConditions
+            }
+            if (!isEncounter) {
+                if (hasAnyCondition && baseFilter !in enabledQuestFilters) {
+                    enabledQuestFilters.add(baseFilter)
+                    addedFilters += 1
+                    changed = true
+                }
+                if (!hasAnyCondition && baseFilter in enabledQuestFilters) {
+                    enabledQuestFilters.remove(baseFilter)
+                    changed = true
+                }
+            }
 
-                // Only if it's **not** Spinda (ID 327) do we use a plain checkbox
-                if (!(sectionName == "Pokémon Encounter" && rawValue == "327")) {
-                    addQuestCheckBox(
-                        parent,
-                        displayText,
-                        compositeValue,
-                        enabledQuestFilters
-                    ) {
-                        filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                    }
+            if (isEncounter && enabledEncounterConditions.any { it.startsWith(encounterPrefix) }) {
+                if (baseFilter !in enabledQuestFilters) {
+                    enabledQuestFilters.add(baseFilter)
+                    addedFilters += 1
+                    changed = true
                 }
             }
         }
+
+        if (changed) {
+            Log.d("QuestFilterDebug", "reconcileVariantSelections: addedFilters=$addedFilters")
+        }
+
+        if (changed && currentFilterType == "Quest") {
+            filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+            filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
+        }
     }
-    private fun addFilterSection(
+
+    private fun addFilterSectionWithVariants(
         parent: LinearLayout,
         sectionName: String,
         filterList: List<String>,
-        spindaFormsMap: Map<String, Int>
+        subVariants: Map<String, List<QuestsViewModel.SubVariant>>
     ) {
         addSectionHeader(parent, sectionName)
 
@@ -745,27 +802,50 @@ class FilterFragment : Fragment() {
                 setPadding(16)
                 parent.addView(this)
             }
-        } else {
-            val sortedList = filterList.sortedBy { DataMappings.pokemonEncounterMapNew[it] ?: it }
+            return
+        }
 
-            sortedList.forEach { rawValue ->
-                val displayText = DataMappings.pokemonEncounterMapNew[rawValue] ?: "ID: $rawValue"
-                val compositeValue = buildQuestFilterString(sectionName, rawValue)
+        val sortedList = when (sectionName) {
+            "Stardust" -> filterList.sortedBy { it.toIntOrNull() ?: 0 }
+            "Item"     -> filterList.sortedBy { DataMappings.itemMap["item$it"] ?: it }
+            else       -> filterList.sortedBy { DataMappings.pokemonEncounterMapNew[it] ?: it }
+        }
 
-                if (rawValue == "327") {
-                    addSpindaFilterWithForms(
-                        parent,
-                        displayText,
-                        compositeValue,
-                        spindaFormsMap
-                    )
+        sortedList.forEach { rawValue ->
+            val displayText = when (sectionName) {
+                "Pokémon Candy"    -> DataMappings.pokemonEncounterMapNew[rawValue] ?: "Candy for ID: $rawValue"
+                "Pokémon Candy XL" -> DataMappings.pokemonEncounterMapNew[rawValue] ?: "XL Candy for ID: $rawValue"
+                "Mega Energy"      -> DataMappings.pokemonEncounterMapNew[rawValue] ?: "Energy for ID: $rawValue"
+                "Item"             -> DataMappings.itemMap["item$rawValue"] ?: "Item ID: $rawValue"
+                "Stardust"         -> "$rawValue Stardust"
+                else               -> DataMappings.pokemonEncounterMapNew[rawValue] ?: "ID: $rawValue"
+            }
+            val baseFilter = buildQuestFilterString(sectionName, rawValue)
+            val variants = subVariants[baseFilter]
+
+            if (sectionName == "Pokémon Encounter") {
+                if (!variants.isNullOrEmpty() && variants.size > 1) {
+                    ensureEncounterSelectionConsistency(baseFilter, variants)
+                    addEncounterFilterWithVariants(parent, displayText, rawValue, variants)
                 } else {
-                    addQuestCheckBox(
-                        parent,
-                        displayText,
-                        compositeValue,
-                        enabledQuestFilters
-                    ) {
+                    val variant = variants?.firstOrNull()
+                    val filterStr = baseFilter
+                    addQuestCheckBox(parent, displayText, filterStr, enabledQuestFilters) {
+                        filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+                        if (variant != null) {
+                            val key = buildConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward)
+                            if (enabledQuestFilters.contains(filterStr)) enabledEncounterConditions.add(key)
+                            else enabledEncounterConditions.remove(key)
+                            filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
+                        }
+                    }
+                }
+            } else {
+                if (!variants.isNullOrEmpty()) {
+                    ensureVariantSelectionConsistency(variants)
+                    addCandyFilterWithVariants(parent, displayText, baseFilter, variants)
+                } else {
+                    addQuestCheckBox(parent, displayText, baseFilter, enabledQuestFilters) {
                         filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
                     }
                 }
@@ -773,201 +853,277 @@ class FilterFragment : Fragment() {
         }
     }
 
-
-
-
-    private fun getAvailableSpindaForms(): Map<String, Int> {
-        val spindaForms = mutableMapOf<String, Int>()
-        val quests = CurrentQuestData.currentQuests ?: emptyList() // Ensure null safety
-        val spindaQuests = quests.filter { quest ->
-            quest.rewardsIds.split(",").any { it == "327" }
-        }
-        spindaQuests.forEach { quest ->
-            val formPattern = "\\((\\d+)\\)".toRegex()
-            val matches = formPattern.findAll(quest.rewardsString)
-            matches.forEach { matchResult ->
-                val formNumber = matchResult.groupValues[1]
-                val formKey = "spinda_form_$formNumber"
-                spindaForms[formKey] = spindaForms.getOrDefault(formKey, 0) + 1
-            }
-        }
-        Log.d("FilterFragment", "getAvailableSpindaForms returning: ${spindaForms.keys}")
-        return spindaForms
-    }
-
-    private fun addSpindaFilterWithForms(
+    private fun addEncounterFilterWithVariants(
         parent: LinearLayout,
         displayText: String,
-        baseCompositeValue: String,
-        spindaFormsMap: Map<String, Int>
+        pokemonId: String,
+        variants: List<QuestsViewModel.SubVariant>
     ) {
-        // Container for the entire “Spinda” block
-        val spindaContainer = LinearLayout(requireContext()).apply {
+        val container = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
-
-        // Top row: main “Spinda” checkbox + spacer + expand/collapse button
         val topRow = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
-        // We need to access formCheckboxes inside the main checkbox listener,
-        // so we declare the list before the main checkbox is defined.
-        val formCheckboxes = mutableListOf<CheckBox>()
+        val variantCheckboxes = mutableListOf<CheckBox>()
+        val baseFilter = "7,0,$pokemonId"
+        val allConditionKeys = variants.map { buildConditionKey(it.type, it.id, it.amount, it.condition, it.reward) }.toSet()
+        val encounterPrefix = "7|$pokemonId|"
 
-        // Main “Spinda” checkbox itself
-        val mainSpindaCheckbox = CheckBox(requireContext()).apply {
+        val mainCheckbox = CheckBox(requireContext()).apply {
             text = displayText
-            isChecked = baseCompositeValue in enabledQuestFilters
+            // Use the stable prefix "7|<id>|" rather than exact conditionKey matching so
+            // the checkbox remains ticked even if API condition text drifts between refreshes.
+            isChecked = baseFilter in enabledQuestFilters ||
+                        enabledEncounterConditions.any { it.startsWith(encounterPrefix) }
             setPadding(32, 8, 16, 8)
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             setOnCheckedChangeListener { _, isChecked ->
+                if (isRebuildingQuestFilters) return@setOnCheckedChangeListener
+                Log.d("QuestFilterDebug", "Encounter main '$displayText' -> $isChecked")
                 if (isChecked) {
-                    enabledQuestFilters.add(baseCompositeValue)
-                    formCheckboxes.forEach { it.isChecked = true }
-
+                    enabledQuestFilters.add(baseFilter)
+                    enabledEncounterConditions.addAll(allConditionKeys)
+                    variantCheckboxes.forEach { it.isChecked = true }
                 } else {
-                    //  If the main toggle is turned off...
-                    enabledQuestFilters.remove(baseCompositeValue)
-
-                    // ...uncheck all specific form checkboxes in the UI...
-                    formCheckboxes.forEach { it.isChecked = false }
-
-                    // ...and clear them from saved preferences in the backend.
-                    filterPreferences.clearEnabledSpindaForms()
+                    enabledEncounterConditions.removeAll(allConditionKeys)
+                    variantCheckboxes.forEach { it.isChecked = false }
+                    if (enabledEncounterConditions.none { it.startsWith(encounterPrefix) })
+                        enabledQuestFilters.remove(baseFilter)
                 }
+                variantCheckboxes.forEach { it.isEnabled = isChecked }
                 filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-
-                // Enable or disable all child checkboxes based on the parent's state.
-                formCheckboxes.forEach { it.isEnabled = isChecked }
+                filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
             }
         }
 
-        // Spacer
-        val spacer = View(requireContext()).apply {
-            layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
-        }
+        val spacer = View(requireContext()).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) }
+        val expandButton = makeExpandButton()
 
-        // Expand/Collapse button
-        val expandButton = MaterialButton(requireContext()).apply {
-            text = if (spindaFormsMap.isNotEmpty()) "▶" else ""
-            isEnabled = spindaFormsMap.isNotEmpty()
-            backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
-            val onSurface = TypedValue().also {
-                requireContext().theme.resolveAttribute(
-                    com.google.android.material.R.attr.colorOnSurface, it, true
-                )
-            }.data
-            setTextColor(onSurface)
-            elevation = 0f
-            minimumWidth = 0
-            minWidth = 0
-            setPadding(8.dpToPx(), 4.dpToPx(), 8.dpToPx(), 4.dpToPx())
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        topRow.addView(mainSpindaCheckbox)
+        topRow.addView(mainCheckbox)
         topRow.addView(spacer)
-        if (spindaFormsMap.isNotEmpty()) {
-            topRow.addView(expandButton)
-        }
+        topRow.addView(expandButton)
 
-        // Container for specific‐form checkboxes (hidden initially)
-        val formsContainer = LinearLayout(requireContext()).apply {
+        val variantsContainer = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
             setPadding((32 + 16).dpToPx(), 0, 16.dpToPx(), 8.dpToPx())
         }
 
-        // Populate one checkbox per formKey
-        if (spindaFormsMap.isNotEmpty()) {
-            val enabledSpecificForms = filterPreferences.getEnabledSpindaForms()
-            spindaFormsMap.keys.sorted().forEach { formKey ->
-                val formNumber = formKey.removePrefix("spinda_form_")
-                val formLabel = "Form #$formNumber"
+        variants.forEach { variant ->
+            val key = buildConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward)
+            val cb = CheckBox(requireContext()).apply {
+                text = variant.label
+                isChecked = key in enabledEncounterConditions
+                isEnabled = mainCheckbox.isChecked
+                setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                setOnCheckedChangeListener { _, isChecked ->
+                    if (isRebuildingQuestFilters) return@setOnCheckedChangeListener
+                    Log.d("QuestFilterDebug", "Encounter variant '$displayText' -> '${variant.label}' = $isChecked")
+                    enabledQuestFilters.remove(baseFilter)
+                    if (isChecked) {
+                        enabledQuestFilters.add(variant.filterString)
+                        enabledEncounterConditions.add(key)
+                    } else {
+                        enabledQuestFilters.remove(variant.filterString)
+                        enabledEncounterConditions.remove(key)
+                    }
+                    mainCheckbox.setOnCheckedChangeListener(null)
+                    mainCheckbox.isChecked = variantCheckboxes.any { it.isChecked }
+                    mainCheckbox.setOnCheckedChangeListener { _, chk ->
+                        if (isRebuildingQuestFilters) return@setOnCheckedChangeListener
+                        if (chk) {
+                            enabledQuestFilters.add(baseFilter)
+                            enabledEncounterConditions.addAll(allConditionKeys)
+                            variantCheckboxes.forEach { it.isChecked = true }
+                        } else {
+                            enabledEncounterConditions.removeAll(allConditionKeys)
+                            variantCheckboxes.forEach { it.isChecked = false }
+                            if (enabledEncounterConditions.none { it.startsWith(encounterPrefix) })
+                                enabledQuestFilters.remove(baseFilter)
+                        }
+                        variantCheckboxes.forEach { it.isEnabled = chk }
+                        filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+                        filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
+                    }
+                    filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+                    filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
+                }
+            }
+            variantCheckboxes.add(cb)
+            variantsContainer.addView(cb)
+        }
 
-                val formCheckbox = CheckBox(requireContext()).apply {
-                    text = formLabel
-                    isChecked = formKey in enabledSpecificForms
+        wireExpandButton(expandButton, variantsContainer)
+        container.addView(topRow)
+        container.addView(variantsContainer)
+        parent.addView(container)
+    }
 
-                    //  Child checkboxes are only enabled if the main checkbox is checked.
-                    // This sets the initial state correctly on view creation.
-                    isEnabled = mainSpindaCheckbox.isChecked
+    // Used for Stardust, Pokémon Candy, Pokémon Candy XL, Mega Energy, and Item sections.
+    // Single-variant entries share the same row structure but without the expand button,
+    // giving consistent alignment across all entries in a section.
+    private fun addCandyFilterWithVariants(
+        parent: LinearLayout,
+        displayText: String,
+        baseFilter: String,
+        variants: List<QuestsViewModel.SubVariant>
+    ) {
+        val container = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        val topRow = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
 
+        val variantCheckboxes = mutableListOf<CheckBox>()
+        val allConditionKeys  = variants.map { buildConditionKey(it.type, it.id, it.amount, it.condition, it.reward) }.toSet()
+        val hasMultipleVariants = variants.size > 1
+
+        val mainCheckbox = CheckBox(requireContext()).apply {
+            text = displayText
+            isChecked = enabledEncounterConditions.any { it in allConditionKeys }
+            setPadding(32, 8, 16, 8)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setOnCheckedChangeListener { _, isChecked ->
+                if (isRebuildingQuestFilters) return@setOnCheckedChangeListener
+                Log.d("QuestFilterDebug", "Main toggle '$displayText' -> $isChecked")
+                if (isChecked) {
+                    enabledQuestFilters.add(baseFilter)
+                    enabledEncounterConditions.addAll(allConditionKeys)
+                    variantCheckboxes.forEach { it.isChecked = true }
+                } else {
+                    enabledQuestFilters.remove(baseFilter)
+                    enabledEncounterConditions.removeAll(allConditionKeys)
+                    variantCheckboxes.forEach { it.isChecked = false }
+                }
+                variantCheckboxes.forEach { it.isEnabled = isChecked }
+                filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+                filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
+            }
+        }
+
+        topRow.addView(mainCheckbox)
+
+        val variantsContainer = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding((32 + 16).dpToPx(), 0, 16.dpToPx(), 8.dpToPx())
+        }
+
+        if (hasMultipleVariants) {
+            val spacer = View(requireContext()).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) }
+            val expandButton = makeExpandButton()
+            topRow.addView(spacer)
+            topRow.addView(expandButton)
+
+            variants.forEach { variant ->
+                val key = buildConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward)
+                val cb = CheckBox(requireContext()).apply {
+                    text = variant.label
+                    isChecked = key in enabledEncounterConditions
+                    isEnabled = mainCheckbox.isChecked
                     setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                     setOnCheckedChangeListener { _, isChecked ->
-                        updateSpindaFormSelection(formKey, isChecked)
+                        if (isRebuildingQuestFilters) return@setOnCheckedChangeListener
+                        Log.d("QuestFilterDebug", "Variant toggle '$displayText' -> '${variant.label}' = $isChecked")
+                        if (isChecked) {
+                            enabledEncounterConditions.add(key)
+                            enabledQuestFilters.add(baseFilter)
+                        } else {
+                            enabledEncounterConditions.remove(key)
+                            if (enabledEncounterConditions.intersect(allConditionKeys).isEmpty()) {
+                                enabledQuestFilters.remove(baseFilter)
+                            }
+                        }
+                        mainCheckbox.setOnCheckedChangeListener(null)
+                        mainCheckbox.isChecked = variantCheckboxes.any { it.isChecked }
+                        mainCheckbox.setOnCheckedChangeListener { _, chk ->
+                            if (isRebuildingQuestFilters) return@setOnCheckedChangeListener
+                            if (chk) {
+                                enabledQuestFilters.add(baseFilter)
+                                enabledEncounterConditions.addAll(allConditionKeys)
+                                variantCheckboxes.forEach { it.isChecked = true }
+                            } else {
+                                enabledQuestFilters.remove(baseFilter)
+                                enabledEncounterConditions.removeAll(allConditionKeys)
+                                variantCheckboxes.forEach { it.isChecked = false }
+                            }
+                            variantCheckboxes.forEach { it.isEnabled = chk }
+                            filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+                            filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
+                        }
+                        filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+                        filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
                     }
                 }
-
-                formCheckboxes.add(formCheckbox)
-                formsContainer.addView(formCheckbox)
+                variantCheckboxes.add(cb)
+                variantsContainer.addView(cb)
             }
-
-            // Expand/Collapse logic
-            var isExpanded = false
-            expandButton.setOnClickListener {
-                isExpanded = !isExpanded
-                formsContainer.visibility = if (isExpanded) View.VISIBLE else View.GONE
-                expandButton.text = if (isExpanded) "▼" else "▶"
-            }
+            wireExpandButton(expandButton, variantsContainer)
         }
 
-        // Assemble into parent
-        spindaContainer.addView(topRow)
-        spindaContainer.addView(formsContainer)
-        parent.addView(spindaContainer)
+        container.addView(topRow)
+        container.addView(variantsContainer)
+        parent.addView(container)
     }
 
-
-
-
-
-    private fun Int.dpToPx(): Int {
-        return (this * requireContext().resources.displayMetrics.density).toInt()
+    // Creates the themed ▶/▼ expand button used in both encounter and candy rows.
+    private fun makeExpandButton(): MaterialButton = MaterialButton(requireContext()).apply {
+        text = "▶"
+        backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
+        val onSurface = TypedValue().also {
+            requireContext().theme.resolveAttribute(com.google.android.material.R.attr.colorOnSurface, it, true)
+        }.data
+        setTextColor(onSurface)
+        elevation = 0f
+        minimumWidth = 0
+        minWidth = 0
+        setPadding(8.dpToPx(), 4.dpToPx(), 8.dpToPx(), 4.dpToPx())
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 
-    private fun updateSpindaFormSelection(formKey: String, isChecked: Boolean) {
-        val currentForms = filterPreferences.getEnabledSpindaForms().toMutableSet()
-        if (isChecked) {
-            currentForms.add(formKey)
-        } else {
-            currentForms.remove(formKey)
+    // Wires the expand/collapse toggle between a button and its container.
+    private fun wireExpandButton(button: MaterialButton, container: LinearLayout) {
+        var isExpanded = false
+        button.setOnClickListener {
+            isExpanded = !isExpanded
+            container.visibility = if (isExpanded) View.VISIBLE else View.GONE
+            button.text = if (isExpanded) "▼" else "▶"
         }
-        filterPreferences.saveEnabledSpindaForms(currentForms)
-        Log.d("FilterFragmentSpinda", "Updated specific Spinda forms: $currentForms")
     }
 
-
+    private fun Int.dpToPx(): Int =
+        (this * requireContext().resources.displayMetrics.density).toInt()
 
     override fun onResume() {
         super.onResume()
-        if (::questLayout.isInitialized) {
-            setupQuestFilters(questLayout)
-        }
+        // Reload from prefs so any saves made while this fragment was paused are picked up.
         if (::rocketLayoutGlobal.isInitialized) {
+            enabledRocketFilters.clear()
+            enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
             setupRocketFilters(rocketLayoutGlobal)
+        }
+        if (::questLayout.isInitialized) {
+            enabledQuestFilters.clear()
+            enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters())
+            enabledEncounterConditions.clear()
+            enabledEncounterConditions.addAll(filterPreferences.getEnabledEncounterConditions())
+            // Only rebuild the quest filter view tree if the quest tab is currently visible
+            // AND pokemon data is ready. If data isn't ready yet, the initializePokemonData
+            // callback will trigger the first build once it completes.
+            if (currentFilterType == "Quest" && pokemonDataReady) {
+                setupQuestFilters(questLayout)
+            }
         }
     }
 }

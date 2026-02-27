@@ -4,29 +4,21 @@ import android.content.Context
 import androidx.core.content.edit
 
 class QuestFilterPreferences(context: Context) {
-    private val prefs = context.getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(
+        FilterPreferences.QUEST_PREF_NAME, Context.MODE_PRIVATE
+    )
 
-    fun getEnabledFilters(): Set<String> {
-        return prefs.getStringSet("enabled_quest_filters", emptySet()) ?: emptySet()
-    }
+    fun getEnabledFilters(): Set<String> =
+        prefs.getStringSet("enabled_quest_filters", emptySet())?.toSet() ?: emptySet()
 
     fun saveEnabledFilters(filters: Set<String>) {
-        prefs.edit { putStringSet("enabled_quest_filters", filters) }
+        prefs.edit(commit = true) { putStringSet("enabled_quest_filters", HashSet(filters)) }
     }
 
-    fun getEnabledSpindaForms(): Set<String> {
-        return prefs.getStringSet("enabled_spinda_forms", emptySet()) ?: emptySet()
+    fun getEnabledEncounterConditions(): Set<String> =
+        prefs.getStringSet(FilterPreferences.KEY_ENABLED_ENCOUNTER_CONDITIONS, emptySet())?.toSet() ?: emptySet()
 
-    }
-
-    fun clearEnabledSpindaForms() {
-        prefs.edit { remove("enabled_spinda_forms") }
-    }
-
-
-
-    fun saveEnabledSpindaForms(forms: Set<String>) {
-        prefs.edit { putStringSet("enabled_spinda_forms", forms) }
-
+    fun saveEnabledEncounterConditions(conditions: Set<String>) {
+        prefs.edit(commit = true) { putStringSet(FilterPreferences.KEY_ENABLED_ENCOUNTER_CONDITIONS, HashSet(conditions)) }
     }
 }

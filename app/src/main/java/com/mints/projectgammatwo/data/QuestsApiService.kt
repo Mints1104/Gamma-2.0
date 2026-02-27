@@ -10,4 +10,9 @@ interface QuestsApiService {
         @Query("quests[]") quests: List<String>,
         @Query("time") timestamp: Long
     ): Call<Quests.QuestsResponse>
+
+    @GET("quests.php")
+    fun getAllQuests(
+        @Query("time") timestamp: Long
+    ): Call<Quests.QuestsResponse>
 }

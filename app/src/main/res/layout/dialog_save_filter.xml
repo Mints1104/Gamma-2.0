@@ -35,21 +35,34 @@
         android:layout_marginTop="16dp"
         android:layout_marginBottom="16dp" />
 
-    <!-- Cancel Button -->
+    <!-- Cancel Button (always visible) -->
     <Button
         android:id="@+id/cancelFilterButton"
+        style="@style/Widget.Material3.Button.TextButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Cancel"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
-    <!-- Save Button -->
+    <!-- Save as New Button (only visible when editing an existing filter) -->
+    <Button
+        android:id="@+id/saveAsNewFilterButton"
+        style="@style/Widget.Material3.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Save as New"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toEndOf="@id/cancelFilterButton"
+        app:layout_constraintEnd_toStartOf="@id/saveFilterButton" />
+
+    <!-- Save / Update Button -->
     <Button
         android:id="@+id/saveFilterButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Save New"
+        android:text="Save"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
