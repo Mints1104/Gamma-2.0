@@ -836,7 +836,6 @@ class FilterFragment : Fragment() {
                             val key = buildConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward)
                             if (enabledQuestFilters.contains(filterStr)) enabledEncounterConditions.add(key)
                             else enabledEncounterConditions.remove(key)
-                            filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
                         }
                     }
                 }
@@ -933,8 +932,16 @@ class FilterFragment : Fragment() {
                         enabledQuestFilters.remove(variant.filterString)
                         enabledEncounterConditions.remove(key)
                     }
+
+                    val hasCheckedVariant = variantCheckboxes.any { it.isChecked }
+                    if (hasCheckedVariant) {
+                        enabledQuestFilters.add(baseFilter)
+                    } else if (enabledEncounterConditions.none { it.startsWith(encounterPrefix) }) {
+                        enabledQuestFilters.remove(baseFilter)
+                    }
+
                     mainCheckbox.setOnCheckedChangeListener(null)
-                    mainCheckbox.isChecked = variantCheckboxes.any { it.isChecked }
+                    mainCheckbox.isChecked = hasCheckedVariant
                     mainCheckbox.setOnCheckedChangeListener { _, chk ->
                         if (isRebuildingQuestFilters) return@setOnCheckedChangeListener
                         if (chk) {
@@ -948,9 +955,17 @@ class FilterFragment : Fragment() {
                                 enabledQuestFilters.remove(baseFilter)
                         }
                         variantCheckboxes.forEach { it.isEnabled = chk }
+                        Log.d(
+                            "QuestFilterDebug",
+                            "Encounter main(sync) '$displayText' -> chk=$chk, enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size}"
+                        )
                         filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
                         filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
                     }
+                    Log.d(
+                        "QuestFilterDebug",
+                        "Encounter variant state '$displayText' -> hasCheckedVariant=$hasCheckedVariant, enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size}"
+                    )
                     filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
                     filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
                 }
