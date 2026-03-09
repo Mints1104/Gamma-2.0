@@ -14,6 +14,7 @@ object DataMappings {
         42 to "Arlo",
         43 to "Sierra",
         44 to "Giovanni",
+        46 to "Decoy",
         12 to "Dragon Female",
         10 to "Dark Female",
         7 to "Bug Male",
