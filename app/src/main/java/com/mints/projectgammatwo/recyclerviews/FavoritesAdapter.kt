@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.FavoriteLocation
+import com.mints.projectgammatwo.data.FavoriteTimeFormatter
 
 class FavoritesAdapter(
     private val onDeleteFavorite: (FavoriteLocation) -> Unit,
@@ -21,6 +22,10 @@ class FavoritesAdapter(
     private val onCopyFavorite: (FavoriteLocation) -> Unit,
     private val onTeleportFavorite: (FavoriteLocation) -> Unit
 ) : ListAdapter<FavoriteLocation, FavoritesAdapter.FavoriteViewHolder>(FavoriteDiffCallback()) {
+
+    companion object {
+        private const val PAYLOAD_TIME = "payload_time"
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): FavoriteViewHolder {
         val view = LayoutInflater.from(parent.context)
@@ -32,10 +37,33 @@ class FavoritesAdapter(
         holder.bind()
     }
 
+    override fun onBindViewHolder(
+        holder: FavoriteViewHolder,
+        position: Int,
+        payloads: MutableList<Any>
+    ) {
+        // A clock tick only needs the time line repainted; a full rebind would also re-attach
+        // every click listener for no reason.
+        if (payloads.contains(PAYLOAD_TIME)) {
+            holder.bindTime()
+        } else {
+            super.onBindViewHolder(holder, position, payloads)
+        }
+    }
+
+    /**
+     * Repaints the local-time line on every visible row. Needed because the favorites themselves
+     * don't change when the clock advances, so re-submitting the list would be a DiffUtil no-op.
+     */
+    fun refreshTimes() {
+        if (itemCount > 0) notifyItemRangeChanged(0, itemCount, PAYLOAD_TIME)
+    }
+
     inner class FavoriteViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val dragHandle: ImageView = itemView.findViewById(R.id.dragHandle)
         private val favoriteName: TextView = itemView.findViewById(R.id.favoriteName)
         private val favoriteLocation: TextView = itemView.findViewById(R.id.favoriteLocation)
+        private val favoriteLocalTime: TextView = itemView.findViewById(R.id.favoriteLocalTime)
         private val overflowButton: ImageButton = itemView.findViewById(R.id.overflowButton)
         private val copyButton: Button = itemView.findViewById(R.id.copyButton)
         private val teleportButton: Button = itemView.findViewById(R.id.teleportButton)
@@ -50,6 +78,7 @@ class FavoritesAdapter(
 
             favoriteName.text = favorite.name
             favoriteLocation.text = "${favorite.lat}, ${favorite.lng}"
+            bindTime()
 
             copyButton.setOnClickListener {
                 val currentPos = adapterPosition
@@ -88,6 +117,19 @@ class FavoritesAdapter(
                 }
                 popup.show()
             }
+        }
+
+        /** Local time at this favorite; hidden when its coordinates have no known timezone. */
+        fun bindTime() {
+            val pos = adapterPosition
+            if (pos == RecyclerView.NO_POSITION) return
+
+            val localTime = FavoriteTimeFormatter.formatLocalTime(
+                itemView.context,
+                getItem(pos).timezoneId
+            )
+            favoriteLocalTime.text = localTime.orEmpty()
+            favoriteLocalTime.visibility = if (localTime == null) View.GONE else View.VISIBLE
         }
     }
 

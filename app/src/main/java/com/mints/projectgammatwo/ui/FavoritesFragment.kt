@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.InputType
 import android.view.*
 import android.widget.Button
@@ -23,6 +25,7 @@ import com.google.gson.reflect.TypeToken
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.FavoriteLocation
 import com.mints.projectgammatwo.data.DeeplinkManager
+import com.mints.projectgammatwo.data.FavoritesManager
 import com.mints.projectgammatwo.recyclerviews.FavoritesAdapter
 import java.util.Collections
 import androidx.core.content.edit
@@ -43,6 +46,16 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     private val FAVORITES_PREFS_NAME = "favorites_prefs"
     private val KEY_FAVORITES = "favorites_list"
     private val FAVORITES_SORTED = "favorites_sorted"
+
+    private val timeHandler = Handler(Looper.getMainLooper())
+
+    /** Repaints the per-favorite local times, re-posting itself on each wall-clock minute. */
+    private val timeTicker = object : Runnable {
+        override fun run() {
+            if (::adapter.isInitialized) adapter.refreshTimes()
+            timeHandler.postDelayed(this, millisUntilNextMinute())
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -76,6 +89,29 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         val itemTouchHelper = ItemTouchHelper(itemTouchHelperCallback)
         itemTouchHelper.attachToRecyclerView(recyclerView)
     }
+
+    override fun onResume() {
+        super.onResume()
+        // Refresh immediately (the device timezone may have changed while we were away),
+        // then keep ticking on the minute for as long as the screen is visible.
+        if (::adapter.isInitialized) adapter.refreshTimes()
+        timeHandler.removeCallbacks(timeTicker)
+        timeHandler.postDelayed(timeTicker, millisUntilNextMinute())
+    }
+
+    override fun onPause() {
+        super.onPause()
+        timeHandler.removeCallbacks(timeTicker)
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        timeHandler.removeCallbacks(timeTicker)
+    }
+
+    /** Aligns the tick to the wall clock so the displayed time flips when the minute does. */
+    private fun millisUntilNextMinute(): Long =
+        60_000L - (System.currentTimeMillis() % 60_000L)
 
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
@@ -222,6 +258,7 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
                 }
             }
 
+            FavoritesManager.ensureTimezones(favoritesList)
             adapter.submitList(favoritesList.toList())
             saveFavorites()
 
@@ -265,6 +302,7 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
                     favoritesList.add(fav)
                 }
             }
+            FavoritesManager.ensureTimezones(favoritesList)
             adapter.submitList(favoritesList.toList())
             saveFavorites()
             Toast.makeText(requireContext(), "Favorites imported", Toast.LENGTH_SHORT).show()
@@ -298,6 +336,12 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
             loadedFavorites.sortedBy { originalOrder.indexOf(it.name) }.toMutableList()
         } else {
             loadedFavorites.toMutableList()
+        }
+
+        // Favorites saved before timezones existed have no timezoneId. Resolve them once here
+        // and write the result back so this doesn't run on every load.
+        if (FavoritesManager.ensureTimezones(favoritesList)) {
+            saveFavorites()
         }
 
         adapter.submitList(favoritesList.toList())

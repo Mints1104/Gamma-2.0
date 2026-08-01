@@ -385,6 +385,7 @@ object DataMappings {
             "item706" to "Golden Razz Berry",
             "item707" to "Golden Nanab Berry",
             "item708" to "Silver Pinap Berry",
+            "item709" to "Poffin",
             "item902" to "Egg Incubator",
             "item903" to "Super Incubator",
             "item1001" to "Pokémon Storage Upgrade",

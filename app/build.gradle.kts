@@ -13,7 +13,7 @@ android {
         minSdk = 24
         targetSdk = 35
         versionCode = 6
-        versionName = "3.9"
+        versionName = "4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -31,6 +31,7 @@ android {
         }
     }
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
@@ -68,4 +69,7 @@ dependencies {
 
     // Kotlinx serialization JSON for settings export/import
     implementation(libs.kotlinx.serialization.json)
+
+    // java.time backport for minSdk 24 (favorite local times)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 }

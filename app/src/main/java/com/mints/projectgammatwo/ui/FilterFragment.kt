@@ -564,8 +564,13 @@ class FilterFragment : Fragment() {
                         val filtersFromApi = Gson().fromJson(filtersJson, Quests.Filters::class.java)
                         val subVariants = questsViewModel.rewardSubVariantsLiveData.value ?: emptyMap()
                         val allPossibleQuestFilters = mutableSetOf<String>()
+                        Log.d(
+                            "QuestFilterDebug",
+                            "Toggle-all quest sections: t3=${filtersFromApi.t3.size}, t8=${filtersFromApi.t8.size}, t4=${filtersFromApi.t4.size}, t9=${filtersFromApi.t9.size}, t12=${filtersFromApi.t12.size}, t7=${filtersFromApi.t7.size}, t2=${filtersFromApi.t2.size}"
+                        )
 
                         fun addFiltersForSection(list: List<String>, section: String) {
+                            Log.d("QuestFilterDebug", "Processing $section section with ${list.size} entries")
                             list.forEach { rawValue ->
                                 val baseFilter = buildQuestFilterString(section, rawValue)
                                 val variants = subVariants[baseFilter]
@@ -585,6 +590,7 @@ class FilterFragment : Fragment() {
                         }
 
                         addFiltersForSection(filtersFromApi.t3, "Stardust")
+                        addFiltersForSection(filtersFromApi.t8, "Pokecoins")
                         addFiltersForSection(filtersFromApi.t4, "Pokémon Candy")
                         addFiltersForSection(filtersFromApi.t9 ?: emptyList(), "Pokémon Candy XL")
                         addFiltersForSection(filtersFromApi.t12, "Mega Energy")
@@ -628,11 +634,15 @@ class FilterFragment : Fragment() {
             val filters = Gson().fromJson(filtersJson, Quests.Filters::class.java)
             val subVariants: Map<String, List<QuestsViewModel.SubVariant>> =
                 questsViewModel.rewardSubVariantsLiveData.value ?: emptyMap()
-            Log.d("QuestFilterDebug", "setupQuestFilters: subVariants keys=${subVariants.size}")
+            Log.d(
+                "QuestFilterDebug",
+                "setupQuestFilters: sections t3=${filters.t3.size}, t8=${filters.t8.size}, t4=${filters.t4.size}, t9=${filters.t9.size}, t12=${filters.t12.size}, t7=${filters.t7.size}, t2=${filters.t2.size}; subVariants keys=${subVariants.size}"
+            )
 
             reconcileVariantSelections(subVariants)
 
             addFilterSectionWithVariants(parent, "Stardust",        filters.t3,                subVariants)
+            addFilterSectionWithVariants(parent, "Pokecoins",       filters.t8,                subVariants)
             addFilterSectionWithVariants(parent, "Pokémon Candy",   filters.t4,                subVariants)
             addFilterSectionWithVariants(parent, "Pokémon Candy XL",filters.t9 ?: emptyList(), subVariants)
             addFilterSectionWithVariants(parent, "Mega Energy",     filters.t12,               subVariants)
@@ -698,6 +708,7 @@ class FilterFragment : Fragment() {
     private fun buildQuestFilterString(section: String, rawValue: String): String {
         return when (section) {
             "Stardust"         -> "3,$rawValue,0"
+            "Pokecoins"        -> "8,$rawValue,0"
             "Mega Energy"      -> "12,0,$rawValue"
             "Pokémon Encounter"-> "7,0,$rawValue"
             "Item"             -> "2,0,$rawValue"
@@ -797,6 +808,7 @@ class FilterFragment : Fragment() {
         addSectionHeader(parent, sectionName)
 
         if (filterList.isEmpty()) {
+            Log.d("QuestFilterDebug", "Section $sectionName has no available values")
             TextView(context).apply {
                 text = "None available for $sectionName"
                 setPadding(16)
@@ -807,6 +819,7 @@ class FilterFragment : Fragment() {
 
         val sortedList = when (sectionName) {
             "Stardust" -> filterList.sortedBy { it.toIntOrNull() ?: 0 }
+            "Pokecoins" -> filterList.sortedBy { it.toIntOrNull() ?: 0 }
             "Item"     -> filterList.sortedBy { DataMappings.itemMap["item$it"] ?: it }
             else       -> filterList.sortedBy { DataMappings.pokemonEncounterMapNew[it] ?: it }
         }
@@ -815,6 +828,7 @@ class FilterFragment : Fragment() {
             val displayText = when (sectionName) {
                 "Pokémon Candy"    -> DataMappings.pokemonEncounterMapNew[rawValue] ?: "Candy for ID: $rawValue"
                 "Pokémon Candy XL" -> DataMappings.pokemonEncounterMapNew[rawValue] ?: "XL Candy for ID: $rawValue"
+                "Pokecoins"        -> "$rawValue PokéCoins"
                 "Mega Energy"      -> DataMappings.pokemonEncounterMapNew[rawValue] ?: "Energy for ID: $rawValue"
                 "Item"             -> DataMappings.itemMap["item$rawValue"] ?: "Item ID: $rawValue"
                 "Stardust"         -> "$rawValue Stardust"
@@ -980,7 +994,7 @@ class FilterFragment : Fragment() {
         parent.addView(container)
     }
 
-    // Used for Stardust, Pokémon Candy, Pokémon Candy XL, Mega Energy, and Item sections.
+    // Used for Stardust, Pokecoins, Pokémon Candy, Pokémon Candy XL, Mega Energy, and Item sections.
     // Single-variant entries share the same row structure but without the expand button,
     // giving consistent alignment across all entries in a section.
     private fun addCandyFilterWithVariants(

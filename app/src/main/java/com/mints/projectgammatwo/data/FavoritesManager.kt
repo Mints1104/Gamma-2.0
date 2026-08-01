@@ -27,12 +27,35 @@ object FavoritesManager {
         val orderType = object : TypeToken<List<String>>() {}.type
         val originalOrder: List<String> = gson.fromJson(orderJson, orderType) ?: emptyList()
 
+        // Favorites saved before timezones existed (or imported from an older export) have no
+        // timezoneId; fill it in so callers can render a local time straight away.
+        ensureTimezones(loadedFavorites)
+
         // Reorder the loadedFavorites to match the original order
         return if (originalOrder.isNotEmpty()) {
             loadedFavorites.sortedBy { originalOrder.indexOf(it.name) }
         } else {
             loadedFavorites
         }
+    }
+
+    /**
+     * Resolves [FavoriteLocation.timezoneId] for every entry that doesn't have one yet, in place.
+     * Returns true if anything changed, so callers can persist the result once instead of
+     * re-resolving on every load.
+     */
+    fun ensureTimezones(favorites: List<FavoriteLocation>): Boolean {
+        var changed = false
+        favorites.forEach { favorite ->
+            if (favorite.timezoneId == null) {
+                // Record the miss as UNKNOWN_ZONE rather than leaving it null, otherwise every
+                // load would re-run the (fairly expensive) polygon lookup for ocean coordinates.
+                favorite.timezoneId = FavoriteTimeFormatter.resolveZoneId(favorite.lat, favorite.lng)
+                    ?: FavoriteTimeFormatter.UNKNOWN_ZONE
+                changed = true
+            }
+        }
+        return changed
     }
 
     fun saveFavorites(context: Context, favorites: List<FavoriteLocation>) {

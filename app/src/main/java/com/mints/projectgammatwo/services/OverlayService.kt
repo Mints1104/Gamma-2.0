@@ -92,6 +92,18 @@ class OverlayService : Service() {
     private lateinit var customizationAdapter: OverlayCustomizationAdapter
     private var itemTouchHelper: ItemTouchHelper? = null
 
+    private val favoritesTimeHandler = Handler(Looper.getMainLooper())
+
+    /** Repaints the per-favorite local times, re-posting itself on each wall-clock minute. */
+    private val favoritesTimeTicker = object : Runnable {
+        override fun run() {
+            if (isFavoritesVisible && ::favoritesAdapter.isInitialized) {
+                favoritesAdapter.refreshTimes()
+            }
+            favoritesTimeHandler.postDelayed(this, millisUntilNextMinute())
+        }
+    }
+
     companion object {
         private const val TAG = "OverlayService"
         private const val NOTIFICATION_ID = 1001
@@ -532,6 +544,8 @@ class OverlayService : Service() {
         super.onDestroy()
         Log.d(TAG, "Service onDestroy started")
 
+        stopFavoritesTimeTicker()
+
         // Properly stop foreground service
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -814,7 +828,23 @@ class OverlayService : Service() {
 
         // Load favorites with the appropriate sort order
         loadFavoritesWithSort()
+
+        // Keep the local times ticking for as long as the panel is on screen
+        startFavoritesTimeTicker()
     }
+
+    private fun startFavoritesTimeTicker() {
+        favoritesTimeHandler.removeCallbacks(favoritesTimeTicker)
+        favoritesTimeHandler.postDelayed(favoritesTimeTicker, millisUntilNextMinute())
+    }
+
+    private fun stopFavoritesTimeTicker() {
+        favoritesTimeHandler.removeCallbacks(favoritesTimeTicker)
+    }
+
+    /** Aligns the tick to the wall clock so the displayed time flips when the minute does. */
+    private fun millisUntilNextMinute(): Long =
+        60_000L - (System.currentTimeMillis() % 60_000L)
 
     private fun setupFavoritesOverflowMenu() {
         val overflowButton = favoritesOverlayView?.findViewById<ImageButton>(R.id.overflow_menu_button)
@@ -896,6 +926,7 @@ class OverlayService : Service() {
     private fun hideFavoritesOverlay() {
         favoritesOverlayView?.visibility = View.GONE
         isFavoritesVisible = false
+        stopFavoritesTimeTicker()
 
         // Show main overlay again
         overlayView?.visibility = View.VISIBLE

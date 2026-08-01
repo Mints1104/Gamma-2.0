@@ -2,6 +2,7 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:padding="8dp">
@@ -49,6 +50,18 @@
         app:layout_constraintTop_toBottomOf="@id/favoriteName"
         app:layout_constraintEnd_toEndOf="@id/favoriteName" />
 
+    <!-- Current local time at the favorite's coordinates; hidden when the timezone is unknown -->
+    <TextView
+        android:id="@+id/favoriteLocalTime"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:textAppearance="?attr/textAppearanceCaption"
+        android:visibility="gone"
+        tools:text="14:32 · +8h"
+        app:layout_constraintStart_toStartOf="@id/favoriteName"
+        app:layout_constraintTop_toBottomOf="@id/favoriteLocation"
+        app:layout_constraintEnd_toEndOf="@id/favoriteName" />
+
     <!-- Container for action buttons -->
     <LinearLayout
         android:id="@+id/buttonContainer"
@@ -56,7 +69,7 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:layout_marginTop="8dp"
-        app:layout_constraintTop_toBottomOf="@id/favoriteLocation"
+        app:layout_constraintTop_toBottomOf="@id/favoriteLocalTime"
         app:layout_constraintStart_toStartOf="@id/favoriteName"
         app:layout_constraintEnd_toEndOf="parent">
 
