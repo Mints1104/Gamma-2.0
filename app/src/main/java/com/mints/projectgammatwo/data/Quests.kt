@@ -38,8 +38,12 @@ class Quests {
         val t4: List<String>,
         val t2: List<String>,
         val t7: List<String>,
-        val t8: List<String> = emptyList(),
-        val t9: List<String> = emptyList(),
+        // Nullable, not defaulted: this class is also read back from the quest_filters cache,
+        // which is a Gson re-serialization of this very model. A cache written by an app version
+        // that predates one of these fields simply has no such key, and Gson ignores Kotlin
+        // default values — it leaves the field null however the type is declared.
+        val t8: List<String>? = null,
+        val t9: List<String>? = null,
         val t12: List<String>
     )
 }

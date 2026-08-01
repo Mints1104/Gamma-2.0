@@ -566,7 +566,7 @@ class FilterFragment : Fragment() {
                         val allPossibleQuestFilters = mutableSetOf<String>()
                         Log.d(
                             "QuestFilterDebug",
-                            "Toggle-all quest sections: t3=${filtersFromApi.t3.size}, t8=${filtersFromApi.t8.size}, t4=${filtersFromApi.t4.size}, t9=${filtersFromApi.t9.size}, t12=${filtersFromApi.t12.size}, t7=${filtersFromApi.t7.size}, t2=${filtersFromApi.t2.size}"
+                            "Toggle-all quest sections: t3=${filtersFromApi.t3.size}, t8=${filtersFromApi.t8?.size ?: 0}, t4=${filtersFromApi.t4.size}, t9=${filtersFromApi.t9?.size ?: 0}, t12=${filtersFromApi.t12.size}, t7=${filtersFromApi.t7.size}, t2=${filtersFromApi.t2.size}"
                         )
 
                         fun addFiltersForSection(list: List<String>, section: String) {
@@ -590,9 +590,9 @@ class FilterFragment : Fragment() {
                         }
 
                         addFiltersForSection(filtersFromApi.t3, "Stardust")
-                        addFiltersForSection(filtersFromApi.t8, "Pokecoins")
+                        addFiltersForSection(filtersFromApi.t8.orEmpty(), "Pokecoins")
                         addFiltersForSection(filtersFromApi.t4, "Pokémon Candy")
-                        addFiltersForSection(filtersFromApi.t9 ?: emptyList(), "Pokémon Candy XL")
+                        addFiltersForSection(filtersFromApi.t9.orEmpty(), "Pokémon Candy XL")
                         addFiltersForSection(filtersFromApi.t12, "Mega Energy")
                         addFiltersForSection(filtersFromApi.t7, "Pokémon Encounter")
                         addFiltersForSection(filtersFromApi.t2, "Item")
@@ -636,15 +636,15 @@ class FilterFragment : Fragment() {
                 questsViewModel.rewardSubVariantsLiveData.value ?: emptyMap()
             Log.d(
                 "QuestFilterDebug",
-                "setupQuestFilters: sections t3=${filters.t3.size}, t8=${filters.t8.size}, t4=${filters.t4.size}, t9=${filters.t9.size}, t12=${filters.t12.size}, t7=${filters.t7.size}, t2=${filters.t2.size}; subVariants keys=${subVariants.size}"
+                "setupQuestFilters: sections t3=${filters.t3.size}, t8=${filters.t8?.size ?: 0}, t4=${filters.t4.size}, t9=${filters.t9?.size ?: 0}, t12=${filters.t12.size}, t7=${filters.t7.size}, t2=${filters.t2.size}; subVariants keys=${subVariants.size}"
             )
 
             reconcileVariantSelections(subVariants)
 
             addFilterSectionWithVariants(parent, "Stardust",        filters.t3,                subVariants)
-            addFilterSectionWithVariants(parent, "Pokecoins",       filters.t8,                subVariants)
+            addFilterSectionWithVariants(parent, "Pokecoins",       filters.t8.orEmpty(),      subVariants)
             addFilterSectionWithVariants(parent, "Pokémon Candy",   filters.t4,                subVariants)
-            addFilterSectionWithVariants(parent, "Pokémon Candy XL",filters.t9 ?: emptyList(), subVariants)
+            addFilterSectionWithVariants(parent, "Pokémon Candy XL",filters.t9.orEmpty(),      subVariants)
             addFilterSectionWithVariants(parent, "Mega Energy",     filters.t12,               subVariants)
             addFilterSectionWithVariants(parent, "Pokémon Encounter",filters.t7,               subVariants)
             addFilterSectionWithVariants(parent, "Item",            filters.t2,                subVariants)
