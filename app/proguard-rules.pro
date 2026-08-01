@@ -110,3 +110,15 @@
 -keepclassmembers class * extends android.content.Context {
     public void *(android.view.View);
 }
+
+#################################################
+# 13) Strip debug logging from release builds
+#     Debug/verbose logs are development scaffolding and shouldn't ship.
+#     R8 removes these calls and, since the arguments are pure string
+#     building, the message construction with them.
+#     Log.i/w/e are deliberately kept - they report real problems.
+#################################################
+-assumenosideeffects class android.util.Log {
+    public static int d(...);
+    public static int v(...);
+}
