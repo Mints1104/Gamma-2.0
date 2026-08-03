@@ -16,6 +16,7 @@ import com.mints.projectgammatwo.data.DeletedInvasionsRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.IOException
@@ -77,7 +78,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                                 ApiClient.getApiForBaseUrl(baseUrl)
                                     .getInvasions().invasions
                                     .map { invasion -> invasion.copy(source = source) }
+                            } catch (e: CancellationException) {
+                                throw e
                             } catch(e: IOException) {
+                                // A superseded fetch cancels its OkHttp calls, which surface
+                                // here as IOException("Canceled") — not as CancellationException.
+                                // Without this the user sees a spurious error toast every time
+                                // they pull-to-refresh twice or change the sort mode.
+                                ensureActive()
                                 e(TAG, "Network error: ${e.message}", e)
                                 _error.value = "Network error: ${e.message}"
                                 emptyList()
@@ -90,6 +98,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                                 _error.value = "JSON parsing error: ${e.message}"
                                 emptyList()
                             } catch (e: Exception) {
+                                ensureActive()
                                 e(TAG, "Source “$source” failed: ${e.message}", e)
                                 emptyList()
                             }
@@ -101,6 +110,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     .mapNotNull {
                         try {
                             it.await()
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (e: Exception) {
                             e(TAG, "Failed to await result: ${e.message}", e)
                             null

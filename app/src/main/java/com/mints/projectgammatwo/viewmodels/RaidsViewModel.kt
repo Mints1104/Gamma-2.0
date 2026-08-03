@@ -14,6 +14,7 @@ import com.mints.projectgammatwo.data.RaidApiService
 import com.mints.projectgammatwo.data.Raids
 import com.mints.projectgammatwo.data.Raids.Raid
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
@@ -88,7 +89,12 @@ class RaidsViewModel(application: Application) : AndroidViewModel(application) {
                                     Log.w(tag, "API error for source $source: HTTP ${response.code()} ${response.message()}")
                                     Pair(source, Result.failure<retrofit2.Response<Raids.RaidsResponse>>(HttpException(response)))
                                 }
+                            } catch (e: CancellationException) {
+                                throw e
                             } catch (e: IOException) {
+                                // Cancelling an OkHttp call surfaces as IOException("Canceled"),
+                                // so bail out rather than reporting it as a fetch failure.
+                                ensureActive()
                                 Log.e(tag, "Network error for source $source", e)
                                 Pair(source, Result.failure<retrofit2.Response<Raids.RaidsResponse>>(e))
                             } catch (e: HttpException) {
@@ -98,6 +104,7 @@ class RaidsViewModel(application: Application) : AndroidViewModel(application) {
                                 Log.e(tag, "JSON parsing error for source $source", e)
                                 Pair(source, Result.failure<retrofit2.Response<Raids.RaidsResponse>>(e))
                             } catch (e: Exception) {
+                                ensureActive()
                                 Log.e(tag, "Unexpected error for source $source", e)
                                 Pair(source, Result.failure<retrofit2.Response<Raids.RaidsResponse>>(e))
                             }

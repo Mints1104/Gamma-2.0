@@ -149,10 +149,12 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     }
 
     private fun sortFavsByName() {
-        val sortedList = favoritesList.toMutableList().apply {
-            sortBy { it.name }
-        }
-        adapter.submitList(sortedList)
+        // Sort the backing list itself rather than a display-only copy. The adapter hands
+        // back positions into whatever it is currently showing, and both edit and drag write
+        // those positions straight into favoritesList — so if the two orders diverge they
+        // target the wrong favorite and overwrite it.
+        favoritesList.sortBy { it.name }
+        adapter.submitList(favoritesList.toList())
     }
 
     private fun sortFavsByDefault() {
