@@ -24,6 +24,7 @@ import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.DataSourcePreferences
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
 import com.mints.projectgammatwo.data.FavoriteLocation
+import com.mints.projectgammatwo.data.FavoritesManager
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.data.ExportData
@@ -37,8 +38,6 @@ import kotlinx.serialization.json.Json
 class SettingsFragment : Fragment() {
 
     companion object {
-        private const val FAVORITES_PREFS_NAME = "favorites_prefs"
-        private const val KEY_FAVORITES = "favorites_list"
         private const val TELEPORT_PREFS_NAME = "teleport_prefs"
         private const val KEY_TELEPORT_METHOD = "teleport_method"
 
@@ -530,10 +529,10 @@ class SettingsFragment : Fragment() {
         val enabledCharacters = filterPreferences.getEnabledCharacters()
         Log.d("SettingsExport", "Enabled characters: $enabledCharacters")
 
-        val favoritesPrefs = requireContext().getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
-        val favoritesJson = favoritesPrefs.getString(KEY_FAVORITES, "[]")
-        val favoritesType = object : TypeToken<List<FavoriteLocation>>() {}.type
-        val favorites: List<FavoriteLocation> = gson.fromJson(favoritesJson, favoritesType)
+        // Read through FavoritesManager so the export carries favorites in the user's manual
+        // order; the raw stored list is not in that order, so exporting it directly lost the
+        // arrangement on the way back in.
+        val favorites: List<FavoriteLocation> = FavoritesManager.getFavorites(requireContext())
         Log.d("SettingsExport", "Favorites count: ${favorites.size}")
 
         val enabledEncounterConditions = filterPreferences.getEnabledEncounterConditions()
@@ -666,9 +665,11 @@ class SettingsFragment : Fragment() {
             Log.d("SettingsImport", "Importing ${importData.deletedEntries?.size ?: 0} deleted entries")
             deletedRepo.setDeletedEntries(importData.deletedEntries ?: emptySet())
 
-            val favoritesPrefs = requireContext().getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
             Log.d("SettingsImport", "Importing ${importData.favorites?.size ?: 0} favorites")
-            favoritesPrefs.edit { putString(KEY_FAVORITES, gson.toJson(importData.favorites ?: emptyList<FavoriteLocation>())) }
+            // Goes through FavoritesManager so the saved name order is rewritten alongside the
+            // list. Writing only the list left the previous favorites' order in place, which
+            // then got applied to the imported ones.
+            FavoritesManager.saveFavorites(requireContext(), importData.favorites ?: emptyList())
 
             // Import home coordinates if available and valid
             Log.d("SettingsImport", "Importing home coordinates: ${importData.homeCoordinates}")

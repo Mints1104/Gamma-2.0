@@ -45,7 +45,10 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     private val gson = Gson()
     private val FAVORITES_PREFS_NAME = "favorites_prefs"
     private val KEY_FAVORITES = "favorites_list"
-    private val FAVORITES_SORTED = "favorites_sorted"
+    private val KEY_ORDER = "favorites_order"
+
+    /** Mirrors the persisted sort choice so it doesn't have to be re-read on every mutation. */
+    private var currentSortOrder: String = SORT_ORDER_DEFAULT
 
     private val timeHandler = Handler(Looper.getMainLooper())
 
@@ -79,6 +82,8 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         recyclerView.adapter = adapter
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
 
+        // Restore the sort the user last chose before the first load applies it.
+        currentSortOrder = loadSortOrderPreference()
         loadFavorites()
 
 
@@ -130,12 +135,13 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
                 true
             }
             R.id.action_sortByName -> {
-                saveSortOrderPreference(SORT_ORDER_NAME)
+                setSortOrder(SORT_ORDER_NAME)
                 sortFavsByName()
                 true
             }
 
             R.id.action_sortByDefault -> {
+                setSortOrder(SORT_ORDER_DEFAULT)
                 sortFavsByDefault()
                 true
             }
@@ -146,6 +152,23 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     private fun saveSortOrderPreference(sortOrder: String) {
         val prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit { putString(SORT_ORDER_KEY, sortOrder) }
+    }
+
+    /** Records the sort choice both in memory and on disk so it survives leaving the screen. */
+    private fun setSortOrder(sortOrder: String) {
+        currentSortOrder = sortOrder
+        saveSortOrderPreference(sortOrder)
+    }
+
+    /**
+     * Re-applies the active sort to [favoritesList] after it has been mutated, so an edited or
+     * newly added favorite lands in its correct place instead of keeping the slot it happened
+     * to occupy.
+     */
+    private fun applyCurrentSort() {
+        if (currentSortOrder == SORT_ORDER_NAME) {
+            favoritesList.sortBy { it.name }
+        }
     }
 
     private fun sortFavsByName() {
@@ -166,13 +189,6 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     private fun loadSortOrderPreference(): String {
         val prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getString(SORT_ORDER_KEY, SORT_ORDER_DEFAULT) ?: SORT_ORDER_DEFAULT
-    }
-
-    private fun applySavedSortOrder() {
-        when (loadSortOrderPreference()) {
-            SORT_ORDER_NAME -> sortFavsByName()
-            SORT_ORDER_DEFAULT -> sortFavsByDefault()
-        }
     }
 
     /**
@@ -261,6 +277,7 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
             }
 
             FavoritesManager.ensureTimezones(favoritesList)
+            applyCurrentSort()
             adapter.submitList(favoritesList.toList())
             saveFavorites()
 
@@ -305,6 +322,7 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
                 }
             }
             FavoritesManager.ensureTimezones(favoritesList)
+            applyCurrentSort()
             adapter.submitList(favoritesList.toList())
             saveFavorites()
             Toast.makeText(requireContext(), "Favorites imported", Toast.LENGTH_SHORT).show()
@@ -319,26 +337,19 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         val prefs = requireContext().getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
 
         val json = prefs.getString(KEY_FAVORITES, "[]") ?: "[]"
-        val type = TypeToken
-            .getParameterized(List::class.java, FavoriteLocation::class.java)
-            .type
         val listType = TypeToken
             .getParameterized(List::class.java, FavoriteLocation::class.java)
             .type
         val loadedFavorites: List<FavoriteLocation> = gson.fromJson(json, listType)
 
-        val orderJson = prefs.getString("favorites_order", "[]")
+        val orderJson = prefs.getString(KEY_ORDER, "[]")
         val orderType = TypeToken
             .getParameterized(List::class.java, String::class.java)
             .type
         val originalOrder: List<String> = gson.fromJson(orderJson, orderType)
 
-        // Reorder the loadedFavorites to match the original order
-        favoritesList = if (originalOrder.isNotEmpty()) {
-            loadedFavorites.sortedBy { originalOrder.indexOf(it.name) }.toMutableList()
-        } else {
-            loadedFavorites.toMutableList()
-        }
+        favoritesList = FavoritesManager.applyStoredOrder(loadedFavorites, originalOrder)
+            .toMutableList()
 
         // Favorites saved before timezones existed have no timezoneId. Resolve them once here
         // and write the result back so this doesn't run on every load.
@@ -346,6 +357,7 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
             saveFavorites()
         }
 
+        applyCurrentSort()
         adapter.submitList(favoritesList.toList())
     }
 
@@ -354,19 +366,19 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         val ctx = context ?: return
         val prefs = ctx
             .getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
-        val editor = prefs.edit()
-        editor.putString(KEY_FAVORITES, gson.toJson(favoritesList))
-        editor.putString("favorites_order", gson.toJson(favoritesList.map { it.name }))
-        editor.apply()
+        prefs.edit {
+            putString(KEY_FAVORITES, gson.toJson(favoritesList))
+            // Only record what's on screen as the manual order when the user is actually
+            // arranging by hand. While name-sorted the displayed order is derived, so
+            // overwriting the stored order would destroy their arrangement and leave
+            // "Sort by default" with nothing to restore.
+            if (currentSortOrder == SORT_ORDER_DEFAULT) {
+                putString(KEY_ORDER, gson.toJson(favoritesList.map { it.name }))
+            }
+        }
     }
 
 
-
-    private fun saveSortingOrder() {
-        val prefs = requireContext().getSharedPreferences(FAVORITES_SORTED, Context.MODE_PRIVATE)
-        prefs.edit().putString(KEY_FAVORITES, gson.toJson(favoritesList)).apply()
-
-    }
 
     private fun deleteFavorite(favorite: FavoriteLocation) {
         val rootView = requireActivity().findViewById<View>(android.R.id.content)
@@ -499,6 +511,7 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
             favoritesList[position] = favorite
             Toast.makeText(requireContext(), "Favorite updated", Toast.LENGTH_SHORT).show()
         }
+        applyCurrentSort()
         adapter.submitList(favoritesList.toList())
         saveFavorites()
     }
@@ -531,6 +544,11 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
 
         override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
             super.clearView(recyclerView, viewHolder)
+            // Dragging is an explicit request for a manual arrangement, so drop out of
+            // name-sort mode — otherwise the next load would sort the drag straight back out.
+            if (currentSortOrder != SORT_ORDER_DEFAULT) {
+                setSortOrder(SORT_ORDER_DEFAULT)
+            }
             saveFavorites()
         }
     }

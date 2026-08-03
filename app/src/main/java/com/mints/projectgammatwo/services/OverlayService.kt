@@ -167,26 +167,34 @@ class OverlayService : Service() {
         }
     }
 
+    /**
+     * Detaches a view from the WindowManager if it is still attached.
+     *
+     * Attachment is what matters here, not visibility: the panels are hidden by setting the
+     * view's visibility to GONE while the window stays added, so a visibility check skipped
+     * exactly the ones that needed removing.
+     */
+    private fun removeOverlayView(view: View?) {
+        if (view == null || !view.isAttachedToWindow) return
+        try {
+            windowManager.removeView(view)
+        } catch (e: IllegalArgumentException) {
+            // Already detached — nothing left to do.
+            Log.w(TAG, "Overlay view was not attached: ${e.message}")
+        }
+    }
+
     private fun cleanupOverlays() {
         try {
-            overlayView?.let {
-                if (it.windowVisibility == View.VISIBLE) {
-                    windowManager.removeView(it)
-                }
-                overlayView = null
-            }
-            favoritesOverlayView?.let {
-                if (it.windowVisibility == View.VISIBLE) {
-                    windowManager.removeView(it)
-                }
-                favoritesOverlayView = null
-            }
-            filterOverlayView?.let {
-                if (it.windowVisibility == View.VISIBLE) {
-                    windowManager.removeView(it)
-                }
-                filterOverlayView = null
-            }
+            removeOverlayView(overlayView)
+            overlayView = null
+
+            removeOverlayView(favoritesOverlayView)
+            favoritesOverlayView = null
+
+            removeOverlayView(filterOverlayView)
+            filterOverlayView = null
+
             cleanupObservers()
         } catch (e: Exception) {
             Log.e(TAG, "Error during overlay cleanup: ${e.message}")
@@ -557,16 +565,11 @@ class OverlayService : Service() {
         val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(NOTIFICATION_ID)
 
-        cleanupObservers()
-        try {
-            if (overlayView != null) {
-                windowManager.removeView(overlayView)
-                overlayView = null
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error on destroy: ${e.message}")
-        }
-        
+        // Tears down every panel, not just the main one: the favorites and filter overlays are
+        // separate WindowManager windows that are only hidden when closed, so leaving them
+        // attached here leaked them past the service.
+        cleanupOverlays()
+
         // Clear overlay running state
         val sharedPrefs = getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE)
         sharedPrefs.edit().putBoolean("overlay_running", false).apply()

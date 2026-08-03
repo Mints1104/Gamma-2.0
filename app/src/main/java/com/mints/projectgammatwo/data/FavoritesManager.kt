@@ -31,12 +31,29 @@ object FavoritesManager {
         // timezoneId; fill it in so callers can render a local time straight away.
         ensureTimezones(loadedFavorites)
 
-        // Reorder the loadedFavorites to match the original order
-        return if (originalOrder.isNotEmpty()) {
-            loadedFavorites.sortedBy { originalOrder.indexOf(it.name) }
-        } else {
-            loadedFavorites
-        }
+        return applyStoredOrder(loadedFavorites, originalOrder)
+    }
+
+    /**
+     * Restores the user's manual arrangement, [order] being the saved list of names.
+     *
+     * Names missing from [order] sort to the end rather than the front — they are entries added
+     * or imported since the order was written, and putting them first would silently reshuffle
+     * the list the user arranged.
+     *
+     * Builds a rank map instead of calling [List.indexOf] from the sort selector: the selector
+     * runs on every comparison, so indexOf made loading a large favorites/hotspots list
+     * quadratic.
+     */
+    fun applyStoredOrder(
+        favorites: List<FavoriteLocation>,
+        order: List<String>
+    ): List<FavoriteLocation> {
+        if (order.isEmpty()) return favorites
+        val rank = HashMap<String, Int>(order.size)
+        // First occurrence wins, matching the old indexOf behaviour for duplicate names.
+        order.forEachIndexed { index, name -> if (!rank.containsKey(name)) rank[name] = index }
+        return favorites.sortedBy { rank[it.name] ?: Int.MAX_VALUE }
     }
 
     /**
