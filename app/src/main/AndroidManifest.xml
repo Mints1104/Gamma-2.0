@@ -6,6 +6,17 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
+    <!-- Android 11+ package visibility: without this, GPS Joystick is invisible to
+         queryIntentServices/startService and the joystick teleport method silently fails.
+         Keep in sync with Teleporter.KNOWN_JOYSTICK_SERVICES. -->
+    <queries>
+        <package android:name="com.theappninjas.fakegpsjoystick" />
+        <package android:name="com.thekkgqtaoxz.ymaaammipjyfatw" />
+        <intent>
+            <action android:name="theappninjas.gpsjoystick.TELEPORT" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"

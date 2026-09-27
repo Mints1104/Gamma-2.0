@@ -30,7 +30,12 @@ data class ExportData(
     val overlayButtonOrder: List<String>? = null,
     val overlayButtonVisibility: Map<String, Boolean>? = null,
     val deeplinkType: String? = null,
-    val deeplinkCustomUrl: String? = null
+    val deeplinkCustomUrl: String? = null,
+    // The live quest selection (base filter strings such as "4,0,483"). Pairs with
+    // enabledEncounterConditionsB64; without it, an import had no base filters to go with the
+    // restored conditions. Absent in older exports. Deliberately not the legacy enabledQuests
+    // field above, which older exports may have written in a different format.
+    val enabledQuestFilters: Set<String>? = null
 )
 
 /** Separator used when joining condition strings for Base64 encoding. */

@@ -102,9 +102,11 @@ class QuestsFragment : Fragment() {
 
         }
 
-        questsViewModel.error.observe(viewLifecycleOwner) { errorMessage ->
-            Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
-            swipeRefresh.isRefreshing = false
+        questsViewModel.error.observe(viewLifecycleOwner) { event ->
+            event.consume()?.let { errorMessage ->
+                Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
+                swipeRefresh.isRefreshing = false
+            }
         }
 
         swipeRefresh.setOnRefreshListener {

@@ -30,8 +30,9 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.edit
-import androidx.core.net.toUri
 import androidx.lifecycle.Observer
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -44,10 +45,11 @@ import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.OverlayCustomizationManager
-import com.mints.projectgammatwo.data.DeeplinkManager
 import com.mints.projectgammatwo.helpers.DragTouchListener
+import com.mints.projectgammatwo.helpers.Event
 import com.mints.projectgammatwo.helpers.ItemTouchHelperAdapter
 import com.mints.projectgammatwo.helpers.ItemTouchHelperCallback
+import com.mints.projectgammatwo.helpers.Teleporter
 import com.mints.projectgammatwo.recyclerviews.FiltersRecyclerView
 import com.mints.projectgammatwo.recyclerviews.OverlayFavoritesAdapter
 import com.mints.projectgammatwo.recyclerviews.OverlayCustomizationAdapter
@@ -67,9 +69,21 @@ class OverlayService : Service() {
     private var overlayView: View? = null
     private var currentIndex = 0
     private val TAG = "OverlayService"
-    private var viewModel: HomeViewModel? = null
+
+    /**
+     * Owns the service's view models so that clearing it in onDestroy runs their onCleared(),
+     * cancelling their viewModelScopes. They used to be constructed directly, fresh on every
+     * refresh, so onCleared() never ran: each refresh leaked a view model whose fetch kept going
+     * and could land after a newer one, overwriting CurrentInvasionData with stale results.
+     */
+    private val viewModelStore = ViewModelStore()
+    private val viewModelProvider by lazy {
+        ViewModelProvider(viewModelStore, ViewModelProvider.AndroidViewModelFactory.getInstance(application))
+    }
+    private val homeViewModel: HomeViewModel by lazy { viewModelProvider[HomeViewModel::class.java] }
+    private val questsViewModel: QuestsViewModel by lazy { viewModelProvider[QuestsViewModel::class.java] }
     private var invasionsObserver: Observer<List<Invasion>>? = null
-    private var errorObserver: Observer<String>? = null
+    private var errorObserver: Observer<Event<String>>? = null
     private lateinit var homeCoordinatesManager: HomeCoordinatesManager
     private var favoritesOverlayView: View? = null
     private var filterOverlayView: View? = null
@@ -389,10 +403,14 @@ class OverlayService : Service() {
                     return@setOnClickListener
                 }
                 currentIndex = (currentIndex + 1) % currentInvasions.size
-                Log.d(TAG, "Navigating to invasion at index $currentIndex: ${currentInvasions[currentIndex].lat}, ${currentInvasions[currentIndex].lng}")
-                deletedInvasionsRepository.addDeletedInvasion(currentInvasions[currentIndex])
-                showOverlayToast("Teleporting to ${currentInvasions[currentIndex].characterName} \n Daily Limit: ${deletedInvasionsRepository.getDeletionCountLast24Hours()}/900")
-                launchMap(currentInvasions[currentIndex])
+                val invasion = currentInvasions[currentIndex]
+                Log.d(TAG, "Navigating to invasion at index $currentIndex: ${invasion.lat}, ${invasion.lng}")
+                // Record it against the daily limit only once the teleport has actually launched,
+                // so a failed teleport neither consumes the invasion nor inflates the count.
+                if (launchMap(invasion)) {
+                    deletedInvasionsRepository.addDeletedInvasion(invasion)
+                    showOverlayToast("Teleporting to ${invasion.characterName} \n Daily Limit: ${deletedInvasionsRepository.getDeletionCountLast24Hours()}/900")
+                }
             }
         }
 
@@ -447,9 +465,16 @@ class OverlayService : Service() {
 
     private fun fetchInvasions() {
         Log.d(TAG, "Fetching invasions...")
-        cleanupObservers()
-        viewModel = HomeViewModel(application)
-        invasionsObserver = Observer { invasions ->
+        observeInvasions()
+        // Reusing the one view model means this cancels any fetch still in flight.
+        homeViewModel.fetchInvasions()
+    }
+
+    /** Attaches the overlay's observers to [homeViewModel]; a no-op once they're attached. */
+    private fun observeInvasions() {
+        if (invasionsObserver != null) return
+
+        val onInvasions = Observer<List<Invasion>> { invasions ->
             Log.d(TAG, "Received ${invasions.size} invasions")
             CurrentInvasionData.currentInvasions = invasions.toMutableList()
             if (invasions.isNotEmpty()) {
@@ -460,59 +485,45 @@ class OverlayService : Service() {
             }
             updateOverlayBasedOnMode("invasions")
         }
-        errorObserver = Observer { errorMsg ->
-            Log.e(TAG, "Error fetching invasions: $errorMsg")
-            showOverlayToast("Error: $errorMsg")
+        val onError = Observer<Event<String>> { event ->
+            event.consume()?.let { errorMsg ->
+                Log.e(TAG, "Error fetching invasions: $errorMsg")
+                showOverlayToast("Error: $errorMsg")
+            }
         }
-        viewModel?.invasions?.observeForever(invasionsObserver!!)
-        viewModel?.error?.observeForever(errorObserver!!)
-        viewModel?.fetchInvasions()
+        homeViewModel.invasions.observeForever(onInvasions)
+        homeViewModel.error.observeForever(onError)
+        invasionsObserver = onInvasions
+        errorObserver = onError
     }
 
     private fun fetchQuests() {
         Log.d(TAG, "Fetching quests...")
-
-        val questsViewModel = QuestsViewModel(application)
         questsViewModel.fetchQuests()
     }
 
-    private fun launchHome(lat: Double, lng: Double) {
+    private fun launchHome(lat: Double, lng: Double): Boolean {
         Log.d(TAG, "Launching home with coords: $lat, $lng")
-        val deeplinkManager = DeeplinkManager.getInstance(application)
-        val url = deeplinkManager.generateDeeplink(lat, lng)
-        Intent(Intent.ACTION_VIEW, url.toUri())
-            .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-            .also(::startActivity)
+        return Teleporter.teleport(this, lat, lng)
     }
 
-    private fun launchMap(inv: Invasion) {
+    private fun launchMap(inv: Invasion): Boolean {
         Log.d(TAG, "Launching map with coords: ${inv.lat}, ${inv.lng}")
-        val deeplinkManager = DeeplinkManager.getInstance(application)
-        val url = deeplinkManager.generateDeeplink(inv.lat, inv.lng)
-        Intent(Intent.ACTION_VIEW, url.toUri())
-            .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-            .also(::startActivity)
+        return Teleporter.teleport(this, inv.lat, inv.lng)
     }
 
-    private fun launchQuest(quest: com.mints.projectgammatwo.data.Quests.Quest) {
+    private fun launchQuest(quest: com.mints.projectgammatwo.data.Quests.Quest): Boolean {
         Log.d(TAG, "Launching quest map with coords: ${quest.lat}, ${quest.lng}")
-        val deeplinkManager = DeeplinkManager.getInstance(application)
-        val url = deeplinkManager.generateDeeplink(quest.lat, quest.lng)
-        Intent(Intent.ACTION_VIEW, url.toUri())
-            .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-            .also(::startActivity)
+        return Teleporter.teleport(this, quest.lat, quest.lng)
     }
 
     private fun cleanupObservers() {
-        invasionsObserver?.let { observer ->
-            viewModel?.invasions?.removeObserver(observer)
-        }
-        errorObserver?.let { observer ->
-            viewModel?.error?.removeObserver(observer)
-        }
+        // Only touch the view model if observers were attached; reading homeViewModel would
+        // otherwise create one just to clean it up.
+        invasionsObserver?.let { homeViewModel.invasions.removeObserver(it) }
+        errorObserver?.let { homeViewModel.error.removeObserver(it) }
         invasionsObserver = null
         errorObserver = null
-        viewModel = null
     }
 
     private fun showOverlayToast(message: String) {
@@ -569,6 +580,8 @@ class OverlayService : Service() {
         // separate WindowManager windows that are only hidden when closed, so leaving them
         // attached here leaked them past the service.
         cleanupOverlays()
+        // Runs the view models' onCleared(), cancelling any fetch still in flight.
+        viewModelStore.clear()
 
         // Clear overlay running state
         val sharedPrefs = getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE)
@@ -590,14 +603,10 @@ class OverlayService : Service() {
         // Initialize adapter
         favoritesAdapter = OverlayFavoritesAdapter(
             onTeleportFavorite = { favorite ->
-                // Teleport to location
                 hideFilterOverlay()
-                val deeplinkManager = DeeplinkManager.getInstance(application)
-                val url = deeplinkManager.generateDeeplink(favorite.lat, favorite.lng)
-                showOverlayToast("Teleporting to ${favorite.name}")
-                Intent(Intent.ACTION_VIEW, url.toUri())
-                    .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-                    .also(::startActivity)
+                if (Teleporter.teleport(this@OverlayService, favorite.lat, favorite.lng)) {
+                    showOverlayToast("Teleporting to ${favorite.name}")
+                }
             }
         )
 

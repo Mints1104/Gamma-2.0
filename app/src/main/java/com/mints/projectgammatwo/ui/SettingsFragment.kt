@@ -576,6 +576,7 @@ class SettingsFragment : Fragment() {
             favorites = favorites,
             deletedEntries = deletedEntries,
             enabledEncounterConditionsB64 = encodeConditionSet(enabledEncounterConditions),
+            enabledQuestFilters = filterPreferences.getEnabledQuestFilters(),
             homeCoordinates = homeCoords,
             savedRocketFilters = savedRocketFilters,
             savedQuestFilters = savedQuestFilters,
@@ -660,7 +661,13 @@ class SettingsFragment : Fragment() {
             dataSourcePreferences.setSelectedSources(importData.dataSources ?: emptySet())
 
             Log.d("SettingsImport", "Importing enabled characters: ${importData.enabledCharacters}")
-            filterPreferences.saveEnabledCharacters(importData.enabledCharacters ?: emptySet())
+            // The live filter selections are written after the saved filters below: saving each
+            // filter goes through the live sets, which would otherwise be left holding whichever
+            // saved filter the loop happened to process last. Capture the device's current quest
+            // selection first, as a fallback for older exports that don't carry one — deleting
+            // the active quest filter below would otherwise wipe it.
+            val questFiltersBeforeImport = filterPreferences.getEnabledQuestFilters()
+            val encounterConditionsBeforeImport = filterPreferences.getEnabledEncounterConditions()
 
             Log.d("SettingsImport", "Importing ${importData.deletedEntries?.size ?: 0} deleted entries")
             deletedRepo.setDeletedEntries(importData.deletedEntries ?: emptySet())
@@ -711,7 +718,8 @@ class SettingsFragment : Fragment() {
             // Set active rocket filter
             val activeRocketFilter = importData.activeRocketFilter ?: ""
             Log.d("SettingsImport", "Active rocket filter from import: $activeRocketFilter")
-            if (activeRocketFilter.isNotEmpty() && rocketFilters.containsKey(activeRocketFilter)) {
+            val activeRocketLoaded = activeRocketFilter.isNotEmpty() && rocketFilters.containsKey(activeRocketFilter)
+            if (activeRocketLoaded) {
                 Log.d("SettingsImport", "Setting active rocket filter: $activeRocketFilter")
                 try {
                     filterPreferences.setActiveRocketFilter(activeRocketFilter)
@@ -720,6 +728,9 @@ class SettingsFragment : Fragment() {
                 } catch (e: Exception) {
                     Log.e("SettingsImport", "Error activating rocket filter: ${e.message}", e)
                 }
+            } else {
+                // No named filter to load it from, so restore the live selection as exported.
+                filterPreferences.saveEnabledCharacters(importData.enabledCharacters ?: emptySet())
             }
 
             // Import saved quest filters
@@ -767,17 +778,28 @@ class SettingsFragment : Fragment() {
                 }
             }
 
-            // Restore the live active encounter conditions only when no active named filter
-            // was loaded — loadFilter already wrote the correct conditions from the snapshot.
+            // Restore the live quest selection only when no active named filter was loaded —
+            // loadFilter already wrote both halves from the snapshot. Base filters and encounter
+            // conditions are always restored together: they are two halves of one selection, and
+            // leaving either as the last saved filter's value pairs conditions with the wrong
+            // bases. That included an exported *empty* condition set, which used to be skipped.
             if (!activeQuestLoaded) {
-                val importedEncounterConditions = decodeConditionSet(
-                    importData.enabledEncounterConditionsB64,
-                    importData.enabledEncounterConditions
+                // Older exports lack the live quest filters; keep what the device had.
+                filterPreferences.saveEnabledQuestFilters(
+                    importData.enabledQuestFilters ?: questFiltersBeforeImport
                 )
-                if (importedEncounterConditions.isNotEmpty()) {
-                    filterPreferences.saveEnabledEncounterConditions(importedEncounterConditions)
-                    Log.d("SettingsImport", "Restored ${importedEncounterConditions.size} active encounter conditions")
+                val conditionsExported = importData.enabledEncounterConditionsB64 != null ||
+                        importData.enabledEncounterConditions != null
+                val importedEncounterConditions = if (conditionsExported) {
+                    decodeConditionSet(
+                        importData.enabledEncounterConditionsB64,
+                        importData.enabledEncounterConditions
+                    )
+                } else {
+                    encounterConditionsBeforeImport
                 }
+                filterPreferences.saveEnabledEncounterConditions(importedEncounterConditions)
+                Log.d("SettingsImport", "Restored ${importedEncounterConditions.size} active encounter conditions")
             }
 
             // Update UI checkboxes

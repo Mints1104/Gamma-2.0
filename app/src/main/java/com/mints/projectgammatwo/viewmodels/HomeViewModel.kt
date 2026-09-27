@@ -13,6 +13,7 @@ import com.mints.projectgammatwo.data.DeletedEntry
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
+import com.mints.projectgammatwo.helpers.Event
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -38,7 +39,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val deletedCount: LiveData<Int> get() = _deletedCount
 
     private val _error = MutableLiveData<String>()
-    val error: LiveData<String> get() = _error
+
+    /**
+     * Each error is delivered as a one-shot [Event]: LiveData replays its latest value to every
+     * new observer, so exposing the string directly re-showed the last error toast after every
+     * rotation and every return to the tab.
+     */
+    val error: LiveData<Event<String>> = _error.map { Event(it) }
 
     private val _currentFilterSize = MutableLiveData<Int>()
     val currentFilterSize: LiveData<Int> get() = _currentFilterSize
@@ -282,6 +289,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     // When an invasion is deleted/handled, record its coords as last invasion and remove from list.
     fun deleteInvasion(invasion: Invasion) {
+        // Remove it from the list right away, on the main thread, before anything suspends.
+        // This used to happen only after the IO work, reading _invasions.value at that point:
+        // two quick deletes both read the original list, so the second re-published the first
+        // invasion — and postValue could merge the two updates, dropping one outright.
+        val remaining = _invasions.value.orEmpty() - invasion
+        _invasions.value = remaining
+
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 deletedRepo.addDeletedInvasion(invasion)
@@ -289,15 +303,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             // Save last invasion coordinates for distance-based ordering
             saveLastInvasionCoordinates(invasion)
 
-            // Resort asynchronously
-            val updatedList = _invasions.value?.toMutableList()?.apply { remove(invasion) }
-            if (updatedList != null) {
-                val sorted = withContext(Dispatchers.Default) { applySorting(updatedList) }
-                _invasions.postValue(sorted)
+            // Re-sort (distance order is relative to the invasion just deleted), but only if
+            // nothing newer — another delete, or a fetch — has replaced the list meanwhile.
+            val sorted = withContext(Dispatchers.Default) { applySorting(remaining) }
+            if (_invasions.value === remaining) {
+                _invasions.value = sorted
             }
-            // Refresh the count efficiently using one repo read on IO
+
             val count = withContext(Dispatchers.IO) { deletedRepo.getDeletionCountLast24Hours() }
-            _deletedCount.postValue(count)
+            _deletedCount.value = count
         }
     }
 }

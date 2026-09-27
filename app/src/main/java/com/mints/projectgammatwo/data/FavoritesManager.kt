@@ -1,9 +1,6 @@
 package com.mints.projectgammatwo.data
 
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import androidx.core.content.edit
@@ -87,70 +84,5 @@ object FavoritesManager {
             putString(KEY_ORDER, gson.toJson(originalOrder))
 
         }
-    }
-
-    fun teleportToLocation(context: Context, favorite: FavoriteLocation): Boolean {
-        // Check teleport preferences
-        val teleportPrefs = context.getSharedPreferences("teleport_prefs", Context.MODE_PRIVATE)
-        val method = teleportPrefs.getString("teleport_method", "ipogo") ?: "ipogo"
-
-        if (method == "ipogo") {
-            val deeplinkManager = DeeplinkManager.getInstance(context)
-            val url = deeplinkManager.generateDeeplink(favorite.lat, favorite.lng)
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-            context.startActivity(intent)
-            return true
-        }
-
-        // GPS Joystick implementation
-        val baseIntent = Intent().apply {
-            action = "theappninjas.gpsjoystick.TELEPORT"
-            putExtra("lat", favorite.lat.toFloat())
-            putExtra("lng", favorite.lng.toFloat())
-        }
-
-        val knownComponents = listOf(
-            ComponentName(
-                "com.theappninjas.fakegpsjoystick",
-                "com.theappninjas.fakegpsjoystick.service.OverlayService"
-            ),
-            ComponentName(
-                "com.thekkgqtaoxz.ymaaammipjyfatw",
-                "com.thekkgqtaoxz.ymaaammipjyfatw.service.OverlayService"
-            )
-        )
-
-        var serviceStarted = false
-        for (component in knownComponents) {
-            val intent = Intent(baseIntent).apply { this.component = component }
-            try {
-                val compName = context.startService(intent)
-                if (compName != null) {
-                    serviceStarted = true
-                    break
-                }
-            } catch (e: Exception) {
-                // Try next component
-            }
-        }
-
-        if (!serviceStarted) {
-            val dynamicIntent = Intent(baseIntent).apply { component = null }
-            val pm = context.packageManager
-            val services = pm.queryIntentServices(dynamicIntent, 0)
-            if (services.isNotEmpty()) {
-                val serviceInfo = services.first().serviceInfo
-                dynamicIntent.component = ComponentName(serviceInfo.packageName, serviceInfo.name)
-                try {
-                    val compName = context.startService(dynamicIntent)
-                    serviceStarted = (compName != null)
-                } catch (e: Exception) {
-                    // dynamic lookup failed
-                }
-            }
-        }
-
-        return serviceStarted
     }
 }

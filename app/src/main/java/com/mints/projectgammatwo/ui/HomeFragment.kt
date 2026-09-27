@@ -99,9 +99,11 @@ class HomeFragment : Fragment() {
             }
         }
 
-        viewModel.error.observe(viewLifecycleOwner) { errorMessage ->
-            Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
-            swipeRefresh.isRefreshing = false
+        viewModel.error.observe(viewLifecycleOwner) { event ->
+            event.consume()?.let { errorMessage ->
+                Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
+                swipeRefresh.isRefreshing = false
+            }
         }
 
         val deletedCountTextView = view.findViewById<TextView>(R.id.deletedCountText)

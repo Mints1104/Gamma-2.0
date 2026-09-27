@@ -3,8 +3,6 @@ package com.mints.projectgammatwo.recyclerviews
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
-import androidx.core.net.toUri
 import android.text.format.DateFormat
 import android.view.LayoutInflater
 import android.view.View
@@ -16,7 +14,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
-import com.mints.projectgammatwo.data.DeeplinkManager
+import com.mints.projectgammatwo.helpers.Teleporter
 import java.util.Date
 
 class DeletedInvasionsAdapter : ListAdapter<DeletedInvasionsAdapter.UIModel, DeletedInvasionsAdapter.VH>(Diff()) {
@@ -72,10 +70,7 @@ class DeletedInvasionsAdapter : ListAdapter<DeletedInvasionsAdapter.UIModel, Del
                 toast.show()
             }
             btnTeleport.setOnClickListener {
-                val deeplinkManager = DeeplinkManager.getInstance(ctx)
-                val url = deeplinkManager.generateDeeplink(m.lat, m.lng)
-                val intent = Intent(Intent.ACTION_VIEW, url.toUri())
-                ctx.startActivity(intent)
+                Teleporter.teleport(ctx, m.lat, m.lng)
             }
         }
     }

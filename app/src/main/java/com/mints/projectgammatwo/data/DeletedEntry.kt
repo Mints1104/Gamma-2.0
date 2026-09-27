@@ -29,11 +29,28 @@ data class DeletedEntry(
  * Limitations:
  * - Deletion identity is based on exact lat/lng equality when checking with
  *   isInvasionDeleted; small coordinate precision changes may prevent a match.
+ *
+ * Concurrency: every read-modify-write of the stored set happens under a process-wide lock.
+ * Several instances exist at once (view models, the overlay service, settings) and are called
+ * from IO threads, so without it two writers could each read the set, add or prune, and write
+ * back — the second silently discarding the first's change. A lost deletion made the invasion
+ * reappear and undercounted the daily limit.
  */
 class DeletedInvasionsRepository(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("deleted_invasions", Context.MODE_PRIVATE)
     private val key = "deleted_invasions_set"
+
+    companion object {
+        /** Shared by all instances: the stored set is shared, so the lock must be too. */
+        private val lock = Any()
+
+        /** Transient/derived invasion types that are deliberately never persisted. */
+        private val NON_PERSISTENT_TYPES = setOf(7, 8, 9)
+
+        /** Whether deleting [invasion] is recorded, and so survives the next refresh. */
+        private fun isPersistable(invasion: Invasion): Boolean = invasion.type !in NON_PERSISTENT_TYPES
+    }
 
     // Gson instance for JSON (de)serialization
     private val gson = Gson()
@@ -49,8 +66,7 @@ class DeletedInvasionsRepository(context: Context) {
      * - Persists as JSON for robust storage of string fields.
      */
     fun addDeletedInvasion(invasion: Invasion) {
-        // Ignore specific types deemed non-persistent
-        if (invasion.type == 8 || invasion.type == 9 || invasion.type == 7) return
+        if (!isPersistable(invasion)) return
 
         val entry = DeletedEntry(
             lat = invasion.lat,
@@ -63,9 +79,11 @@ class DeletedInvasionsRepository(context: Context) {
         )
         val encoded = gson.toJson(entry)
 
-        val set = prefs.getStringSet(key, mutableSetOf())?.toMutableSet() ?: mutableSetOf()
-        set.add(encoded) // Set semantics deduplicate identical entries
-        prefs.edit { putStringSet(key, set) }
+        synchronized(lock) {
+            val set = prefs.getStringSet(key, mutableSetOf())?.toMutableSet() ?: mutableSetOf()
+            set.add(encoded) // Set semantics deduplicate identical entries
+            prefs.edit { putStringSet(key, set) }
+        }
     }
 
     /**
@@ -74,7 +92,7 @@ class DeletedInvasionsRepository(context: Context) {
      * Supports both JSON (current) and legacy CSV ("lat,lng,timestamp") formats.
      * Malformed entries are skipped defensively.
      */
-    fun getDeletedEntries(): Set<DeletedEntry> {
+    fun getDeletedEntries(): Set<DeletedEntry> = synchronized(lock) {
         val set = prefs.getStringSet(key, emptySet()) ?: emptySet()
         val parsed = set.mapNotNull { raw ->
             val entry = raw.trim()
@@ -99,10 +117,14 @@ class DeletedInvasionsRepository(context: Context) {
         }
         val cutoff = cutoff24h()
         val pruned = parsed.filter { it.timestamp >= cutoff }.toSet()
-        // Persist pruned set back to storage
+        // Persist the pruned (and legacy-normalised) set, but only when it actually differs.
+        // This getter runs on every refresh; rewriting unconditionally meant every read was
+        // also a write, widening the window for clobbering a concurrent change.
         val stringSet = pruned.map { gson.toJson(it) }.toSet()
-        prefs.edit { putStringSet(key, stringSet) }
-        return pruned
+        if (stringSet != set) {
+            prefs.edit { putStringSet(key, stringSet) }
+        }
+        pruned
     }
 
     /**
@@ -125,7 +147,7 @@ class DeletedInvasionsRepository(context: Context) {
     /**
      * Remove all deletion records.
      */
-    fun resetDeletedInvasions() {
+    fun resetDeletedInvasions() = synchronized(lock) {
         prefs.edit { remove(key) }
     }
 
@@ -138,6 +160,8 @@ class DeletedInvasionsRepository(context: Context) {
         val cutoff = cutoff24h()
         val filtered = entries.filter { it.timestamp >= cutoff }.toSet()
         val stringSet = filtered.map { gson.toJson(it) }.toSet()
-        prefs.edit { putStringSet(key, stringSet) }
+        synchronized(lock) {
+            prefs.edit { putStringSet(key, stringSet) }
+        }
     }
 }

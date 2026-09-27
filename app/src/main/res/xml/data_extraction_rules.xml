@@ -1,19 +1,25 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Backup and device-transfer rules for Android 12+ (API 31+). backup_rules.xml covers older
+   versions and must list the same exclusions.
    See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+
+   Everything is backed up except the files below. They are either caches the next network
+   fetch regenerates, or runtime state; restoring them onto a newer app version brings back
+   stale data (a pre-4.0 quest filter cache is what crashed the quest filter screen).
+   - quest_cache.xml:   quest filter lists and sub-variants from the API (QuestCache)
+   - pokemon_cache.xml: Pokémon names from PokeAPI (PokemonRepository)
+   - overlay_prefs.xml: whether the overlay service is running, and its current mode
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="sharedpref" path="quest_cache.xml" />
+        <exclude domain="sharedpref" path="pokemon_cache.xml" />
+        <exclude domain="sharedpref" path="overlay_prefs.xml" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="sharedpref" path="quest_cache.xml" />
+        <exclude domain="sharedpref" path="pokemon_cache.xml" />
+        <exclude domain="sharedpref" path="overlay_prefs.xml" />
     </device-transfer>
-    -->
 </data-extraction-rules>

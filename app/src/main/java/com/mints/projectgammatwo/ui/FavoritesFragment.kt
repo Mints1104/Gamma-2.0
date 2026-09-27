@@ -2,10 +2,7 @@ package com.mints.projectgammatwo.ui
 
 import android.app.AlertDialog
 import android.content.ClipData
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -24,8 +21,8 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.FavoriteLocation
-import com.mints.projectgammatwo.data.DeeplinkManager
 import com.mints.projectgammatwo.data.FavoritesManager
+import com.mints.projectgammatwo.helpers.Teleporter
 import com.mints.projectgammatwo.recyclerviews.FavoritesAdapter
 import java.util.Collections
 import androidx.core.content.edit
@@ -410,72 +407,8 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     }
 
 
-    /**
-     * Teleports to the favorite location based on the user's teleport method preference.
-     * If "ipogo" is selected, it opens an ipogo URL; if "joystick" is selected, it sends an intent.
-     */
     private fun teleportToFavorite(favorite: FavoriteLocation) {
-        val context = requireContext()
-        val teleportPrefs = context.getSharedPreferences("teleport_prefs", Context.MODE_PRIVATE)
-        val method = teleportPrefs.getString("teleport_method", "ipogo") ?: "ipogo"
-
-        if (method == "ipogo") {
-            val deeplinkManager = DeeplinkManager.getInstance(context)
-            val url = deeplinkManager.generateDeeplink(favorite.lat, favorite.lng)
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-            startActivity(intent)
-            return
-        }
-
-        val baseIntent = Intent().apply {
-            action = "theappninjas.gpsjoystick.TELEPORT"
-            putExtra("lat", favorite.lat.toFloat())
-            putExtra("lng", favorite.lng.toFloat())
-        }
-        val knownComponents = listOf(
-            ComponentName(
-                "com.theappninjas.fakegpsjoystick",
-                "com.theappninjas.fakegpsjoystick.service.OverlayService"
-            ),
-            ComponentName(
-                "com.thekkgqtaoxz.ymaaammipjyfatw",
-                "com.thekkgqtaoxz.ymaaammipjyfatw.service.OverlayService"
-            )
-        )
-
-        var serviceStarted = false
-        for (component in knownComponents) {
-            val intent = Intent(baseIntent).apply {
-                this.component = component
-            }
-            try {
-                val compName = context.startService(intent)
-                if (compName != null) {
-                    serviceStarted = true
-                    break
-                }
-            } catch (e: Exception) {
-            }
-        }
-
-        if (!serviceStarted) {
-            val dynamicIntent = Intent(baseIntent).apply { component = null }
-            val pm = context.packageManager
-            val services = pm.queryIntentServices(dynamicIntent, 0)
-            if (services.isNotEmpty()) {
-                val serviceInfo = services.first().serviceInfo
-                dynamicIntent.component = ComponentName(serviceInfo.packageName, serviceInfo.name)
-                try {
-                    val compName = context.startService(dynamicIntent)
-                    serviceStarted = (compName != null)
-                } catch (e: Exception) {
-                }
-            }
-        }
-
-        if (!serviceStarted) {
-            Toast.makeText(context, "Error: Joystick not found", Toast.LENGTH_SHORT).show()
-        }
+        Teleporter.teleport(requireContext(), favorite.lat, favorite.lng)
     }
 
 

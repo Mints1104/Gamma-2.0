@@ -80,8 +80,9 @@ class RaidsFragment : Fragment() {
             }
         }
 
-        viewModel.error.observe(viewLifecycleOwner) { errorMessage ->
-            if (errorMessage.isNotEmpty()) {
+        viewModel.error.observe(viewLifecycleOwner) { event ->
+            val errorMessage = event.consume()
+            if (!errorMessage.isNullOrEmpty()) {
                 Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
                 swipeRefresh.isRefreshing = false
             }

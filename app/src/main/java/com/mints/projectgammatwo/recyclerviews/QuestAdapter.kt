@@ -3,8 +3,6 @@ package com.mints.projectgammatwo.recyclerviews
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -16,7 +14,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.Quests.Quest
-import com.mints.projectgammatwo.data.DeeplinkManager
+import com.mints.projectgammatwo.helpers.Teleporter
 
 class QuestsAdapter(
     private val onQuestVisited: (Quest) -> Unit
@@ -56,12 +54,10 @@ class QuestsAdapter(
             sourceText.text = "Source: $questText"
 
             teleportButton.setOnClickListener {
-                val deeplinkManager = DeeplinkManager.getInstance(itemView.context)
-                val url = deeplinkManager.generateDeeplink(quest.lat, quest.lng)
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                itemView.context.startActivity(intent)
-                // Notify that this quest was visited
-                onQuestVisited(quest)
+                // Only record the quest as visited if we actually got there.
+                if (Teleporter.teleport(itemView.context, quest.lat, quest.lng)) {
+                    onQuestVisited(quest)
+                }
             }
 
             copyButton.setOnClickListener {

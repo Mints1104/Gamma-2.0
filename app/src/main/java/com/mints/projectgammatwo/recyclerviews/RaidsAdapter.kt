@@ -3,8 +3,6 @@ package com.mints.projectgammatwo.recyclerviews
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -16,7 +14,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.Raids.Raid
-import com.mints.projectgammatwo.data.DeeplinkManager
+import com.mints.projectgammatwo.helpers.Teleporter
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -71,10 +69,7 @@ class RaidsAdapter(
             coordinatesText.text = "${raid.lat}, ${raid.lng}"
 
             teleportButton.setOnClickListener {
-                val deeplinkManager = DeeplinkManager.getInstance(itemView.context)
-                val url = deeplinkManager.generateDeeplink(raid.lat, raid.lng)
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                itemView.context.startActivity(intent)
+                Teleporter.teleport(itemView.context, raid.lat, raid.lng)
             }
 
             copyButton.setOnClickListener {

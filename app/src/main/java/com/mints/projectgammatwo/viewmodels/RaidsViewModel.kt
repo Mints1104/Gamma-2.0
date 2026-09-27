@@ -5,7 +5,9 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.map
 import androidx.lifecycle.viewModelScope
+import com.mints.projectgammatwo.helpers.Event
 import com.google.gson.JsonSyntaxException
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.ApiClient
@@ -38,7 +40,9 @@ class RaidsViewModel(application: Application) : AndroidViewModel(application) {
     val filterSizeLiveData: LiveData<Int> = _filterSizeLiveData
 
     private val _error = MutableLiveData<String>()
-    val error: LiveData<String> get() = _error
+
+    /** One-shot, so a replay to a re-created view doesn't show the last error again. */
+    val error: LiveData<Event<String>> = _error.map { Event(it) }
 
     private val tag = "RaidsViewModel"
 

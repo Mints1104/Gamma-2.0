@@ -3,8 +3,6 @@ package com.mints.projectgammatwo.recyclerviews
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
-import androidx.core.net.toUri
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -16,7 +14,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.Invasion
-import com.mints.projectgammatwo.data.DeeplinkManager
+import com.mints.projectgammatwo.helpers.Teleporter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -69,12 +67,10 @@ class InvasionsAdapter(
             timeText.text = ctx.getString(R.string.invasion_item_time_range, startTime, endTime)
 
             teleportButton.setOnClickListener {
-                val deeplinkManager = DeeplinkManager.getInstance(ctx)
-                val url = deeplinkManager.generateDeeplink(invasion.lat, invasion.lng)
-                val intent = Intent(Intent.ACTION_VIEW, url.toUri())
-                ctx.startActivity(intent)
-                // Optionally mark as handled/deleted if that's the intended behavior
-                onDeleteInvasion(invasion)
+                // Only mark the invasion handled if we actually got there.
+                if (Teleporter.teleport(ctx, invasion.lat, invasion.lng)) {
+                    onDeleteInvasion(invasion)
+                }
             }
 
             copyButton.setOnClickListener {

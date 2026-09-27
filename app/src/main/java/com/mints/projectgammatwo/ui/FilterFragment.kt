@@ -32,6 +32,7 @@ import com.google.gson.Gson
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.DataMappings
 import com.mints.projectgammatwo.data.FilterPreferences
+import com.mints.projectgammatwo.data.QuestCache
 import com.mints.projectgammatwo.data.Quests
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
 import java.text.DateFormat
@@ -45,6 +46,8 @@ class FilterFragment : Fragment() {
     private lateinit var questsViewModel: QuestsViewModel
     private var currentFilterType = "Rocket"
     private lateinit var questPrefs: SharedPreferences
+    /** Network-derived quest data; separate from [questPrefs] so it can be left out of backups. */
+    private lateinit var questCachePrefs: SharedPreferences
     private val enabledQuestFilters = mutableSetOf<String>()
     private val enabledEncounterConditions = mutableSetOf<String>()
     private lateinit var questLayout: LinearLayout
@@ -74,6 +77,7 @@ class FilterFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         filterPreferences = FilterPreferences(requireContext())
         questPrefs = requireContext().getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
+        questCachePrefs = QuestCache.prefs(requireContext())
         currentFilterTextView = view.findViewById(R.id.currentFilterText)
         rocketLayoutGlobal = view.findViewById(R.id.rocketFiltersLayout)
         questLayout = view.findViewById(R.id.questFiltersLayout)
@@ -108,7 +112,7 @@ class FilterFragment : Fragment() {
                 setupQuestFilters(questLayout)
             }
             // Read the timestamp that the ViewModel wrote alongside the fresh network data.
-            val lastRefreshed = questPrefs.getLong("filters_last_refreshed", 0L)
+            val lastRefreshed = questCachePrefs.getLong(QuestCache.KEY_FILTERS_LAST_REFRESHED, 0L)
             if (lastRefreshed > 0L) updateFiltersLastRefreshed(lastRefreshed)
         }
 
@@ -123,7 +127,7 @@ class FilterFragment : Fragment() {
                     radioGroup.check(R.id.rbQuest)
                     updateCurrentQuestFilter()
                     currentFilterType = "Quest"
-                    val initialLastRefreshed = questPrefs.getLong("filters_last_refreshed", 0L)
+                    val initialLastRefreshed = questCachePrefs.getLong(QuestCache.KEY_FILTERS_LAST_REFRESHED, 0L)
                     if (initialLastRefreshed > 0L) updateFiltersLastRefreshed(initialLastRefreshed)
                 }
                 isRocketVisible -> {
@@ -156,7 +160,7 @@ class FilterFragment : Fragment() {
                         currentFilterType = "Quest"
                         updateCurrentQuestFilter()
                         updateQuestLoadingVisibility(questsViewModel.variantsLoadingLiveData.value == true)
-                        val ts = questPrefs.getLong("filters_last_refreshed", 0L)
+                        val ts = questCachePrefs.getLong(QuestCache.KEY_FILTERS_LAST_REFRESHED, 0L)
                         if (ts > 0L) updateFiltersLastRefreshed(ts)
                         // Rebuild the quest filter UI to reflect any state changes that
                         // occurred while the Rocket tab was active (e.g. onResume re-read
@@ -560,7 +564,7 @@ class FilterFragment : Fragment() {
                         setupRocketFilters(parent)
                     }
                     "Quest" -> {
-                        val filtersJson = questPrefs.getString("quest_api_filters", null) ?: return@setOnClickListener
+                        val filtersJson = questCachePrefs.getString(QuestCache.KEY_API_FILTERS, null) ?: return@setOnClickListener
                         val filtersFromApi = Gson().fromJson(filtersJson, Quests.Filters::class.java)
                         val subVariants = questsViewModel.rewardSubVariantsLiveData.value ?: emptyMap()
                         val allPossibleQuestFilters = mutableSetOf<String>()
@@ -629,7 +633,7 @@ class FilterFragment : Fragment() {
         addSelectFilterButton(parent, "Quest")
         if (currentFilterType == "Quest") updateCurrentQuestFilter()
 
-        val filtersJson = questPrefs.getString("quest_api_filters", null)
+        val filtersJson = questCachePrefs.getString(QuestCache.KEY_API_FILTERS, null)
         if (filtersJson != null) {
             val filters = Gson().fromJson(filtersJson, Quests.Filters::class.java)
             val subVariants: Map<String, List<QuestsViewModel.SubVariant>> =
