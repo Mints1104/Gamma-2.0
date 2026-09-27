@@ -1,6 +1,7 @@
 package com.mints.projectgammatwo.viewmodels
 
 import android.app.Application
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
@@ -12,21 +13,16 @@ import com.google.gson.JsonSyntaxException
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.ApiClient
 import com.mints.projectgammatwo.data.DataSourcePreferences
-import com.mints.projectgammatwo.data.RaidApiService
 import com.mints.projectgammatwo.data.Raids
 import com.mints.projectgammatwo.data.Raids.Raid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.HttpException
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 
 class RaidsViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -46,29 +42,30 @@ class RaidsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val tag = "RaidsViewModel"
 
-    // Single OkHttpClient reused for all requests
-    private val httpClient: OkHttpClient by lazy {
-        val interceptor = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.NONE }
-        OkHttpClient.Builder()
-            .addInterceptor(interceptor)
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
+    private var fetchJob: Job? = null
+
+    /** The sources the published list was fetched from, and when; null until one succeeds. */
+    private var publishedSources: Set<String>? = null
+    private var publishedAtMs = 0L
+
+    /**
+     * Fetches only if the published list is older than [STALE_AFTER_MS] or came from different
+     * data sources. This view model is activity-scoped so it survives tab switches; the screen
+     * used to refetch every source on every visit. Pull-to-refresh still calls [fetchRaids].
+     *
+     * @return whether a fetch was started.
+     */
+    fun refreshIfStale(): Boolean {
+        val sources = DataSourcePreferences(getApplication<Application>()).getSelectedSources()
+        val age = SystemClock.elapsedRealtime() - publishedAtMs
+        if (sources == publishedSources && age < STALE_AFTER_MS) return false
+        fetchRaids()
+        return true
     }
 
-    // Cache RaidApiService per base URL
-    private val serviceCache = mutableMapOf<String, RaidApiService>()
-
-    private fun getServiceForBase(baseUrl: String): RaidApiService {
-        return serviceCache.getOrPut(baseUrl) {
-            Retrofit.Builder()
-                .baseUrl(baseUrl)
-                .addConverterFactory(GsonConverterFactory.create())
-                .client(httpClient)
-                .build()
-                .create(RaidApiService::class.java)
-        }
+    private companion object {
+        /** A published list younger than this, from the current sources, is reused. */
+        const val STALE_AFTER_MS = 60_000L
     }
 
     fun fetchRaids() {
@@ -78,13 +75,16 @@ class RaidsViewModel(application: Application) : AndroidViewModel(application) {
         Log.d(tag, "Selected data sources: $selectedSources")
         _filterSizeLiveData.postValue(selectedSources.size)
 
-        viewModelScope.launch {
+        // Now that this view model is shared across visits, overlapping fetches are possible;
+        // cancel the older one so a slow, superseded fetch can't finish last and win.
+        fetchJob?.cancel()
+        fetchJob = viewModelScope.launch {
             try {
                 val deferredList = selectedSources.mapNotNull { source ->
                     ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
                         async(Dispatchers.IO) {
                             try {
-                                val service = getServiceForBase(baseUrl)
+                                val service = ApiClient.raidsApi(baseUrl)
                                 val response = service.getRaids(System.currentTimeMillis()).execute()
                                 if (response.isSuccessful) {
                                     Log.d(tag, "API call successful for source $source")
@@ -137,6 +137,12 @@ class RaidsViewModel(application: Application) : AndroidViewModel(application) {
                 val sorted = allRaids.sortedBy { it.raid_start }.reversed()
                 _raidsLiveData.postValue(sorted)
                 _raidsCountLiveData.postValue(sorted.size)
+
+                // Only a complete result counts as the published state; a partial one retries.
+                if (successfulResponses.size == responses.size) {
+                    publishedSources = selectedSources
+                    publishedAtMs = SystemClock.elapsedRealtime()
+                }
 
             } catch (e: CancellationException) {
                 // Coroutine was cancelled - this is normal behavior, don't treat it as an error

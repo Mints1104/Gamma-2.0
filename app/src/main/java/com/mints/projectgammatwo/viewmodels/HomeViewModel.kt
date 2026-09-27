@@ -2,8 +2,10 @@ package com.mints.projectgammatwo.viewmodels
 
 import android.app.Application
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import android.util.Log.e
+import androidx.core.content.edit
 import androidx.lifecycle.*
 import com.google.gson.JsonSyntaxException
 import com.mints.projectgammatwo.data.ApiClient
@@ -66,16 +68,64 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     // Cache for last invasion coordinates to avoid repeated SharedPreferences reads
     private var cachedLastInvasionCoords: Pair<Double?, Double?>? = null
 
+    /** Everything that decides what the invasion list contains. */
+    private data class Inputs(
+        val sources: Set<String>,
+        val characters: Set<Int>,
+        val deletedFingerprint: Int,
+    )
+
+    /** What the published list was built from, and when; null until a fetch fully succeeds. */
+    private var publishedInputs: Inputs? = null
+    private var publishedAtMs = 0L
+
+    private val appPrefs = application.getSharedPreferences(APP_PREFS_NAME, Context.MODE_PRIVATE)
+    private var sortModeRestored = false
+
     companion object {
         private const val TAG = "HomeViewModel"
+
+        /** A published list younger than this, built from the current inputs, is reused. */
+        private const val STALE_AFTER_MS = 60_000L
+
+        private const val APP_PREFS_NAME = "app_preferences"
+        private const val KEY_SORT_BY_DISTANCE = "invasions_sort_by_distance"
+    }
+
+    private fun currentInputs() = Inputs(
+        sources = dataSourcePreferences.getSelectedSources(),
+        characters = filterPreferences.getEnabledCharacters(),
+        deletedFingerprint = deletedRepo.fingerprint(),
+    )
+
+    /**
+     * Fetches only if the published list is out of date: older than [STALE_AFTER_MS], or built
+     * from different sources, filters or deletions than are now in effect — including changes
+     * made elsewhere, such as the overlay recording a deletion or the history screen's clear.
+     *
+     * This view model is activity-scoped so it survives tab switches; the screen used to
+     * refetch every source on every visit. Pull-to-refresh still calls [fetchInvasions].
+     *
+     * @return whether a fetch was started.
+     */
+    fun refreshIfStale(): Boolean {
+        val age = SystemClock.elapsedRealtime() - publishedAtMs
+        if (currentInputs() == publishedInputs && age < STALE_AFTER_MS) return false
+        fetchInvasions()
+        return true
     }
 
     fun fetchInvasions() {
         Log.d(TAG, "Starting to fetch invasions...")
+        val inputs = currentInputs()
 
         // Cancel any ongoing fetch operation before starting a new one
         fetchJob?.cancel()
         fetchJob = viewModelScope.launch {
+            // Sources that failed. Only a fetch where every source succeeded is recorded as the
+            // published state; otherwise the list is incomplete and the next visit retries.
+            // Only touched on the main thread: the async blocks below inherit it.
+            var failedSources = 0
             try {
                 val selectedSources = dataSourcePreferences.getSelectedSources()
                 val deferredList = selectedSources.mapNotNull { source ->
@@ -95,18 +145,22 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                                 ensureActive()
                                 e(TAG, "Network error: ${e.message}", e)
                                 _error.value = "Network error: ${e.message}"
+                                failedSources++
                                 emptyList()
                             } catch (e: HttpException) {
                                 e(TAG, "HTTP error: ${e.code()} - ${e.message}", e)
                                 _error.value = "HTTP error: ${e.code()} - ${e.message}"
+                                failedSources++
                                 emptyList()
                             } catch (e: JsonSyntaxException) {
                                 e(TAG, "JSON parsing error: ${e.message}", e)
                                 _error.value = "JSON parsing error: ${e.message}"
+                                failedSources++
                                 emptyList()
                             } catch (e: Exception) {
                                 ensureActive()
                                 e(TAG, "Source “$source” failed: ${e.message}", e)
+                                failedSources++
                                 emptyList()
                             }
                         }
@@ -121,6 +175,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                             throw e
                         } catch (e: Exception) {
                             e(TAG, "Failed to await result: ${e.message}", e)
+                            failedSources++
                             null
                         }
                     }
@@ -168,6 +223,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 CurrentInvasionData.currentInvasions = finalList.toMutableList()
 
                 _deletedCount.value = deletedEntries.size
+
+                if (failedSources == 0) {
+                    publishedInputs = inputs
+                    publishedAtMs = SystemClock.elapsedRealtime()
+                }
 
                 Log.d(
                     TAG,
@@ -264,15 +324,30 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         cachedLastInvasionCoords = invasion.lat to invasion.lng
     }
 
+    /**
+     * Applies the sort the user last chose on the Home screen. Called by that screen before its
+     * first fetch; the overlay's own instance never calls it, so the overlay keeps its existing
+     * time ordering rather than silently switching to distance order around an unrelated point.
+     */
+    fun restoreSavedSortMode() {
+        if (sortModeRestored) return
+        sortModeRestored = true
+        val saved = appPrefs.getBoolean(KEY_SORT_BY_DISTANCE, false)
+        sortByDistanceInternal = saved
+        _sortByDistance.value = saved
+    }
+
     fun sortInvasions(sortType: Boolean) {
         when (sortType) {
             true -> Log.d(TAG, "Switching to sort by distance")
             else -> Log.d(TAG, "Switching to sort by time")
         }
 
-        // Update the sort mode
+        // Update the sort mode, and remember it across app restarts
         sortByDistanceInternal = sortType
         _sortByDistance.value = sortType
+        sortModeRestored = true
+        appPrefs.edit { putBoolean(KEY_SORT_BY_DISTANCE, sortType) }
 
         // Auto-refresh invasions to get fresh data with the new sort mode
         Log.d(TAG, "Auto-refreshing invasions after sort mode change")
@@ -297,9 +372,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         _invasions.value = remaining
 
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
+            val deletedFingerprint = withContext(Dispatchers.IO) {
                 deletedRepo.addDeletedInvasion(invasion)
+                deletedRepo.fingerprint()
             }
+            // The published list already reflects this deletion, so record that; otherwise the
+            // changed deleted set would make the next visit to the tab refetch for nothing.
+            publishedInputs = publishedInputs?.copy(deletedFingerprint = deletedFingerprint)
+
             // Save last invasion coordinates for distance-based ordering
             saveLastInvasionCoordinates(invasion)
 

@@ -20,7 +20,6 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.Quests
-import com.mints.projectgammatwo.data.VisitedQuestsPreferences
 import com.mints.projectgammatwo.helpers.OverlayServiceManager
 import com.mints.projectgammatwo.recyclerviews.QuestsAdapter
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
@@ -58,28 +57,17 @@ class QuestsFragment : Fragment() {
         recyclerView = view.findViewById(R.id.questsRecyclerView)
         questErrorHandler = view.findViewById(R.id.errorHandlerText)
         questsAdapter = QuestsAdapter { quest: Quests.Quest ->
-            questsViewModel.saveLastVisitedCoordinates(quest)
-
-            val questId = "${quest.name}|${quest.lat}|${quest.lng}"
-            val visitedPreferences = VisitedQuestsPreferences(requireContext())
-            // Persist richer details for the deleted/visited UI
-            visitedPreferences.addVisitedQuest(
-                questId = questId,
-                rewards = quest.rewardsString,
-                conditions = quest.conditionsString,
-                source = quest.source
-            )
-            val currentList = questsAdapter.currentList.toMutableList()
-            currentList.remove(quest)
-            questsAdapter.submitList(currentList)
-            updateQuestsCount(currentList.size)
+            // The view model removes it from the list; the observer below updates the adapter.
+            questsViewModel.markVisited(quest)
         }
 
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
         recyclerView.adapter = questsAdapter
         scrollToTopFab = view.findViewById(R.id.scrollToTopFab)
         setupScrollToTop()
-        questsViewModel = ViewModelProvider(this)[QuestsViewModel::class.java]
+        // Activity-scoped: shared with the filter screen (which already used the activity's
+        // instance), and surviving tab switches instead of being refetched each visit.
+        questsViewModel = ViewModelProvider(requireActivity())[QuestsViewModel::class.java]
         questsViewModel.questsLiveData.observe(viewLifecycleOwner) { quests: List<Quests.Quest> ->
             questsAdapter.submitList(quests)
             updateQuestsCount(quests.size)
@@ -119,8 +107,9 @@ class QuestsFragment : Fragment() {
         }
         updateServiceButtonState(startServiceButton)
 
-        swipeRefresh.isRefreshing = true
-        questsViewModel.fetchQuests()
+        if (questsViewModel.refreshIfStale()) {
+            swipeRefresh.isRefreshing = true
+        }
     }
 
     override fun onDestroyView() {

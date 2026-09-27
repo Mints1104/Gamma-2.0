@@ -56,6 +56,12 @@ import com.mints.projectgammatwo.recyclerviews.OverlayCustomizationAdapter
 import com.mints.projectgammatwo.recyclerviews.OverlayButtonItem
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class FilterSortOrder {
     DEFAULT,
@@ -84,6 +90,9 @@ class OverlayService : Service() {
     private val questsViewModel: QuestsViewModel by lazy { viewModelProvider[QuestsViewModel::class.java] }
     private var invasionsObserver: Observer<List<Invasion>>? = null
     private var errorObserver: Observer<Event<String>>? = null
+
+    /** For the service's own background work; cancelled in onDestroy. */
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var homeCoordinatesManager: HomeCoordinatesManager
     private var favoritesOverlayView: View? = null
     private var filterOverlayView: View? = null
@@ -408,8 +417,15 @@ class OverlayService : Service() {
                 // Record it against the daily limit only once the teleport has actually launched,
                 // so a failed teleport neither consumes the invasion nor inflates the count.
                 if (launchMap(invasion)) {
-                    deletedInvasionsRepository.addDeletedInvasion(invasion)
-                    showOverlayToast("Teleporting to ${invasion.characterName} \n Daily Limit: ${deletedInvasionsRepository.getDeletionCountLast24Hours()}/900")
+                    // Off the main thread: both calls parse the whole stored set (up to the
+                    // 900/day limit) and this is the overlay's most-used button.
+                    serviceScope.launch {
+                        val count = withContext(Dispatchers.IO) {
+                            deletedInvasionsRepository.addDeletedInvasion(invasion)
+                            deletedInvasionsRepository.getDeletionCountLast24Hours()
+                        }
+                        showOverlayToast("Teleporting to ${invasion.characterName} \n Daily Limit: $count/900")
+                    }
                 }
             }
         }
@@ -582,6 +598,7 @@ class OverlayService : Service() {
         cleanupOverlays()
         // Runs the view models' onCleared(), cancelling any fetch still in flight.
         viewModelStore.clear()
+        serviceScope.cancel()
 
         // Clear overlay running state
         val sharedPrefs = getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE)

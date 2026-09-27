@@ -2,6 +2,7 @@ package com.mints.projectgammatwo.ui
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.text.InputFilter
@@ -11,10 +12,12 @@ import android.text.method.LinkMovementMethod
 import android.util.Log
 import android.view.*
 import android.widget.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.edit
 import androidx.core.text.HtmlCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -33,7 +36,15 @@ import com.mints.projectgammatwo.data.decodeConditionMap
 import com.mints.projectgammatwo.data.decodeConditionSet
 import com.mints.projectgammatwo.data.encodeConditionMap
 import com.mints.projectgammatwo.data.encodeConditionSet
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class SettingsFragment : Fragment() {
 
@@ -89,6 +100,16 @@ class SettingsFragment : Fragment() {
         allowTrailingComma = true
         prettyPrint = false
     }
+
+    private val exportSettingsLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            if (uri != null) writeExport(uri) // null: the user backed out of the picker
+        }
+
+    private val importSettingsFileLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) readImportFile(uri)
+        }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         return inflater.inflate(R.layout.fragment_settings, container, false)
@@ -519,9 +540,49 @@ class SettingsFragment : Fragment() {
 
 
     /**
-     * Exports settings to a JSON string and launches a share intent.
+     * Saves settings to a JSON file the user chooses; [writeExport] does the work once they have.
+     *
+     * Replaces sharing the JSON as intent text, which could exceed the binder transaction limit
+     * (TransactionTooLargeException) once favorites and a day's deletions were included, and
+     * sent home coordinates as plain text into whichever app was picked from the share sheet.
      */
     private fun exportSettings() {
+        val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        exportSettingsLauncher.launch("gamma-settings-$date.json")
+    }
+
+    /**
+     * Builds the export and writes it to [uri], off the main thread. The JSON is built here, once
+     * the location is known, rather than before opening the picker: the picker can outlive this
+     * fragment across a rotation, and JSON held in a field would be lost with it.
+     */
+    private fun writeExport(uri: Uri) {
+        val context = requireContext().applicationContext
+        viewLifecycleOwner.lifecycleScope.launch {
+            val error: Exception? = withContext(Dispatchers.IO) {
+                try {
+                    val json = buildExportJson(context)
+                    val out = context.contentResolver.openOutputStream(uri, "wt")
+                        ?: throw IOException("Couldn't open the chosen file")
+                    out.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+                    null
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    e
+                }
+            }
+            if (error == null) {
+                Toast.makeText(context, R.string.settings_export_saved, Toast.LENGTH_SHORT).show()
+            } else {
+                Log.e("SettingsExport", "Error exporting settings: ${error.message}", error)
+                Toast.makeText(context, getString(R.string.settings_export_failed, error.message ?: "Unknown error"), Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    /** Snapshots every exported setting as JSON. Only reads preferences, so safe off the main thread. */
+    private fun buildExportJson(context: Context): String {
         Log.d("SettingsExport", "Starting export process")
         val dataSources = dataSourcePreferences.getSelectedSources()
         Log.d("SettingsExport", "Data sources: $dataSources")
@@ -532,7 +593,7 @@ class SettingsFragment : Fragment() {
         // Read through FavoritesManager so the export carries favorites in the user's manual
         // order; the raw stored list is not in that order, so exporting it directly lost the
         // arrangement on the way back in.
-        val favorites: List<FavoriteLocation> = FavoritesManager.getFavorites(requireContext())
+        val favorites: List<FavoriteLocation> = FavoritesManager.getFavorites(context)
         Log.d("SettingsExport", "Favorites count: ${favorites.size}")
 
         val enabledEncounterConditions = filterPreferences.getEnabledEncounterConditions()
@@ -590,22 +651,9 @@ class SettingsFragment : Fragment() {
             deeplinkCustomUrl = deeplinkCustomUrl
         )
 
-        try {
-            val exportJson = kxJson.encodeToString(exportData)
-            Log.d("SettingsExport", "JSON created successfully, length: ${exportJson.length}")
-            Log.d("SettingsExport", "JSON sample: ${exportJson.take(100)}...")
-
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_SUBJECT, getString(R.string.settings_share_subject))
-                putExtra(Intent.EXTRA_TEXT, exportJson)
-            }
-            Log.d("SettingsExport", "Starting share intent")
-            startActivity(Intent.createChooser(shareIntent, getString(R.string.settings_share_chooser_title)))
-        } catch (e: Exception) {
-            Log.e("SettingsExport", "Error creating JSON: ${e.message}", e)
-            Toast.makeText(requireContext(), getString(R.string.settings_export_failed, e.message ?: "Unknown error"), Toast.LENGTH_LONG).show()
-        }
+        val exportJson = kxJson.encodeToString(exportData)
+        Log.d("SettingsExport", "JSON created successfully, length: ${exportJson.length}")
+        return exportJson
     }
 
     /**
@@ -619,11 +667,21 @@ class SettingsFragment : Fragment() {
         val editText = dialogView.findViewById<EditText>(R.id.editImportSettingsJson)
         val cancelButton = dialogView.findViewById<Button>(R.id.cancelSettingsImportButton)
         val importButton = dialogView.findViewById<Button>(R.id.importSettingsButton)
+        val chooseFileButton = dialogView.findViewById<Button>(R.id.chooseSettingsFileButton)
 
         builder.setView(dialogView)
         val dialog = builder.create()
 
         cancelButton.setOnClickListener { dialog.dismiss() }
+
+        // Export now writes a file, so importing one is the matching path back in; pasting JSON
+        // still works for backups made by older versions.
+        chooseFileButton.setOnClickListener {
+            dialog.dismiss()
+            importSettingsFileLauncher.launch(
+                arrayOf("application/json", "text/plain", "application/octet-stream")
+            )
+        }
 
         importButton.setOnClickListener {
             val jsonString = editText.text.toString()
@@ -636,6 +694,28 @@ class SettingsFragment : Fragment() {
         }
 
         dialog.show()
+    }
+
+    /** Reads a settings file off the main thread, then imports it. */
+    private fun readImportFile(uri: Uri) {
+        val context = requireContext().applicationContext
+        viewLifecycleOwner.lifecycleScope.launch {
+            val json = withContext(Dispatchers.IO) {
+                try {
+                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("SettingsImport", "Couldn't read settings file: ${e.message}", e)
+                    null
+                }
+            }
+            if (json.isNullOrBlank()) {
+                Toast.makeText(context, R.string.settings_import_read_failed, Toast.LENGTH_LONG).show()
+            } else {
+                importSettings(json)
+            }
+        }
     }
 
     /**

@@ -13,7 +13,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
+import androidx.fragment.app.activityViewModels
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -26,7 +26,8 @@ import androidx.core.net.toUri
 
 class RaidsFragment : Fragment() {
 
-    private val viewModel: RaidsViewModel by viewModels()
+    // Activity-scoped so the list survives tab switches instead of being refetched each visit.
+    private val viewModel: RaidsViewModel by activityViewModels()
     private lateinit var adapter: RaidsAdapter
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var serviceManager: OverlayServiceManager
@@ -98,7 +99,7 @@ class RaidsFragment : Fragment() {
             handleStartServiceClick()
         }
 
-        viewModel.fetchRaids()
+        viewModel.refreshIfStale()
         updateServiceButtonState(startServiceButton)
     }
 

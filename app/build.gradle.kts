@@ -63,7 +63,9 @@ dependencies {
     implementation (libs.androidx.lifecycle.livedata.ktx)
     implementation (libs.kotlinx.coroutines.android)
     implementation (libs.androidx.fragment.ktx)
-    implementation(libs.logging.interceptor)
+    // Declared directly: ApiClient builds the shared client. Retrofit 2.9 alone would only
+    // bring in OkHttp 3.14.
+    implementation(libs.okhttp)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
 

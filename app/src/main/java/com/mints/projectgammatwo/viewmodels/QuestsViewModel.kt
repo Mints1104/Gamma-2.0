@@ -2,6 +2,7 @@ package com.mints.projectgammatwo.viewmodels
 
 import android.app.Application
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
@@ -17,16 +18,12 @@ import com.mints.projectgammatwo.data.QuestFilterPreferences
 import com.mints.projectgammatwo.data.VisitedQuestsPreferences
 import com.mints.projectgammatwo.data.Quests
 import com.mints.projectgammatwo.data.Quests.Quest
-import com.mints.projectgammatwo.data.QuestsApiService
 import com.mints.projectgammatwo.data.QuestCache
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.pow
@@ -35,7 +32,6 @@ import kotlin.math.sqrt
 import com.mints.projectgammatwo.data.CurrentQuestData
 import okio.IOException
 import retrofit2.HttpException
-import java.util.concurrent.TimeUnit
 import androidx.core.content.edit
 import kotlinx.coroutines.withContext
 import com.mints.projectgammatwo.R
@@ -74,6 +70,86 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
     companion object {
         /** Sub-variant cache is considered stale after 24 hours. */
         private const val CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000L
+
+        /**
+         * A published list younger than this, built from the current inputs, is reused. Longer
+         * than the invasion screen's: quests change daily and one fetch is several requests
+         * per source (filtered, unfiltered, and chunked variant discovery).
+         */
+        private const val STALE_AFTER_MS = 5 * 60_000L
+    }
+
+    private var fetchJob: Job? = null
+
+    /** Everything that decides what the quest list contains. */
+    private data class Inputs(
+        val sources: Set<String>,
+        val filters: Set<String>,
+        val conditions: Set<String>,
+        val visitedFingerprint: Int,
+    )
+
+    /** What the published list was built from, and when; null until a fetch fully succeeds. */
+    private var publishedInputs: Inputs? = null
+    private var publishedAtMs = 0L
+
+    private fun currentInputs(): Inputs {
+        val context = getApplication<Application>().applicationContext
+        val filterPreferences = QuestFilterPreferences(context)
+        return Inputs(
+            sources = DataSourcePreferences(context).getSelectedSources(),
+            filters = filterPreferences.getEnabledFilters(),
+            conditions = filterPreferences.getEnabledEncounterConditions(),
+            visitedFingerprint = VisitedQuestsPreferences(context).fingerprint(),
+        )
+    }
+
+    /**
+     * Fetches only if the published list is out of date: older than [STALE_AFTER_MS], or built
+     * from different sources, filters or visited quests than are now in effect.
+     *
+     * This view model is activity-scoped — shared by the quest list and the filter screen, and
+     * surviving tab switches. The list used to refetch everything on every visit. Pull-to-refresh
+     * and the filter screen's refresh still call [fetchQuests].
+     *
+     * @return whether a fetch was started.
+     */
+    fun refreshIfStale(): Boolean {
+        val age = SystemClock.elapsedRealtime() - publishedAtMs
+        if (currentInputs() == publishedInputs && age < STALE_AFTER_MS) return false
+        fetchQuests()
+        return true
+    }
+
+    /**
+     * Records [quest] as visited and drops it from the published list.
+     *
+     * The removal has to happen here, not just in the adapter, now that this view model outlives
+     * the screen: removing it from the adapter alone meant returning to the tab replayed the
+     * view model's list, visited quest included.
+     */
+    fun markVisited(quest: Quest) {
+        val remaining = _questsLiveData.value.orEmpty() - quest
+        _questsLiveData.value = remaining
+        _questsCountLiveData.value = remaining.size
+        saveLastVisitedCoordinates(quest)
+
+        val context = getApplication<Application>().applicationContext
+        viewModelScope.launch {
+            val visitedFingerprint = withContext(Dispatchers.IO) {
+                val visited = VisitedQuestsPreferences(context)
+                visited.addVisitedQuest(
+                    questId = "${quest.name}|${quest.lat}|${quest.lng}",
+                    rewards = quest.rewardsString,
+                    conditions = quest.conditionsString,
+                    source = quest.source
+                )
+                visited.fingerprint()
+            }
+            // The published list already excludes this quest, so record that; otherwise the
+            // changed visited set would make the next visit to the tab refetch for nothing.
+            publishedInputs = publishedInputs?.copy(visitedFingerprint = visitedFingerprint)
+        }
     }
 
     init {
@@ -155,33 +231,8 @@ filters.t4.forEach { list.add("4,0,$it") }
     private val _error = MutableLiveData<String>()
     val error: LiveData<Event<String>> = _error.map { Event(it) } // One-shot, so a replay to a re-created view doesn't show the last error again.
 
-    // Single OkHttpClient reused for all requests
-    private val httpClient: OkHttpClient by lazy {
-        val interceptor = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.NONE }
-        OkHttpClient.Builder()
-            .addInterceptor(interceptor)
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
-    }
-
-    // Cache QuestsApiService per base URL
-    private val serviceCache = mutableMapOf<String, QuestsApiService>()
-
     // Cache for last visited coordinates to avoid repeated SharedPreferences reads
     private var cachedLastVisitedCoords: Pair<Double?, Double?>? = null
-
-    private fun getServiceForBase(baseUrl: String): QuestsApiService {
-        return serviceCache.getOrPut(baseUrl) {
-            Retrofit.Builder()
-                .baseUrl(baseUrl)
-                .addConverterFactory(GsonConverterFactory.create())
-                .client(httpClient)
-                .build()
-                .create(QuestsApiService::class.java)
-        }
-    }
 
     // Calculate the distance between two quests using the Haversine formula.
     private fun haversineDistance(a: Quest, b: Quest): Double {
@@ -305,6 +356,7 @@ filters.t4.forEach { list.add("4,0,$it") }
     fun fetchQuests() {
         Log.d("QuestsViewModel", "Starting fetchQuests()")
         val context = getApplication<Application>().applicationContext
+        val inputs = currentInputs()
 
         val filterPreferences = QuestFilterPreferences(context)
         val visitedPreferences = VisitedQuestsPreferences(context)
@@ -361,14 +413,17 @@ filters.t4.forEach { list.add("4,0,$it") }
         // Load last visited coordinates using cached helper
         val (startLat, startLng) = loadLastVisitedCoordinates()
 
-        viewModelScope.launch {
+        // Shared by the quest list and the filter screen, so overlapping fetches are possible;
+        // cancel the older one so a slow fetch with stale filters can't finish last and win.
+        fetchJob?.cancel()
+        fetchJob = viewModelScope.launch {
             try {
                 Log.d("QuestsViewModel", "Selected data sources: $selectedSources")
                 val deferredList = selectedSources.mapNotNull { source ->
                     ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
                         async(Dispatchers.IO) {
                             try {
-                                val service = getServiceForBase(baseUrl)
+                                val service = ApiClient.questsApi(baseUrl)
                                 val response = if (apiFiltersToUse.isEmpty()) {
                                     service.getAllQuests(System.currentTimeMillis()).execute()
                                 } else {
@@ -441,7 +496,7 @@ filters.t4.forEach { list.add("4,0,$it") }
                     ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
                         async(Dispatchers.IO) {
                             try {
-                                val service = getServiceForBase(baseUrl)
+                                val service = ApiClient.questsApi(baseUrl)
                                 service.getAllQuests(System.currentTimeMillis()).execute()
                             } catch (e: Exception) {
                                 Log.w("QuestsViewModel", "Variant fetch failed for source $source", e)
@@ -481,7 +536,7 @@ filters.t4.forEach { list.add("4,0,$it") }
                     val variantQuestDeferredList = selectedSources.mapNotNull { source ->
                         ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
                             async(Dispatchers.IO) {
-                                val service = getServiceForBase(baseUrl)
+                                val service = ApiClient.questsApi(baseUrl)
                                 val all = mutableListOf<Quest>()
                                 for (chunk in chunks) {
                                     try {
@@ -658,6 +713,12 @@ filters.t4.forEach { list.add("4,0,$it") }
                 _questsCountLiveData.postValue(sortedQuests.size)
                 _questsLiveData.postValue(sortedQuests)
                 CurrentQuestData.currentQuests = sortedQuests.toMutableList()
+
+                // Only a complete result counts as the published state; a partial one retries.
+                if (successfulResponses.size == deferredList.size) {
+                    publishedInputs = inputs
+                    publishedAtMs = SystemClock.elapsedRealtime()
+                }
 
             } catch (e: CancellationException) {
                 // Coroutine was cancelled - this is normal behavior, don't treat it as an error

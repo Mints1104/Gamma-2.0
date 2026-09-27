@@ -15,7 +15,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
+import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -31,7 +31,8 @@ import androidx.lifecycle.Lifecycle
 
 class HomeFragment : Fragment() {
 
-    private val viewModel: HomeViewModel by viewModels()
+    // Activity-scoped so the list survives tab switches instead of being refetched each visit.
+    private val viewModel: HomeViewModel by activityViewModels()
     private lateinit var adapter: InvasionsAdapter
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var serviceManager: OverlayServiceManager
@@ -116,7 +117,8 @@ class HomeFragment : Fragment() {
             handleStartServiceClick()
         }
 
-        viewModel.fetchInvasions()
+        viewModel.restoreSavedSortMode()
+        viewModel.refreshIfStale()
         updateServiceButtonState(startServiceButton)
 
         // Observe sort mode changes to update menu

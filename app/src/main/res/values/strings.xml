@@ -16,9 +16,10 @@
     <string name="no_quest_filters_message">No quest filters enabled. Please go to the filter tab to filter quests.</string>
     <string name="no_quests_available_message">No quests available. Please check your filters or change the data source in the Settings.</string>
     <string name="total_quests">Total Quests: %1$d</string>
-    <string name="settings_share_subject">Exported Settings</string>
-    <string name="settings_share_chooser_title">Share Settings JSON</string>
+    <string name="settings_export_saved">Settings saved</string>
     <string name="settings_export_failed">Failed to export settings: %1$s</string>
+    <string name="settings_import_choose_file">Import from file</string>
+    <string name="settings_import_read_failed">Couldn\'t read the selected file</string>
     <string name="settings_import_input_empty">Input cannot be empty</string>
     <string name="settings_import_success">Settings imported successfully</string>
     <string name="settings_import_failed">Failed to import settings: %1$s</string>

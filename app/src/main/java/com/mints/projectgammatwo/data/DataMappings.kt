@@ -111,6 +111,7 @@ object DataMappings {
         val api: PokeApi by lazy {
             Retrofit.Builder()
                 .baseUrl("https://pokeapi.co/api/v2/")
+                .client(ApiClient.httpClient)
                 .addConverterFactory(GsonConverterFactory.create())
                 .build()
                 .create(PokeApi::class.java)
@@ -118,9 +119,14 @@ object DataMappings {
     }
     var pokemonEncounterMapNew: Map<String, String> = emptyMap()
 
+    /**
+     * Loads Pokémon names into [pokemonEncounterMapNew], calling [onComplete] on the main thread.
+     * Uses the process-wide repository, so after the first load this completes from memory
+     * without re-reading the stored map; it used to build a new repository, and so re-parse the
+     * whole map on the main thread, every time the filter screen opened.
+     */
     fun initializePokemonData(context: Context, onComplete: () -> Unit = {}) {
-        val repository = PokemonRepository(context)
-        repository.getPokemonData { apiMap ->
+        PokemonRepository.getInstance(context).getPokemonData { apiMap ->
             // Merge the API-fetched data with the pre-existing map
             pokemonEncounterMapNew = pokemonEncounterMap + apiMap
 

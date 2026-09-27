@@ -102,7 +102,9 @@ class FilterFragment : Fragment() {
         // data arrives from the network.
         DataMappings.initializePokemonData(requireContext()) {
             pokemonDataReady = true
-            if (isAdded) setupQuestFilters(questLayout)
+            // The callback can arrive after a background disk read, by which time the view may
+            // be gone; questLayout would then belong to a destroyed view.
+            if (isAdded && view != null) setupQuestFilters(questLayout)
         }
 
         questsViewModel.rewardSubVariantsLiveData.observe(viewLifecycleOwner) {

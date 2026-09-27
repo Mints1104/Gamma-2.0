@@ -128,6 +128,15 @@ class DeletedInvasionsRepository(context: Context) {
     }
 
     /**
+     * A cheap change-detector for the stored set: no parsing, so it's fine on the main thread.
+     * Lets a list tell whether it was built from the current deletions, including ones made
+     * elsewhere (the overlay, the history screen's clear, a settings import).
+     */
+    fun fingerprint(): Int = synchronized(lock) {
+        (prefs.getStringSet(key, emptySet()) ?: emptySet()).hashCode()
+    }
+
+    /**
      * Check if an invasion was previously deleted by matching exact lat/lng.
      * Note: relies on exact coordinate equality; small precision differences
      * in source data may prevent a match.
