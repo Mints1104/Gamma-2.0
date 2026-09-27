@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds install alongside the release app (see applicationIdSuffix in
+     app/build.gradle.kts); a distinct name tells the two apart in the launcher. -->
+<resources>
+    <string name="app_name">Gamma Debug</string>
+</resources>

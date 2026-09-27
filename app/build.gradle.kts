@@ -19,6 +19,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Installs alongside the keystore-signed release build instead of clashing with it
+            // (different signatures can't update each other), so testing never wipes real data.
+            // The debug-only app name lives in src/debug/res/values/strings.xml.
+            applicationIdSuffix = ".debug"
+        }
         release {
             signingConfig = signingConfigs.getByName("debug")
 
