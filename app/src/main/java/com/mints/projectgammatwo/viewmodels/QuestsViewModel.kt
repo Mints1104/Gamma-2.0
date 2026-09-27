@@ -129,7 +129,12 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
      * view model's list, visited quest included.
      */
     fun markVisited(quest: Quest) {
-        val remaining = _questsLiveData.value.orEmpty() - quest
+        val current = _questsLiveData.value.orEmpty()
+        // A double tap delivers the same quest twice before the list re-renders; recording it
+        // again would log one visit twice.
+        if (quest !in current) return
+
+        val remaining = current - quest
         _questsLiveData.value = remaining
         _questsCountLiveData.value = remaining.size
         saveLastVisitedCoordinates(quest)

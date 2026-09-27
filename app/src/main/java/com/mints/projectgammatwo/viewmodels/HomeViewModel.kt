@@ -364,11 +364,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     // When an invasion is deleted/handled, record its coords as last invasion and remove from list.
     fun deleteInvasion(invasion: Invasion) {
+        val current = _invasions.value.orEmpty()
+        // A second tap on the same card lands before the list re-renders (the adapter diffs
+        // asynchronously), so it arrives for an invasion that's already been removed. Recording
+        // it again logged one battle twice and inflated the daily-limit count.
+        if (invasion !in current) return
+
         // Remove it from the list right away, on the main thread, before anything suspends.
         // This used to happen only after the IO work, reading _invasions.value at that point:
         // two quick deletes both read the original list, so the second re-published the first
         // invasion — and postValue could merge the two updates, dropping one outright.
-        val remaining = _invasions.value.orEmpty() - invasion
+        val remaining = current - invasion
         _invasions.value = remaining
 
         viewModelScope.launch {
