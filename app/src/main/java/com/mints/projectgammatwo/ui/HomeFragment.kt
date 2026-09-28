@@ -1,7 +1,6 @@
 package com.mints.projectgammatwo.ui
 
 import android.os.Bundle
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuInflater
@@ -10,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
@@ -21,7 +21,6 @@ import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.helpers.OverlayButtonController
 import com.mints.projectgammatwo.recyclerviews.InvasionsAdapter
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
-import com.mints.projectgammatwo.data.DataMappings
 import androidx.lifecycle.Lifecycle
 
 class HomeFragment : Fragment() {
@@ -37,12 +36,6 @@ class HomeFragment : Fragment() {
     // Track listeners to properly unregister on view teardown
     private var scrollListener: RecyclerView.OnScrollListener? = null
     private var dataObserver: RecyclerView.AdapterDataObserver? = null
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        // Ensure this fragment contributes to the options menu
-        setHasOptionsMenu(true)
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -111,24 +104,11 @@ class HomeFragment : Fragment() {
         viewModel.restoreSavedSortMode()
         viewModel.refreshIfStale()
 
+        requireActivity().addMenuProvider(sortMenuProvider, viewLifecycleOwner, Lifecycle.State.RESUMED)
+
         // Observe sort mode changes to update menu
         viewModel.sortByDistance.observe(viewLifecycleOwner) {
             requireActivity().invalidateOptionsMenu()
-        }
-    }
-
-    private fun testGetDeletedInvasions() {
-        val deletedInvasions = viewModel.getDeletedInvasions()
-        deletedInvasions.forEach { deletedEntry ->
-            val characterName = deletedEntry.character?.let {
-                DataMappings.characterNamesMap[it]
-            } ?: "Unknown Character"
-
-            val typeDescription = deletedEntry.type.let {
-                DataMappings.typeDescriptionsMap[it]
-            } ?: "Unknown Type"
-
-            Log.d("Test","DeletedInvasion: ${deletedEntry.name} from source ${deletedEntry.source}, Name: $characterName, Type: $typeDescription")
         }
     }
 
@@ -185,37 +165,24 @@ class HomeFragment : Fragment() {
         }
     }
 
-    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
-        // Menu is already inflated in MainActivity
-        super.onCreateOptionsMenu(menu, inflater)
-    }
+    /** Handles the sort items; MainActivity inflates the Rockets menu they belong to. */
+    private val sortMenuProvider = object : MenuProvider {
+        override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) = Unit
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-           R.id.action_sort_by_distance -> {
-               viewModel.sortInvasions(true)
-               true
-           }
-            R.id.action_sort_by_time -> {
-                viewModel.sortInvasions(false)
-
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
+        override fun onPrepareMenu(menu: Menu) {
+            val sortByDistance = viewModel.sortByDistance.value ?: false
+            menu.findItem(R.id.action_sort_by_distance)?.setTitle(
+                if (sortByDistance) R.string.sorted_by_distance else R.string.sort_by_distance
+            )
+            menu.findItem(R.id.action_sort_by_time)?.setTitle(
+                if (sortByDistance) R.string.sort_by_time else R.string.sorted_by_time
+            )
         }
-    }
 
-    override fun onPrepareOptionsMenu(menu: Menu) {
-        super.onPrepareOptionsMenu(menu)
-        val sortByDistance = viewModel.sortByDistance.value ?: false
-        val sortMenuItem = menu.findItem(R.id.action_sort_by_distance)
-        val timeMenuItem = menu.findItem(R.id.action_sort_by_time)
-        if (sortByDistance) {
-            sortMenuItem?.title = "✓ Sorted by Distance"
-            timeMenuItem?.title = "Sort by Time"
-        } else {
-            sortMenuItem?.title = "Sort by Distance"
-            timeMenuItem?.title = "✓ Sorted by Time"
+        override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
+            R.id.action_sort_by_distance -> { viewModel.sortInvasions(true); true }
+            R.id.action_sort_by_time -> { viewModel.sortInvasions(false); true }
+            else -> false
         }
     }
 

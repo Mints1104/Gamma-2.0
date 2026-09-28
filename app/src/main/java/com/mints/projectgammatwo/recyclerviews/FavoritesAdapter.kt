@@ -71,7 +71,7 @@ class FavoritesAdapter(
 
         fun bind() {
             // Always look up the current adapter position
-            val pos = adapterPosition
+            val pos = bindingAdapterPosition
             if (pos == RecyclerView.NO_POSITION) return
 
             val favorite = getItem(pos)
@@ -81,21 +81,21 @@ class FavoritesAdapter(
             bindTime()
 
             copyButton.setOnClickListener {
-                val currentPos = adapterPosition
+                val currentPos = bindingAdapterPosition
                 if (currentPos != RecyclerView.NO_POSITION) {
                     onCopyFavorite(getItem(currentPos))
                 }
             }
 
             teleportButton.setOnClickListener {
-                val currentPos = adapterPosition
+                val currentPos = bindingAdapterPosition
                 if (currentPos != RecyclerView.NO_POSITION) {
                     onTeleportFavorite(getItem(currentPos))
                 }
             }
 
             deleteButton.setOnClickListener {
-                val currentPos = adapterPosition
+                val currentPos = bindingAdapterPosition
                 if (currentPos != RecyclerView.NO_POSITION) {
                     onDeleteFavorite(getItem(currentPos))
                 }
@@ -106,7 +106,7 @@ class FavoritesAdapter(
                 popup.inflate(R.menu.favorite_item_menu)
                 popup.setOnMenuItemClickListener { menuItem: MenuItem ->
                     if (menuItem.itemId == R.id.menu_edit) {
-                        val currentPos = adapterPosition
+                        val currentPos = bindingAdapterPosition
                         if (currentPos != RecyclerView.NO_POSITION) {
                             onEditFavorite(getItem(currentPos), currentPos)
                         }
@@ -121,7 +121,7 @@ class FavoritesAdapter(
 
         /** Local time at this favorite; hidden when its coordinates have no known timezone. */
         fun bindTime() {
-            val pos = adapterPosition
+            val pos = bindingAdapterPosition
             if (pos == RecyclerView.NO_POSITION) return
 
             val localTime = FavoriteTimeFormatter.formatLocalTime(

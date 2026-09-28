@@ -11,13 +11,13 @@
 
     <item
         android:id="@+id/action_sort_by_time"
-        android:title="Sort by time"
+        android:title="@string/sort_by_time"
         android:icon="@drawable/history_24px"
         app:showAsAction="never"/>
 
     <item
         android:id="@+id/action_sort_by_distance"
-        android:title="Sort by distance"
+        android:title="@string/sort_by_distance"
         android:icon="@drawable/history_24px"
         app:showAsAction="never"/>
 

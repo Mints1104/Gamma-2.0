@@ -60,14 +60,7 @@
 -dontwarn okio.**
 
 #################################################
-# 7) Room
-#################################################
--keep class androidx.room.** { *; }
--keep @androidx.room.Entity class *
--dontwarn androidx.room.paging.**
-
-#################################################
-# 8) Coroutines
+# 7) Coroutines
 #################################################
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
@@ -78,13 +71,13 @@
 }
 
 #################################################
-# 9) Debug info & source file renaming
+# 8) Debug info & source file renaming
 #################################################
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
 
 #################################################
-# 10) Android components
+# 9) Android components
 #################################################
 -keep public class * extends android.app.Activity
 -keep public class * extends android.app.Application
@@ -92,10 +85,9 @@
 -keep public class * extends android.content.BroadcastReceiver
 -keep public class * extends android.content.ContentProvider
 -keep public class * extends androidx.fragment.app.Fragment
--keep public class * implements androidx.viewbinding.ViewBinding
 
 #################################################
-# 11) XML-referenced Views
+# 10) XML-referenced Views
 #################################################
 -keep public class * extends android.view.View {
     public <init>(android.content.Context);
@@ -105,14 +97,14 @@
 }
 
 #################################################
-# 12) Keep onClick handlers
+# 11) Keep onClick handlers
 #################################################
 -keepclassmembers class * extends android.content.Context {
     public void *(android.view.View);
 }
 
 #################################################
-# 13) Strip debug logging from release builds
+# 12) Strip debug logging from release builds
 #     Debug/verbose logs are development scaffolding and shouldn't ship.
 #     R8 removes these calls and, since the arguments are pure string
 #     building, the message construction with them.

@@ -13,6 +13,8 @@ import com.mints.projectgammatwo.data.DataMappings
 import com.mints.projectgammatwo.data.DeletedEntry
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
 import com.mints.projectgammatwo.recyclerviews.DeletedInvasionsAdapter
+import androidx.core.view.MenuProvider
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,11 +37,6 @@ class DeletedInvasionsFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View? {
         return inflater.inflate(R.layout.fragment_deleted_invasions, container, false)
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setHasOptionsMenu(true)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -66,21 +63,17 @@ class DeletedInvasionsFragment : Fragment() {
         swipeRefresh.setOnRefreshListener { loadData() }
 
         loadData()
-    }
 
-    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
-        inflater.inflate(R.menu.menu_deleted_history, menu)
-        super.onCreateOptionsMenu(menu, inflater)
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_clear_history -> {
-                confirmClearHistory()
-                true
+        requireActivity().addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+                menuInflater.inflate(R.menu.menu_deleted_history, menu)
             }
-            else -> super.onOptionsItemSelected(item)
-        }
+
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
+                R.id.action_clear_history -> { confirmClearHistory(); true }
+                else -> false
+            }
+        }, viewLifecycleOwner, Lifecycle.State.RESUMED)
     }
 
     private fun confirmClearHistory() {

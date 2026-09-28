@@ -25,8 +25,11 @@ object FavoritesManager {
         val originalOrder: List<String> = gson.fromJson(orderJson, orderType) ?: emptyList()
 
         // Favorites saved before timezones existed (or imported from an older export) have no
-        // timezoneId; fill it in so callers can render a local time straight away.
-        ensureTimezones(loadedFavorites)
+        // timezoneId; fill it in so callers can render a local time straight away, and write it
+        // back so the lookup doesn't run again on every load.
+        if (ensureTimezones(loadedFavorites)) {
+            prefs.edit { putString(KEY_FAVORITES, gson.toJson(loadedFavorites)) }
+        }
 
         return applyStoredOrder(loadedFavorites, originalOrder)
     }
@@ -72,17 +75,18 @@ object FavoritesManager {
         return changed
     }
 
-    fun saveFavorites(context: Context, favorites: List<FavoriteLocation>) {
+    /**
+     * Saves [favorites], and their order as the user's manual arrangement unless [updateOrder] is
+     * false. Pass false while the list is displayed in a derived order (sorted by name):
+     * recording that would overwrite the arrangement and leave "sort by order added" nothing to
+     * restore.
+     */
+    fun saveFavorites(context: Context, favorites: List<FavoriteLocation>, updateOrder: Boolean = true) {
         val prefs = context.getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit {
-
-            // Save the full favorites list as JSON
             putString(KEY_FAVORITES, gson.toJson(favorites))
-
-            // Save the order separately
-            val originalOrder = favorites.map { it.name } // Store names as order reference
-            putString(KEY_ORDER, gson.toJson(originalOrder))
-
+            // The order is stored as names, applied on load by applyStoredOrder.
+            if (updateOrder) putString(KEY_ORDER, gson.toJson(favorites.map { it.name }))
         }
     }
 }

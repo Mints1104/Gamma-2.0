@@ -84,7 +84,6 @@ class OverlayService : Service() {
      * straight to the second item.
      */
     private var currentIndex = -1
-    private val TAG = "OverlayService"
 
     /**
      * Owns the service's view models so that clearing it in onDestroy runs their onCleared(),
@@ -120,10 +119,6 @@ class OverlayService : Service() {
     private var currentFavoritesSortOrder: FilterSortOrder = FilterSortOrder.DEFAULT
     private val PREF_FAVORITES_SORT_ORDER = "favorites_sort_order"
     private lateinit var customizationManager: OverlayCustomizationManager
-    private var customizationOverlayView: View? = null
-    private var isCustomizationVisible = false
-    private lateinit var customizationAdapter: OverlayCustomizationAdapter
-    private var itemTouchHelper: ItemTouchHelper? = null
 
     private val favoritesTimeHandler = Handler(Looper.getMainLooper())
 
@@ -261,13 +256,6 @@ class OverlayService : Service() {
         }
     }
 
-    // Android 15 compatibility: Check if overlay is visible before starting foreground service
-    private fun isOverlayVisible(): Boolean {
-        return overlayView?.let { view ->
-            view.windowVisibility == View.VISIBLE && view.visibility == View.VISIBLE
-        } ?: false
-    }
-
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             Log.d(TAG, "Stop requested from the notification")
@@ -301,10 +289,7 @@ class OverlayService : Service() {
         val params = WindowManager.LayoutParams().apply {
             width = WRAP_CONTENT
             height = WRAP_CONTENT
-            type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                TYPE_APPLICATION_OVERLAY
-            else
-                TYPE_SYSTEM_ALERT
+            type = overlayWindowType()
             flags = FLAG_NOT_TOUCH_MODAL or FLAG_NOT_FOCUSABLE or FLAG_WATCH_OUTSIDE_TOUCH
             format = PixelFormat.TRANSLUCENT
             gravity = Gravity.TOP or Gravity.START
@@ -518,6 +503,11 @@ class OverlayService : Service() {
 
     private fun nowSeconds() = System.currentTimeMillis() / 1000
 
+    /** The window type for every overlay window; TYPE_SYSTEM_ALERT is what API 24-25 have. */
+    @Suppress("DEPRECATION")
+    private fun overlayWindowType(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) TYPE_APPLICATION_OVERLAY else TYPE_SYSTEM_ALERT
+
     /** Every invasion in the overlay's list has ended: fetch a fresh list instead of teleporting. */
     private fun refetchExpiredInvasions() {
         Log.d(TAG, "Every invasion in the overlay's list has expired, refreshing...")
@@ -530,20 +520,6 @@ class OverlayService : Service() {
             showOverlayToast("Updated: Quests mode")
         } else {
             showOverlayToast("Updated: Invasions mode")
-        }
-    }
-
-    private fun showOverlayMessage(message: String) {
-        val statusText = overlayView?.findViewById<TextView>(R.id.status_text)
-        if (statusText != null) {
-            statusText.text = message
-            statusText.visibility = View.VISIBLE
-            Handler(Looper.getMainLooper()).postDelayed({
-                statusText.visibility = View.GONE
-            }, 3000)
-        } else {
-            Log.e(TAG, "Status text view not found, falling back to toast")
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -621,10 +597,7 @@ class OverlayService : Service() {
         val params = WindowManager.LayoutParams().apply {
             width = WRAP_CONTENT
             height = WRAP_CONTENT
-            type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                TYPE_APPLICATION_OVERLAY
-            else
-                TYPE_SYSTEM_ALERT
+            type = overlayWindowType()
             flags = FLAG_NOT_FOCUSABLE or
                     FLAG_NOT_TOUCH_MODAL
             format = PixelFormat.TRANSLUCENT
@@ -652,12 +625,8 @@ class OverlayService : Service() {
 
         stopFavoritesTimeTicker()
 
-        // Properly stop foreground service
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } else {
-            stopForeground(true)
-        }
+        // Properly stop foreground service (minSdk 24 always has the flag-based overload)
+        stopForeground(STOP_FOREGROUND_REMOVE)
 
         // Cancel notification explicitly
         val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
@@ -807,10 +776,7 @@ class OverlayService : Service() {
             val params = WindowManager.LayoutParams().apply {
                 width = WRAP_CONTENT
                 height = WRAP_CONTENT
-                type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                    TYPE_APPLICATION_OVERLAY
-                else
-                    TYPE_SYSTEM_ALERT
+                type = overlayWindowType()
                 flags = FLAG_NOT_FOCUSABLE
                 format = PixelFormat.TRANSLUCENT
                 gravity = Gravity.CENTER
@@ -901,10 +867,7 @@ class OverlayService : Service() {
             val params = WindowManager.LayoutParams().apply {
                 width = WRAP_CONTENT
                 height = WRAP_CONTENT
-                type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                    TYPE_APPLICATION_OVERLAY
-                else
-                    TYPE_SYSTEM_ALERT
+                type = overlayWindowType()
                 flags = FLAG_NOT_FOCUSABLE
                 format = PixelFormat.TRANSLUCENT
                 gravity = Gravity.CENTER

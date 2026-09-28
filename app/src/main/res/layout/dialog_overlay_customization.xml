@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:fillViewport="true">
@@ -22,7 +23,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Customize Overlay"
+                android:text="@string/customize_overlay"
                 android:textSize="20sp"
                 android:textStyle="bold"
                 android:textColor="?android:attr/textColorPrimary" />
@@ -32,7 +33,7 @@
                 android:id="@+id/reset_button"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Reset"
+                android:text="@string/action_reset"
                 android:layout_marginEnd="8dp"
                  />
 
@@ -40,7 +41,7 @@
                 android:id="@+id/close_button"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Apply"
+                android:text="@string/action_apply"
                  />
 
         </LinearLayout>
@@ -49,7 +50,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Button Size"
+            android:text="@string/overlay_button_size"
             android:textSize="16sp"
             android:textStyle="bold"
             android:textColor="?android:attr/textColorPrimary"
@@ -65,14 +66,14 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Size:"
+                android:text="@string/overlay_size_label"
                 android:textSize="14sp" />
 
             <TextView
                 android:id="@+id/size_value"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="48dp"
+                tools:text="48dp"
                 android:textSize="14sp"
                 android:textStyle="bold" />
 
@@ -91,7 +92,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Button Visibility &amp; Order"
+            android:text="@string/overlay_button_visibility_order"
             android:textSize="16sp"
             android:textStyle="bold"
             android:textColor="?android:attr/textColorPrimary"
@@ -100,7 +101,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Drag to reorder, toggle to show/hide"
+            android:text="@string/overlay_reorder_hint"
             android:textSize="12sp"
             android:textColor="?android:attr/textColorSecondary"
             android:layout_marginBottom="8dp" />

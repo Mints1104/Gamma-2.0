@@ -65,21 +65,21 @@
                 android:id="@+id/teleportButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="TELEPORT"/>
+                android:text="@string/item_teleport"/>
 
             <Button
                 android:id="@+id/copyButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
-                android:text="COPY"/>
+                android:text="@string/item_copy"/>
 
             <Button
                 android:id="@+id/deleteButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
-                android:text="DELETE"/>
+                android:text="@string/item_delete"/>
         </LinearLayout>
     </LinearLayout>
 </androidx.cardview.widget.CardView>

@@ -11,11 +11,12 @@ import com.google.gson.JsonSyntaxException
 import com.mints.projectgammatwo.data.ApiClient
 import com.mints.projectgammatwo.data.CurrentInvasionData
 import com.mints.projectgammatwo.data.DataSourcePreferences
-import com.mints.projectgammatwo.data.DeletedEntry
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
 import com.mints.projectgammatwo.helpers.Event
+import com.mints.projectgammatwo.helpers.filterInvasions
+import com.mints.projectgammatwo.helpers.sortAndCapInvasions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -24,10 +25,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.IOException
 import retrofit2.HttpException
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val filterPreferences = FilterPreferences(application)
@@ -87,9 +84,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
         /** A published list younger than this, built from the current inputs, is reused. */
         private const val STALE_AFTER_MS = 60_000L
-
-        /** How many invasions the list shows, after sorting. */
-        private const val MAX_LISTED = 500
 
         private const val APP_PREFS_NAME = "app_preferences"
         private const val KEY_SORT_BY_DISTANCE = "invasions_sort_by_distance"
@@ -199,24 +193,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
                 // Perform CPU-bound mapping/filtering AND sorting off the main thread
                 val finalList = withContext(Dispatchers.Default) {
-                    val currentTimeSeconds = System.currentTimeMillis() / 1000
-                    val baseList = combinedInvasions
-                        .asSequence()
-                        .map { invasion ->
-                            when (invasion.type) {
-                                8 -> invasion.copy(character = 1)
-                                9 -> invasion.copy(character = 0)
-                                else -> invasion
-                            }
-                        }
-                        .filter { invasion ->
-                            invasion.character in enabledCharacters &&
-                                    invasion.lat to invasion.lng !in deletedKeySet &&
-                                    invasion.invasion_end > currentTimeSeconds
-                        }
-                        .toList()
-
-                    // Apply sorting on background thread
+                    val baseList = filterInvasions(
+                        combinedInvasions,
+                        enabledCharacters,
+                        deletedKeySet,
+                        nowSeconds = System.currentTimeMillis() / 1000
+                    )
                     applySorting(baseList)
                 }
 
@@ -248,54 +230,21 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Sorts by time or distance, then keeps the first [MAX_LISTED].
-     *
-     * The cap used to be applied before sorting, so the sort only reordered whichever 500 the
-     * API happened to return first. With NYC's ~5,400 active invasions, distance order showed
-     * its nearest invasion kilometres away while ones tens of metres away had been cut, and time
-     * order included none of the newest.
+     * Sorts by time, or by distance from the last battled invasion (falling back to the first in
+     * the list), then caps the list; see [sortAndCapInvasions].
      */
     private fun applySorting(list: List<Invasion>): List<Invasion> {
         if (list.isEmpty()) return list
 
-        val sorted = if (sortByDistanceInternal) {
+        val reference = if (sortByDistanceInternal) {
             val (lat, lng) = loadLastInvasionCoordinates()
-            val (refLat, refLng) = if (lat != null && lng != null) {
-                Log.d(TAG, "Sorting by distance using stored last invasion coordinates: ($lat, $lng)")
-                lat to lng
-            } else {
-                // Fallback to first invasion's coordinates
-                val first = list.first()
-                Log.d(TAG, "Sorting by distance using first invasion coordinates (no stored coords): (${first.lat}, ${first.lng})")
-                first.lat to first.lng
-            }
-            // Each distance computed once, rather than twice per comparison inside sortedBy.
-            list.map { it to haversineDistanceFromPoint(refLat, refLng, it) }
-                .sortedBy { it.second }
-                .take(MAX_LISTED)
-                .map { it.first }
+            if (lat != null && lng != null) lat to lng else list.first().let { it.lat to it.lng }
         } else {
-            Log.d(TAG, "Sorting by time (newest first)")
-            // sortedByDescending is stable, so invasions that started at the same moment keep
-            // their relative order on every re-sort. sortedBy + asReversed flipped them each time,
-            // so cards swapped places after every delete.
-            list.sortedByDescending { it.invasion_start }.take(MAX_LISTED)
+            null
         }
-        Log.d(TAG, "Sorted ${list.size} invasions, listing ${sorted.size}")
+        val sorted = sortAndCapInvasions(list, reference)
+        Log.d(TAG, "Sorted ${list.size} invasions by ${if (reference == null) "time" else "distance from $reference"}, listing ${sorted.size}")
         return sorted
-    }
-
-    // Distance helpers from a point
-    private fun haversineDistanceFromPoint(lat: Double, lng: Double, invasion: Invasion): Double {
-        val R = 6371e3 // meters
-        val lat1 = Math.toRadians(lat)
-        val lat2 = Math.toRadians(invasion.lat)
-        val dLat = Math.toRadians(invasion.lat - lat)
-        val dLon = Math.toRadians(invasion.lng - lng)
-        val aVal = sin(dLat / 2) * sin(dLat / 2) +
-                cos(lat1) * cos(lat2) * sin(dLon / 2) * sin(dLon / 2)
-        val c = 2 * atan2(sqrt(aVal), sqrt(1 - aVal))
-        return R * c
     }
 
     // Load last invasion coordinates from cache or SharedPreferences (NO quest fallback)
@@ -368,14 +317,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         // Auto-refresh invasions to get fresh data with the new sort mode
         Log.d(TAG, "Auto-refreshing invasions after sort mode change")
         fetchInvasions()
-    }
-
-    fun getInvasions(): List<Invasion>? {
-        return _invasions.value
-    }
-
-    fun getDeletedInvasions(): Set<DeletedEntry> {
-        return deletedRepo.getDeletedEntries()
     }
 
     // When an invasion is deleted/handled, record its coords as last invasion and remove from list.

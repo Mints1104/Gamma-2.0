@@ -2,19 +2,19 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:id="@+id/menu_import_favorites"
-        android:title="Import Favorites" />
+        android:title="@string/import_favorites" />
 
     <item
         android:id="@+id/menu_import_hotspots"
-        android:title="Import Hotspots" />
+        android:title="@string/import_hotspots" />
 
     <item
         android:id="@+id/action_sortByName"
-        android:title="Sort By Name"/>
+        android:title="@string/sort_by_name"/>
 
     <item
         android:id="@+id/action_sortByDefault"
-        android:title="Sort By Order Added"/>
+        android:title="@string/sort_by_order_added"/>
 
 
 </menu>

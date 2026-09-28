@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.text.TextUtils
 import android.view.LayoutInflater
 import androidx.appcompat.app.AlertDialog
+import androidx.core.os.BundleCompat
 import androidx.fragment.app.DialogFragment
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.FavoriteLocation
@@ -49,7 +50,6 @@ class FavoriteDialogFragment : DialogFragment() {
     override fun onAttach(context: Context) {
         super.onAttach(context)
         listener = when {
-            targetFragment is FavoriteDialogListener -> targetFragment as FavoriteDialogListener
             parentFragment is FavoriteDialogListener -> parentFragment as FavoriteDialogListener
             context is FavoriteDialogListener -> context
             else -> null
@@ -66,7 +66,7 @@ class FavoriteDialogFragment : DialogFragment() {
         val saveButton = view.findViewById<Button>(R.id.saveFavoriteButton)
         val cancelButton = view.findViewById<Button>(R.id.cancelFavoriteButton)
 
-        favorite = arguments?.getSerializable(ARG_FAVORITE) as? FavoriteLocation
+        favorite = arguments?.let { BundleCompat.getSerializable(it, ARG_FAVORITE, FavoriteLocation::class.java) }
         position = arguments?.getInt(ARG_POSITION) ?: -1
 
         if (favorite != null) {

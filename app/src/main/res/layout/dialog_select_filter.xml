@@ -10,7 +10,7 @@
         android:id="@+id/selectFilterTitle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Select Filter"
+        android:text="@string/select_filter_title"
         android:textSize="18sp"
         android:textStyle="bold"
         android:gravity="center"
@@ -43,7 +43,7 @@
         android:id="@+id/cancelSelectButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Cancel"
+        android:text="@string/action_cancel"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 

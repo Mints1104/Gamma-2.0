@@ -13,6 +13,7 @@
         android:layout_width="24dp"
         android:layout_height="24dp"
         android:src="@drawable/ic_drag_handle"
+        android:importantForAccessibility="no"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent" />
@@ -22,7 +23,7 @@
         android:id="@+id/favoriteName"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Favorite Name"
+        tools:text="Favorite Name"
         android:textAppearance="?attr/textAppearanceSubtitle1"
         app:layout_constraintStart_toEndOf="@id/dragHandle"
         app:layout_constraintTop_toTopOf="parent"
@@ -44,7 +45,7 @@
         android:id="@+id/favoriteLocation"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Latitude, Longitude"
+        tools:text="Latitude, Longitude"
         android:textAppearance="?attr/textAppearanceBody2"
         app:layout_constraintStart_toStartOf="@id/favoriteName"
         app:layout_constraintTop_toBottomOf="@id/favoriteName"
@@ -78,7 +79,7 @@
             android:id="@+id/teleportButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="TELEPORT" />
+            android:text="@string/item_teleport" />
 
         <!-- Teleport Button -->
         <Button
@@ -86,7 +87,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
-            android:text="COPY" />
+            android:text="@string/item_copy" />
 
         <!-- Delete Button -->
         <Button
@@ -94,6 +95,6 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
-            android:text="DELETE" />
+            android:text="@string/item_delete" />
     </LinearLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

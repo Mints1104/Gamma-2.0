@@ -14,7 +14,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Data Sources"
+            android:text="@string/data_sources"
             android:textStyle="bold"
             android:textSize="16sp" />
 
@@ -22,31 +22,31 @@
             android:id="@+id/checkbox_nyc"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="NYC" />
+            android:text="@string/source_nyc" />
 
         <CheckBox
             android:id="@+id/checkbox_london"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="London" />
+            android:text="@string/source_london" />
 
         <CheckBox
             android:id="@+id/checkbox_sg"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Singapore" />
+            android:text="@string/source_singapore" />
 
         <CheckBox
             android:id="@+id/checkbox_vancouver"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Vancouver" />
+            android:text="@string/source_vancouver" />
 
         <CheckBox
             android:id="@+id/checkbox_sydney"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Sydney" />
+            android:text="@string/source_sydney" />
 
         <!-- Home Coordinates Section -->
         <View
@@ -56,7 +56,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Home Coordinates"
+            android:text="@string/home_coordinates"
             android:textStyle="bold"
             android:textSize="16sp" />
 
@@ -64,7 +64,7 @@
             android:id="@+id/homeCoordinates"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Enter home coordinates" />
+            android:hint="@string/home_coordinates_hint" />
 
         <!-- Overlay Customization Section -->
         <View
@@ -74,7 +74,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Overlay Customization"
+            android:text="@string/overlay_customization"
             android:textStyle="bold"
             android:textSize="16sp" />
 
@@ -82,7 +82,7 @@
             android:id="@+id/btnCustomizeOverlay"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Customize Overlay" />
+            android:text="@string/customize_overlay" />
 
         <!-- Settings Import/Export Section -->
         <View
@@ -92,7 +92,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Settings Import/Export"
+            android:text="@string/settings_import_export"
             android:textStyle="bold"
             android:textSize="16sp" />
 
@@ -100,13 +100,13 @@
             android:id="@+id/btnExportSettings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Export Settings" />
+            android:text="@string/export_settings" />
 
         <Button
             android:id="@+id/btnImportSettings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Import Settings" />
+            android:text="@string/import_settings" />
 
         <!-- Divider -->
 
@@ -184,7 +184,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Gamma by Mints&#10;Version: 4.0"
+            android:text="@string/about_app"
             android:textAlignment="center"
             android:textSize="14sp" />
 
@@ -207,7 +207,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Teleport Method:"
+            android:text="@string/teleport_method"
             android:visibility="invisible"
             android:layout_marginTop="16dp"/>
 
@@ -222,14 +222,14 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:visibility="invisible"
-                android:text="ipogo" />
+                android:text="@string/deeplink_ipogo" />
 
             <RadioButton
                 android:id="@+id/radio_joystick"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:visibility="invisible"
-                android:text="GPS Joystick" />
+                android:text="@string/teleport_joystick" />
         </RadioGroup>
 
     </LinearLayout>

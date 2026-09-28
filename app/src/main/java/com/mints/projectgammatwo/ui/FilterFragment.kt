@@ -24,8 +24,10 @@ import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import androidx.core.view.MenuProvider
 import androidx.core.view.setPadding
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import com.google.android.material.button.MaterialButton
 import com.google.gson.Gson
@@ -34,6 +36,7 @@ import com.mints.projectgammatwo.data.DataMappings
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.QuestCache
 import com.mints.projectgammatwo.data.Quests
+import com.mints.projectgammatwo.helpers.questConditionKey
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
 import java.text.DateFormat
 import java.util.Date
@@ -59,11 +62,6 @@ class FilterFragment : Fragment() {
     private var pokemonDataReady = false
     /** Guard to avoid persisting state while rebuilding the quest filter UI. */
     private var isRebuildingQuestFilters = false
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setHasOptionsMenu(true)
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -104,7 +102,9 @@ class FilterFragment : Fragment() {
             pokemonDataReady = true
             // The callback can arrive after a background disk read, by which time the view may
             // be gone; questLayout would then belong to a destroyed view.
-            if (isAdded && view != null) setupQuestFilters(questLayout)
+            // (`view` here is this function's parameter, which is never null; the fragment's
+            // current view is what has to be checked.)
+            if (isAdded && this@FilterFragment.view != null) setupQuestFilters(questLayout)
         }
 
         questsViewModel.rewardSubVariantsLiveData.observe(viewLifecycleOwner) {
@@ -175,31 +175,25 @@ class FilterFragment : Fragment() {
         }
 
         setupRocketFilters(rocketLayoutGlobal)
-    }
 
-    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
-        inflater.inflate(R.menu.filter_nav_menu, menu)
-        super.onCreateOptionsMenu(menu, inflater)
-    }
+        requireActivity().addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+                menuInflater.inflate(R.menu.filter_nav_menu, menu)
+            }
 
-    override fun onPrepareOptionsMenu(menu: Menu) {
-        super.onPrepareOptionsMenu(menu)
-        val saveRocketItem = menu.findItem(R.id.action_save_rocket)
-        val saveQuestItem  = menu.findItem(R.id.action_save_quest)
-        val refreshFiltersItem = menu.findItem(R.id.action_refresh_filters)
+            override fun onPrepareMenu(menu: Menu) {
+                menu.findItem(R.id.action_save_rocket)?.isVisible = (currentFilterType == "Rocket")
+                menu.findItem(R.id.action_save_quest)?.isVisible = (currentFilterType == "Quest")
+                menu.findItem(R.id.action_refresh_filters)?.isVisible = (currentFilterType == "Quest")
+            }
 
-        saveRocketItem?.isVisible = (currentFilterType == "Rocket")
-        saveQuestItem?.isVisible  = (currentFilterType == "Quest")
-        refreshFiltersItem?.isVisible = (currentFilterType == "Quest")
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_save_rocket -> { showSaveFilterDialog(true); true }
-            R.id.action_save_quest  -> { showSaveFilterDialog(false); true }
-            R.id.action_refresh_filters -> { questsViewModel.fetchQuests(); true }
-            else -> super.onOptionsItemSelected(item)
-        }
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
+                R.id.action_save_rocket -> { showSaveFilterDialog(true); true }
+                R.id.action_save_quest -> { showSaveFilterDialog(false); true }
+                R.id.action_refresh_filters -> { questsViewModel.fetchQuests(); true }
+                else -> false
+            }
+        }, viewLifecycleOwner, Lifecycle.State.RESUMED)
     }
 
     private fun showSaveFilterDialog(isRocket: Boolean) {
@@ -586,7 +580,7 @@ class FilterFragment : Fragment() {
                                     allPossibleQuestFilters.add(baseFilter)
                                     variants.forEach { variant ->
                                         enabledEncounterConditions.add(
-                                            buildConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward)
+                                            questConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward)
                                         )
                                     }
                                 } else {
@@ -724,10 +718,6 @@ class FilterFragment : Fragment() {
         }
     }
 
-    private fun buildConditionKey(type: String, id: String, amount: String, condition: String, reward: String): String {
-        return "$type|$id|$amount|$condition|$reward"
-    }
-
     private fun ensureVariantSelectionConsistency(variants: List<QuestsViewModel.SubVariant>) {
         // Intentionally empty — variant/condition pairs are written together atomically.
     }
@@ -772,7 +762,7 @@ class FilterFragment : Fragment() {
 
             // Ensure base filter exists when any condition key is present; remove it otherwise.
             val hasAnyCondition = variants.any { variant ->
-                buildConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward) in enabledEncounterConditions
+                questConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward) in enabledEncounterConditions
             }
             if (!isEncounter) {
                 if (hasAnyCondition && baseFilter !in enabledQuestFilters) {
@@ -853,7 +843,7 @@ class FilterFragment : Fragment() {
                     addQuestCheckBox(parent, displayText, filterStr, enabledQuestFilters) {
                         filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
                         if (variant != null) {
-                            val key = buildConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward)
+                            val key = questConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward)
                             if (enabledQuestFilters.contains(filterStr)) enabledEncounterConditions.add(key)
                             else enabledEncounterConditions.remove(key)
                         }
@@ -890,7 +880,7 @@ class FilterFragment : Fragment() {
 
         val variantCheckboxes = mutableListOf<CheckBox>()
         val baseFilter = "7,0,$pokemonId"
-        val allConditionKeys = variants.map { buildConditionKey(it.type, it.id, it.amount, it.condition, it.reward) }.toSet()
+        val allConditionKeys = variants.map { questConditionKey(it.type, it.id, it.amount, it.condition, it.reward) }.toSet()
         val encounterPrefix = "7|$pokemonId|"
 
         val mainCheckbox = CheckBox(requireContext()).apply {
@@ -934,7 +924,7 @@ class FilterFragment : Fragment() {
         }
 
         variants.forEach { variant ->
-            val key = buildConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward)
+            val key = questConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward)
             val cb = CheckBox(requireContext()).apply {
                 text = variant.label
                 isChecked = key in enabledEncounterConditions
@@ -1020,7 +1010,7 @@ class FilterFragment : Fragment() {
         }
 
         val variantCheckboxes = mutableListOf<CheckBox>()
-        val allConditionKeys  = variants.map { buildConditionKey(it.type, it.id, it.amount, it.condition, it.reward) }.toSet()
+        val allConditionKeys  = variants.map { questConditionKey(it.type, it.id, it.amount, it.condition, it.reward) }.toSet()
         val hasMultipleVariants = variants.size > 1
 
         val mainCheckbox = CheckBox(requireContext()).apply {
@@ -1061,7 +1051,7 @@ class FilterFragment : Fragment() {
             topRow.addView(expandButton)
 
             variants.forEach { variant ->
-                val key = buildConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward)
+                val key = questConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward)
                 val cb = CheckBox(requireContext()).apply {
                     text = variant.label
                     isChecked = key in enabledEncounterConditions

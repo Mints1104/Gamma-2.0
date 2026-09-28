@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
@@ -20,13 +21,13 @@
                 android:id="@+id/rbRocket"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Rocket Filters"
+                android:text="@string/rocket_filters"
                 android:checked="true"/>
             <RadioButton
                 android:id="@+id/rbQuest"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Quest Filters"
+                android:text="@string/quest_filters"
                 android:layout_marginStart="16dp"/>
 
 
@@ -36,7 +37,7 @@
             android:id="@+id/currentFilterText"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:text="Current selected filter: %s"
+            tools:text="Current selected filter: %s"
             android:layout_marginTop="16dp"
             android:textSize="16sp"
             android:visibility="gone">
@@ -48,7 +49,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Filters Last Refreshed: --"
+            tools:text="Filters Last Refreshed: --"
             android:textSize="14sp"
             android:visibility="gone" />
 
@@ -72,7 +73,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="12dp"
-                android:text="Refreshing quests..." />
+                android:text="@string/refreshing_quests" />
         </LinearLayout>
 
         <!-- Container for Rocket Filters -->

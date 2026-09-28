@@ -13,6 +13,8 @@ import com.mints.projectgammatwo.data.VisitedQuestsPreferences
 import com.mints.projectgammatwo.recyclerviews.DeletedQuestsAdapter
 import androidx.appcompat.app.AlertDialog
 import android.widget.Button
+import androidx.core.view.MenuProvider
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -26,11 +28,6 @@ class DeletedQuestsFragment : Fragment() {
     private lateinit var emptyText: TextView
     private lateinit var countText: TextView
     private lateinit var scrollToTopFab: FloatingActionButton
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setHasOptionsMenu(true)
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -64,21 +61,17 @@ class DeletedQuestsFragment : Fragment() {
         swipeRefresh.setOnRefreshListener { loadData() }
 
         loadData()
-    }
 
-    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
-        inflater.inflate(R.menu.menu_deleted_history, menu)
-        super.onCreateOptionsMenu(menu, inflater)
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_clear_history -> {
-                confirmClearHistory()
-                true
+        requireActivity().addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+                menuInflater.inflate(R.menu.menu_deleted_history, menu)
             }
-            else -> super.onOptionsItemSelected(item)
-        }
+
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
+                R.id.action_clear_history -> { confirmClearHistory(); true }
+                else -> false
+            }
+        }, viewLifecycleOwner, Lifecycle.State.RESUMED)
     }
 
     private fun confirmClearHistory() {

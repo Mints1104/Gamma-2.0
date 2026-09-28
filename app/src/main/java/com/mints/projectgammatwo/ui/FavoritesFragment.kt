@@ -12,7 +12,9 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
 import androidx.coordinatorlayout.widget.CoordinatorLayout
+import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -44,9 +46,6 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     private lateinit var addFavoriteFab: View
     private var favoritesList = mutableListOf<FavoriteLocation>()
     private val gson = Gson()
-    private val FAVORITES_PREFS_NAME = "favorites_prefs"
-    private val KEY_FAVORITES = "favorites_list"
-    private val KEY_ORDER = "favorites_order"
 
     /** Mirrors the persisted sort choice so it doesn't have to be re-read on every mutation. */
     private var currentSortOrder: String = SORT_ORDER_DEFAULT
@@ -63,7 +62,6 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setHasOptionsMenu(true)
         // Registered here so the import dialog, which survives rotation, still has a listener.
         childFragmentManager.setFragmentResultListener(IMPORT_FAVORITES_REQUEST_KEY, this) { _, result ->
             result.getString(JsonImportDialogFragment.RESULT_JSON)?.let { importFavorites(it) }
@@ -98,6 +96,8 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         }
         val itemTouchHelper = ItemTouchHelper(itemTouchHelperCallback)
         itemTouchHelper.attachToRecyclerView(recyclerView)
+
+        requireActivity().addMenuProvider(favoritesMenuProvider, viewLifecycleOwner, Lifecycle.State.RESUMED)
     }
 
     override fun onResume() {
@@ -124,33 +124,25 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         60_000L - (System.currentTimeMillis() % 60_000L)
 
 
-    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
-        inflater.inflate(R.menu.favorites_menu, menu)
-        super.onCreateOptionsMenu(menu, inflater)
-    }
+    private val favoritesMenuProvider = object : MenuProvider {
+        override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+            menuInflater.inflate(R.menu.favorites_menu, menu)
+        }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.menu_import_favorites -> {
-                showImportFavoritesDialog()
-                true
-            }
-            R.id.menu_import_hotspots -> {
-                showImportHotspotsDialog()
-                true
-            }
+        override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
+            R.id.menu_import_favorites -> { showImportFavoritesDialog(); true }
+            R.id.menu_import_hotspots -> { showImportHotspotsDialog(); true }
             R.id.action_sortByName -> {
                 setSortOrder(SORT_ORDER_NAME)
                 sortFavsByName()
                 true
             }
-
             R.id.action_sortByDefault -> {
                 setSortOrder(SORT_ORDER_DEFAULT)
                 sortFavsByDefault()
                 true
             }
-            else -> super.onOptionsItemSelected(item)
+            else -> false
         }
     }
 
@@ -182,11 +174,11 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         // those positions straight into favoritesList — so if the two orders diverge they
         // target the wrong favorite and overwrite it.
         favoritesList.sortBy { it.name }
-        adapter.submitList(favoritesList.toList())
+        adapter.submitList(favoritesList.toList()) { recyclerView.scrollToPosition(0) }
     }
 
     private fun sortFavsByDefault() {
-        loadFavorites()
+        loadFavorites(scrollToTop = true)
     }
 
 
@@ -325,49 +317,22 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     }
 
 
-    private fun loadFavorites() {
-        val prefs = requireContext().getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
-
-        val json = prefs.getString(KEY_FAVORITES, "[]") ?: "[]"
-        val listType = TypeToken
-            .getParameterized(List::class.java, FavoriteLocation::class.java)
-            .type
-        val loadedFavorites: List<FavoriteLocation> = gson.fromJson(json, listType)
-
-        val orderJson = prefs.getString(KEY_ORDER, "[]")
-        val orderType = TypeToken
-            .getParameterized(List::class.java, String::class.java)
-            .type
-        val originalOrder: List<String> = gson.fromJson(orderJson, orderType)
-
-        favoritesList = FavoritesManager.applyStoredOrder(loadedFavorites, originalOrder)
-            .toMutableList()
-
-        // Favorites saved before timezones existed have no timezoneId. Resolve them once here
-        // and write the result back so this doesn't run on every load.
-        if (FavoritesManager.ensureTimezones(favoritesList)) {
-            saveFavorites()
-        }
-
+    /** Loads the favorites in the user's manual order (timezones filled in), then applies the sort. */
+    private fun loadFavorites(scrollToTop: Boolean = false) {
+        favoritesList = FavoritesManager.getFavorites(requireContext()).toMutableList()
         applyCurrentSort()
-        adapter.submitList(favoritesList.toList())
+        // After a re-sort, start from the top once the new order is applied: RecyclerView
+        // otherwise keeps whichever favorite was on top in view, leaving the list mid-way.
+        adapter.submitList(favoritesList.toList()) {
+            if (scrollToTop) recyclerView.scrollToPosition(0)
+        }
     }
-
 
     private fun saveFavorites() {
         val ctx = context ?: return
-        val prefs = ctx
-            .getSharedPreferences(FAVORITES_PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit {
-            putString(KEY_FAVORITES, gson.toJson(favoritesList))
-            // Only record what's on screen as the manual order when the user is actually
-            // arranging by hand. While name-sorted the displayed order is derived, so
-            // overwriting the stored order would destroy their arrangement and leave
-            // "Sort by default" with nothing to restore.
-            if (currentSortOrder == SORT_ORDER_DEFAULT) {
-                putString(KEY_ORDER, gson.toJson(favoritesList.map { it.name }))
-            }
-        }
+        // Only record what's on screen as the manual order when the user is actually arranging
+        // by hand; while name-sorted the displayed order is derived.
+        FavoritesManager.saveFavorites(ctx, favoritesList, updateOrder = currentSortOrder == SORT_ORDER_DEFAULT)
     }
 
 
@@ -419,18 +384,18 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
      * Opens the dialog to add a new favorite.
      */
     private fun showAddFavoriteDialog() {
-        val dialog = FavoriteDialogFragment.newInstance(null, -1)
-        dialog.setTargetFragment(this, 0)
-        dialog.show(parentFragmentManager, "FavoriteDialogFragment")
+        // On the child fragment manager, the dialog finds this fragment as its listener through
+        // parentFragment, including after a rotation (setTargetFragment is deprecated).
+        FavoriteDialogFragment.newInstance(null, -1)
+            .show(childFragmentManager, "FavoriteDialogFragment")
     }
 
     /**
      * Opens the dialog to edit an existing favorite.
      */
     private fun showEditFavoriteDialog(favorite: FavoriteLocation, position: Int) {
-        val dialog = FavoriteDialogFragment.newInstance(favorite, position)
-        dialog.setTargetFragment(this, 0)
-        dialog.show(parentFragmentManager, "FavoriteDialogFragment")
+        FavoriteDialogFragment.newInstance(favorite, position)
+            .show(childFragmentManager, "FavoriteDialogFragment")
     }
 
 
@@ -456,9 +421,8 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
             viewHolder: RecyclerView.ViewHolder,
             target: RecyclerView.ViewHolder
         ): Boolean {
-            // Use adapterPosition everywhere
-            val from = viewHolder.adapterPosition
-            val to   = target.adapterPosition
+            val from = viewHolder.bindingAdapterPosition
+            val to   = target.bindingAdapterPosition
             if (from == RecyclerView.NO_POSITION || to == RecyclerView.NO_POSITION) return false
 
             // Make a mutable copy, swap, and resubmit

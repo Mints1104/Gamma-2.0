@@ -23,7 +23,7 @@
         android:layout_height="48dp"
         android:padding="8dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Drag handle"
+        android:contentDescription="@string/overlay_button_drag_handle"
         android:src="@drawable/ic_drag_handle_overlay" />
 
     <ImageButton
@@ -33,7 +33,7 @@
         android:layout_marginTop="50dp"
         android:padding="8dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Close overlay"
+        android:contentDescription="@string/cd_close_overlay"
         android:src="@drawable/close_24px" />
 
     <ImageButton
@@ -43,7 +43,7 @@
         android:layout_marginTop="100dp"
         android:padding="8dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Next location"
+        android:contentDescription="@string/cd_next_location"
         android:src="@drawable/arrow_right_24px" />
 
     <ImageButton
@@ -53,7 +53,7 @@
         android:layout_marginTop="150dp"
         android:padding="8dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Previous location"
+        android:contentDescription="@string/cd_previous_location"
         android:src="@drawable/arrow_left_24px" />
 
     <ImageButton
@@ -63,7 +63,7 @@
         android:layout_marginTop="200dp"
         android:padding="8dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Home Coordinates"
+        android:contentDescription="@string/home_coordinates"
         android:src="@drawable/home_24px"/>
 
 
@@ -74,7 +74,7 @@
         android:layout_marginTop="250dp"
         android:padding="8dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Switch modes"
+        android:contentDescription="@string/cd_refresh"
         android:src="@drawable/refresh_24px"/>
 
     <ImageButton
@@ -84,7 +84,7 @@
         android:layout_marginTop="300dp"
         android:padding="8dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Switch modes" />
+        android:contentDescription="@string/cd_switch_modes" />
 
     <ImageButton
         android:id="@+id/filter_tab"
@@ -94,7 +94,7 @@
         android:padding="8dp"
         android:src="@drawable/tune_24px"
         android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Switch filters" />
+        android:contentDescription="@string/cd_filters" />
 
     <ImageButton
         android:id="@+id/favorites_tab"
@@ -104,7 +104,7 @@
         android:padding="8dp"
         android:src="@drawable/ic_favorite"
         android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Switch modes" />
+        android:contentDescription="@string/cd_favorites" />
 
 
 

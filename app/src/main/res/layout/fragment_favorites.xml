@@ -17,6 +17,7 @@
     <!-- Floating Action Button to add a new favorite -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/addFavoriteFab"
+        android:contentDescription="@string/cd_add_favorite"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"

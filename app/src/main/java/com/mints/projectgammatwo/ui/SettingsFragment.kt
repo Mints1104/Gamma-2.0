@@ -41,6 +41,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.descriptors.elementNames
 import kotlinx.serialization.json.Json
 import java.io.IOException
@@ -99,6 +100,8 @@ class SettingsFragment : Fragment() {
     private lateinit var customizationManager: com.mints.projectgammatwo.data.OverlayCustomizationManager
 
     private val gson = Gson()
+    // allowTrailingComma is still marked experimental; it lets hand-edited backups import.
+    @OptIn(ExperimentalSerializationApi::class)
     private val kxJson: Json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true

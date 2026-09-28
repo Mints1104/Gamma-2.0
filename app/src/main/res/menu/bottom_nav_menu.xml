@@ -3,28 +3,28 @@
     <item
         android:id="@+id/homeFragment"
         android:icon="@drawable/team_rocket_logo"
-        android:title="Rockets" />
+        android:title="@string/nav_rockets" />
 
     <item
         android:id="@+id/questsFragment"
         android:icon="@drawable/binoculars_2"
-        android:title="Quests" />
+        android:title="@string/nav_quests" />
 
 
     <item
         android:id="@+id/filterFragment"
         android:icon="@drawable/tune_24px"
-        android:title="Filter" />
+        android:title="@string/nav_filter" />
 
     <item
         android:id="@+id/favoritesFragment"
-        android:title="Favorites"
+        android:title="@string/title_favorites"
         android:icon="@drawable/ic_favorite" />
 
     <item
         android:id="@+id/settingsFragment"
         android:icon="@drawable/ic_settings"
-        android:title="Settings" />
+        android:title="@string/nav_settings" />
 
 
 </menu>

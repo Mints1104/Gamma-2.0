@@ -2,18 +2,19 @@
     <string name="app_name">Gamma</string>
     <string name="edit_favorite">Edit Favorite\n</string>
     <string name="discord_link"><![CDATA[<a href="https://discord.gg/VP4mRsvXec">Join our discord</a>]]></string>
-    <string name="overlay_icon">Overlay icon\n</string>
-    <string name="accessibility_service_description">Enables  overlay features</string>
     <string name="refresh_quest_filters">Refresh Quest Filters</string>
     <string name="save_rocket_filter">Save Rocket Filter</string>
     <string name="save_quest_filter">Save Quest Filter</string>
-    <string name="open_journal">Open Journal</string>
     <string name="no_rocket_filters_message">No rocket filters enabled. Please go to the filter tab to select characters.</string>
     <string name="no_invasions_available_message">No invasions available. Please check your filters or change the data source in Settings.</string>
     <string name="battles_last_24h">Battled in last 24h: %1$d</string>
     <string name="enable_overlay_permissions">Enable Overlay Permissions</string>
     <string name="enable_overlay">Enable Overlay</string>
     <string name="stop_overlay">Stop Overlay</string>
+    <string name="sort_by_distance">Sort by Distance</string>
+    <string name="sorted_by_distance">✓ Sorted by Distance</string>
+    <string name="sort_by_time">Sort by Time</string>
+    <string name="sorted_by_time">✓ Sorted by Time</string>
     <string name="overlay_notification_title">Gamma overlay is running</string>
     <string name="overlay_notification_text">Tap to open Gamma</string>
     <string name="overlay_notification_stop">Stop</string>
@@ -60,12 +61,6 @@
     <string name="deleted_item_coords">Location: %1$.5f, %2$.5f</string>
     <string name="deleted_item_time">Battled: %1$s</string>
 
-    <string name="deleted_item_name_placeholder">Pokestop: —</string>
-    <string name="deleted_item_source_placeholder">Source: —</string>
-    <string name="deleted_item_character_placeholder">Character: —</string>
-    <string name="deleted_item_type_placeholder">Type: —</string>
-    <string name="deleted_item_coords_placeholder">Location: —</string>
-    <string name="deleted_item_time_placeholder">Battled: —</string>
     <string name="copy">Copy</string>
     <string name="teleport">Teleport</string>
     <string name="history">History</string>
@@ -120,4 +115,81 @@
     <string name="deeplink_custom_url_example">Example: https://example.com/?coords=%s</string>
     <string name="deeplink_custom_url_saved">Custom deeplink URL saved</string>
     <string name="deeplink_custom_url_invalid">Custom URL should contain %s placeholder for coordinates</string>
+
+    <!-- Layout and menu text -->
+    <string name="import_hotspots">Import Hotspots</string>
+    <string name="import_hotspots_message">This will import all hotspot locations to your favorites. Do you want to continue?</string>
+    <string name="action_import">Import</string>
+    <string name="delete_filter_title">Delete Filter</string>
+    <string name="delete_filter_message">Are you sure you want to delete this filter?</string>
+    <string name="favorite_name_hint">Favorite Name</string>
+    <string name="favorite_coordinates_hint">Latitude,Longitude</string>
+    <string name="action_save">Save</string>
+    <string name="import_favorites">Import Favorites</string>
+    <string name="import_favorites_hint">Paste favorites JSON here</string>
+    <string name="import_settings">Import Settings</string>
+    <string name="import_settings_hint">Paste settings JSON here</string>
+    <string name="customize_overlay">Customize Overlay</string>
+    <string name="action_reset">Reset</string>
+    <string name="action_apply">Apply</string>
+    <string name="overlay_button_size">Button Size</string>
+    <string name="overlay_size_label">Size:</string>
+    <string name="overlay_button_visibility_order">Button Visibility &amp; Order</string>
+    <string name="overlay_reorder_hint">Drag to reorder, toggle to show/hide</string>
+    <string name="overlay_permission_title">Overlay Permission Required</string>
+    <string name="overlay_permission_message">This app needs the \'Display over other apps\' permission to draw over other apps. Please enable this in the settings.</string>
+    <string name="action_not_now">Not Now</string>
+    <string name="action_open_settings">Open Settings</string>
+    <string name="save_filter_title">Enter a name for the new filter</string>
+    <string name="save_filter_hint">New filter name</string>
+    <string name="action_save_as_new">Save as New</string>
+    <string name="select_filter_title">Select Filter</string>
+    <string name="title_favorites">Favorites</string>
+    <string name="cd_delete_filter">Delete filter</string>
+    <string name="action_select">Select</string>
+    <string name="battles_last_24h_none">Battled in last 24h: 0</string>
+    <string name="rocket_filters">Rocket Filters</string>
+    <string name="quest_filters">Quest Filters</string>
+    <string name="refreshing_quests">Refreshing quests…</string>
+    <string name="total_quests_none">Total Quests: 0</string>
+    <string name="data_sources">Data Sources</string>
+    <string name="source_nyc">NYC</string>
+    <string name="source_london">London</string>
+    <string name="source_singapore">Singapore</string>
+    <string name="source_vancouver">Vancouver</string>
+    <string name="source_sydney">Sydney</string>
+    <string name="home_coordinates">Home Coordinates</string>
+    <string name="home_coordinates_hint">Enter home coordinates</string>
+    <string name="overlay_customization">Overlay Customization</string>
+    <string name="settings_import_export">Settings Import/Export</string>
+    <string name="export_settings">Export Settings</string>
+    <string name="about_app">Gamma by Mints\nVersion: 4.0</string>
+    <string name="teleport_method">Teleport Method:</string>
+    <string name="teleport_joystick">GPS Joystick</string>
+    <string name="item_teleport">TELEPORT</string>
+    <string name="item_copy">COPY</string>
+    <string name="item_delete">DELETE</string>
+    <string name="title_filters">Filters</string>
+    <string name="cd_drag_to_reorder">Drag to reorder</string>
+    <string name="cd_button_icon">Button icon</string>
+    <string name="cd_close_overlay">Close overlay</string>
+    <string name="cd_next_location">Next location</string>
+    <string name="cd_previous_location">Previous location</string>
+    <string name="nav_rockets">Rockets</string>
+    <string name="nav_quests">Quests</string>
+    <string name="nav_filter">Filter</string>
+    <string name="nav_settings">Settings</string>
+    <string name="action_edit">Edit</string>
+    <string name="sort_by_name">Sort by Name</string>
+    <string name="sort_by_order_added">Sort by Order Added</string>
+    <string name="default_order">Default Order</string>
+
+    <!-- Screen-reader labels -->
+    <string name="cd_add_favorite">Add favorite</string>
+    <string name="cd_more_options">More options</string>
+    <string name="cd_close">Close</string>
+    <string name="cd_refresh">Refresh</string>
+    <string name="cd_switch_modes">Switch between invasions and quests</string>
+    <string name="cd_filters">Filters</string>
+    <string name="cd_favorites">Favorites</string>
 </resources>

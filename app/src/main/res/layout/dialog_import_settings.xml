@@ -11,7 +11,7 @@
         android:id="@+id/importSettingsTitle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Import Settings"
+        android:text="@string/import_settings"
         android:textSize="18sp"
         android:textStyle="bold"
         android:gravity="center"
@@ -24,7 +24,7 @@
         android:id="@+id/editImportJson"
         android:layout_width="0dp"
         android:layout_height="100dp"
-        android:hint="Paste settings JSON here"
+        android:hint="@string/import_settings_hint"
         android:inputType="textMultiLine"
         android:gravity="top|start"
         android:scrollbars="vertical"
@@ -55,7 +55,7 @@
         android:id="@+id/cancelImportButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Cancel"
+        android:text="@string/action_cancel"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
@@ -64,7 +64,7 @@
         android:id="@+id/importButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Import"
+        android:text="@string/action_import"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 

@@ -1,6 +1,6 @@
 package com.mints.projectgammatwo.data
 
-import android.util.Base64
+import kotlin.io.encoding.Base64
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -45,7 +45,9 @@ private const val COND_SEP = "\u0000"
 fun encodeConditionSet(conditions: Set<String>): String {
     if (conditions.isEmpty()) return ""
     val joined = conditions.joinToString(COND_SEP)
-    return Base64.encodeToString(joined.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+    // Kotlin's Base64 rather than android.util's: identical output (standard alphabet, padded,
+    // unwrapped, so older exports still decode), and it runs in JVM unit tests.
+    return Base64.encode(joined.toByteArray(Charsets.UTF_8))
 }
 
 /**
@@ -56,7 +58,7 @@ fun encodeConditionSet(conditions: Set<String>): String {
 fun decodeConditionSet(encoded: String?, legacy: Set<String>? = null): Set<String> {
     if (encoded.isNullOrEmpty()) return legacy ?: emptySet()
     return try {
-        val bytes = Base64.decode(encoded, Base64.NO_WRAP)
+        val bytes = Base64.decode(encoded)
         bytes.toString(Charsets.UTF_8).split(COND_SEP).filter { it.isNotEmpty() }.toSet()
     } catch (e: Exception) {
         legacy ?: emptySet()

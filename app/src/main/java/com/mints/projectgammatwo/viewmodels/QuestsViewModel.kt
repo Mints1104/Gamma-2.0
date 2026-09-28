@@ -10,6 +10,8 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.map
 import com.mints.projectgammatwo.helpers.Event
+import com.mints.projectgammatwo.helpers.filterQuestsByConditions
+import com.mints.projectgammatwo.helpers.questConditionKey
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import com.mints.projectgammatwo.data.ApiClient
@@ -203,22 +205,6 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                 Log.w("QuestsViewModel", "Failed to restore cached sub-variants", e)
             }
         }
-    }
-
-    private fun buildConditionKey(type: String, id: String, amount: String, condition: String, reward: String): String {
-        return "$type|$id|$amount|$condition|$reward"
-    }
-
-    private fun buildLegacyConditionKey(type: String, id: String, amount: String, condition: String): String {
-        return "$type|$id|$amount|$condition"
-    }
-
-    private fun parseFilterPrefix(filterStr: String): Pair<String, String>? {
-        val parts = filterStr.split(",")
-        if (parts.size < 3) return null
-        val type = parts[0]
-        val id = if (type == "3" || type == "8") parts[1] else parts[2]
-        return type to id
     }
 
     private fun buildFullFilterList(filters: Quests.Filters): List<String> {
@@ -596,9 +582,9 @@ filters.t4.forEach { list.add("4,0,$it") }
                         }
 
                         val list = subVariantMap.getOrPut(baseKey) { mutableListOf() }
-                        val conditionKey = buildConditionKey(type, id, amt, condition, rewardLabel)
+                        val conditionKey = questConditionKey(type, id, amt, condition, rewardLabel)
                         val isDuplicate = list.any {
-                            buildConditionKey(it.type, it.id, it.amount, it.condition, it.reward) == conditionKey
+                            questConditionKey(it.type, it.id, it.amount, it.condition, it.reward) == conditionKey
                         }
                         if (!isDuplicate) {
                             if (type == "8") {
@@ -647,62 +633,8 @@ filters.t4.forEach { list.add("4,0,$it") }
 
 
                     val enabledConditions = filterPreferences.getEnabledEncounterConditions()
-                    if (enabledConditions.isNotEmpty() && filtersToUse.isNotEmpty()) {
-                        val enabledPrefixes = filtersToUse.mapNotNull { parseFilterPrefix(it) }.toSet()
-                        Log.d(
-                            "QuestsViewModel",
-                            "Quest filter prefixes: enabled=${enabledPrefixes.size}, conditional=${enabledConditions.size}"
-                        )
-                        val prefixesWithConditions = enabledConditions.mapNotNull { key ->
-                            val parts = key.split("|")
-                            if (parts.size < 3) null
-                            else if (parts[0] == "8") Pair(parts[0], parts[2]) else Pair(parts[0], parts[1])
-                        }.toSet()
-
-                        var questsDroppedByCondition = 0
-                        var questsMatchedByPrefixButFailedCondition = 0
-                        var questsMatchedByCondition = 0
-
-                        filteredQuests = filteredQuests.filter { quest ->
-                            val types = quest.rewardsTypes.split(",").map { it.trim() }
-                            val ids = quest.rewardsIds.split(",").map { it.trim() }
-                            val amts = quest.rewardsAmounts.split(",").map { it.trim() }
-                            val condition = quest.conditionsString.trim()
-                            val rewardLabel = quest.rewardsString.trim()
-
-                            var matchedPrefix = false
-
-                            val keep = types.indices.any { i ->
-                                val type = types.getOrNull(i) ?: return@any false
-                                val id = ids.getOrNull(i) ?: return@any false
-                                val amt = amts.getOrNull(i) ?: return@any false
-                                val prefix = if (type == "8") type to amt else type to id
-                                if (!enabledPrefixes.contains(prefix)) return@any false
-                                matchedPrefix = true
-
-                                if (prefixesWithConditions.contains(prefix)) {
-                                    val key = buildConditionKey(type, id, amt, condition, rewardLabel)
-                                    val legacyKey = buildLegacyConditionKey(type, id, amt, condition)
-                                    enabledConditions.contains(key) || enabledConditions.contains(legacyKey)
-                                } else {
-                                    true
-                                }
-                            }
-
-                            if (keep) {
-                                questsMatchedByCondition += 1
-                            } else if (matchedPrefix) {
-                                questsMatchedByPrefixButFailedCondition += 1
-                                questsDroppedByCondition += 1
-                            }
-
-                            keep
-                        }
-                        Log.d(
-                            "QuestsViewModel",
-                            "Filtered quests after condition filtering: ${filteredQuests.size} (matched=$questsMatchedByCondition, droppedByCondition=$questsDroppedByCondition, prefixMatchedButConditionFailed=$questsMatchedByPrefixButFailedCondition)"
-                        )
-                    }
+                    filteredQuests = filterQuestsByConditions(filteredQuests, filtersToUse, enabledConditions)
+                    Log.d("QuestsViewModel", "Filtered quests after condition filtering: ${filteredQuests.size}")
 
                     // Pre-limit by proximity to last visited when available to reduce sorting cost
                     filteredQuests = if (startLat != null && startLng != null) {

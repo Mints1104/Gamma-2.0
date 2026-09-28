@@ -3,11 +3,11 @@
     <group android:checkableBehavior="single">
         <item
             android:id="@+id/sort_default"
-            android:title="Default Order"
+            android:title="@string/default_order"
             android:checkable="true" />
         <item
             android:id="@+id/sort_by_name"
-            android:title="Sort by Name"
+            android:title="@string/sort_by_name"
             android:checkable="true" />
     </group>
 </menu>

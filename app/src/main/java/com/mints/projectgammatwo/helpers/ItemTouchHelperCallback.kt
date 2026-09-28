@@ -28,7 +28,7 @@ class ItemTouchHelperCallback(
         viewHolder: RecyclerView.ViewHolder,
         target: RecyclerView.ViewHolder
     ): Boolean {
-        return adapter.onItemMove(viewHolder.adapterPosition, target.adapterPosition)
+        return adapter.onItemMove(viewHolder.bindingAdapterPosition, target.bindingAdapterPosition)
     }
 
     override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {

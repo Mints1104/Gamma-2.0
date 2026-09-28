@@ -11,7 +11,7 @@
         android:id="@+id/editFavoriteName"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:hint="Favorite Name"
+        android:hint="@string/favorite_name_hint"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
@@ -21,7 +21,7 @@
         android:id="@+id/editFavoriteCoordinates"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:hint="Latitude,Longitude"
+        android:hint="@string/favorite_coordinates_hint"
         android:inputType="text"
         app:layout_constraintTop_toBottomOf="@id/editFavoriteName"
         app:layout_constraintStart_toStartOf="parent"
@@ -33,7 +33,7 @@
         android:id="@+id/cancelFavoriteButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Cancel"
+        android:text="@string/action_cancel"
         app:layout_constraintTop_toBottomOf="@id/editFavoriteCoordinates"
         app:layout_constraintStart_toStartOf="parent"
         android:layout_marginTop="16dp" />
@@ -43,7 +43,7 @@
         android:id="@+id/saveFavoriteButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Save"
+        android:text="@string/action_save"
         app:layout_constraintTop_toTopOf="@id/cancelFavoriteButton"
         app:layout_constraintEnd_toEndOf="parent" />
 </androidx.constraintlayout.widget.ConstraintLayout>
