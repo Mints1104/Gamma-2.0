@@ -325,26 +325,29 @@ class SettingsFragment : Fragment() {
     }
 
     private fun restartOverlayService() {
-        // Check if overlay service is running by checking shared preferences or a flag
+        // The in-memory flag, not the old "overlay_running" pref: a crash or force-stop left the
+        // pref true, and saving a customization then started an overlay nobody had open.
+        val isOverlayRunning = com.mints.projectgammatwo.services.OverlayService.running.value == true
         val sharedPrefs = requireContext().getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE)
-        val isOverlayRunning = sharedPrefs.getBoolean("overlay_running", false)
         val currentMode = sharedPrefs.getString("overlay_mode", "invasions") ?: "invasions"
-        
+
         if (isOverlayRunning) {
-            // Stop the service
-            val stopIntent = Intent(requireContext(), com.mints.projectgammatwo.services.OverlayService::class.java)
-            requireContext().stopService(stopIntent)
-            
+            // Application context: the restart runs after a delay, by which time this fragment
+            // may be gone and requireContext() would throw.
+            val appContext = requireContext().applicationContext
+            val stopIntent = Intent(appContext, com.mints.projectgammatwo.services.OverlayService::class.java)
+            appContext.stopService(stopIntent)
+
             // Wait a bit before restarting
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 // Restart the service
-                val startIntent = Intent(requireContext(), com.mints.projectgammatwo.services.OverlayService::class.java)
+                val startIntent = Intent(appContext, com.mints.projectgammatwo.services.OverlayService::class.java)
                 startIntent.putExtra("mode", currentMode)
-                
+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    requireContext().startForegroundService(startIntent)
+                    appContext.startForegroundService(startIntent)
                 } else {
-                    requireContext().startService(startIntent)
+                    appContext.startService(startIntent)
                 }
             }, 500)
         }

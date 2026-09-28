@@ -23,6 +23,7 @@ import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.FavoriteLocation
 import com.mints.projectgammatwo.data.FavoritesManager
 import com.mints.projectgammatwo.helpers.Teleporter
+import com.mints.projectgammatwo.helpers.toPlainCoordinate
 import com.mints.projectgammatwo.recyclerviews.FavoritesAdapter
 import java.util.Collections
 import androidx.core.content.edit
@@ -401,7 +402,10 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
 
     private fun copyFavorite(favorite: FavoriteLocation) {
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        val clip = ClipData.newPlainText("Favorite Coordinates", "${favorite.lat}, ${favorite.lng}")
+        val clip = ClipData.newPlainText(
+            "Favorite Coordinates",
+            "${favorite.lat.toPlainCoordinate()}, ${favorite.lng.toPlainCoordinate()}"
+        )
         clipboard.setPrimaryClip(clip)
         Toast.makeText(requireContext(), "Coordinates copied to clipboard", Toast.LENGTH_SHORT).show()
     }

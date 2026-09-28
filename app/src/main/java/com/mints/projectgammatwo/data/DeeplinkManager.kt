@@ -2,7 +2,7 @@ package com.mints.projectgammatwo.data
 
 import android.content.Context
 import androidx.core.content.edit
-import java.math.BigDecimal
+import com.mints.projectgammatwo.helpers.toPlainCoordinate
 
 /**
  * Manages deeplink preferences for teleporting to coordinates.
@@ -75,9 +75,7 @@ class DeeplinkManager private constructor(context: Context) {
      * @return The formatted deeplink URL
      */
     fun generateDeeplink(lat: Double, lng: Double): String {
-        // Double.toString switches to scientific notation below 0.001, which turns a spot near
-        // the equator or prime meridian (a strip running through London) into "51.5,-7.47E-4".
-        val coords = "${lat.toPlainString()},${lng.toPlainString()}"
+        val coords = "${lat.toPlainCoordinate()},${lng.toPlainCoordinate()}"
 
         // Substitute the placeholder literally rather than via String.format: a user-supplied
         // template is a URL, and any percent-encoding in it ("%20", "%2C") or a literal "%" is
@@ -96,6 +94,4 @@ class DeeplinkManager private constructor(context: Context) {
             else -> IPOGO_FORMAT.replace(PLACEHOLDER, coords)
         }
     }
-
-    private fun Double.toPlainString(): String = BigDecimal.valueOf(this).toPlainString()
 }

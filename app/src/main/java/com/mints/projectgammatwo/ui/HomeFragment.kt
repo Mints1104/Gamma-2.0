@@ -1,8 +1,6 @@
 package com.mints.projectgammatwo.ui
 
-import android.content.Intent
 import android.os.Bundle
-import android.provider.Settings
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.Menu
@@ -10,10 +8,8 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
@@ -22,10 +18,9 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.mints.projectgammatwo.R
-import com.mints.projectgammatwo.helpers.OverlayServiceManager
+import com.mints.projectgammatwo.helpers.OverlayButtonController
 import com.mints.projectgammatwo.recyclerviews.InvasionsAdapter
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
-import androidx.core.net.toUri
 import com.mints.projectgammatwo.data.DataMappings
 import androidx.lifecycle.Lifecycle
 
@@ -35,7 +30,7 @@ class HomeFragment : Fragment() {
     private val viewModel: HomeViewModel by activityViewModels()
     private lateinit var adapter: InvasionsAdapter
     private lateinit var swipeRefresh: SwipeRefreshLayout
-    private lateinit var serviceManager: OverlayServiceManager
+    private val overlayButton = OverlayButtonController(this, "invasions")
     private lateinit var scrollToTopFab: FloatingActionButton
     private lateinit var recyclerView: RecyclerView
     private lateinit var errorHandlerText: TextView
@@ -59,8 +54,6 @@ class HomeFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        serviceManager = OverlayServiceManager(requireContext())
-
         recyclerView = view.findViewById(R.id.invasionsRecyclerView)
         swipeRefresh = view.findViewById(R.id.swipeRefresh)
         scrollToTopFab = view.findViewById(R.id.scrollToTopFab)
@@ -113,14 +106,10 @@ class HomeFragment : Fragment() {
             deletedCountTextView.text = getString(R.string.battles_last_24h, count)
         }
 
-        val startServiceButton = view.findViewById<Button>(R.id.startServiceButton)
-        startServiceButton.setOnClickListener {
-            handleStartServiceClick()
-        }
+        overlayButton.bind(view.findViewById(R.id.startServiceButton))
 
         viewModel.restoreSavedSortMode()
         viewModel.refreshIfStale()
-        updateServiceButtonState(startServiceButton)
 
         // Observe sort mode changes to update menu
         viewModel.sortByDistance.observe(viewLifecycleOwner) {
@@ -145,9 +134,7 @@ class HomeFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        view?.findViewById<Button>(R.id.startServiceButton)?.let {
-            updateServiceButtonState(it)
-        }
+        overlayButton.updateLabel()
         checkAndUpdateFabVisibility()
     }
 
@@ -239,49 +226,5 @@ class HomeFragment : Fragment() {
             return
         }
         scrollToTopFab.show()
-    }
-
-    private fun handleStartServiceClick() {
-        if (Settings.canDrawOverlays(requireContext())) {
-            serviceManager.startOverlayService("invasions")
-            return
-        }
-
-        val builder = AlertDialog.Builder(requireContext())
-        val inflater = requireActivity().layoutInflater
-        val dialogView = inflater.inflate(R.layout.dialog_overlay_permission, null)
-
-        val notNowButton = dialogView.findViewById<Button>(R.id.notNowButton)
-        val openSettingsButton = dialogView.findViewById<Button>(R.id.openSettingsButton)
-
-        builder.setView(dialogView)
-        builder.setCancelable(false)
-        val dialog = builder.create()
-
-        notNowButton.setOnClickListener {
-            dialog.dismiss()
-        }
-
-        openSettingsButton.setOnClickListener {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                "package:${requireContext().packageName}".toUri()
-            )
-            startActivity(intent)
-            dialog.dismiss()
-        }
-
-        dialog.show()
-    }
-
-    private fun updateServiceButtonState(button: Button) {
-        val overlayPermission = Settings.canDrawOverlays(requireContext())
-        Log.d("PermissionStatus", "Overlay permission: $overlayPermission")
-
-        if (!overlayPermission) {
-            button.setText(R.string.enable_overlay_permissions)
-        } else {
-            button.setText(R.string.enable_overlay)
-        }
     }
 }

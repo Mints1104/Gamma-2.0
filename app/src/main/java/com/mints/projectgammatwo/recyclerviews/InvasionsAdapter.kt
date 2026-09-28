@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.helpers.Teleporter
+import com.mints.projectgammatwo.helpers.toPlainCoordinate
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -74,7 +75,7 @@ class InvasionsAdapter(
             }
 
             copyButton.setOnClickListener {
-                val coordsText = "${invasion.lat},${invasion.lng}"
+                val coordsText = "${invasion.lat.toPlainCoordinate()},${invasion.lng.toPlainCoordinate()}"
                 val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 val clip = ClipData.newPlainText("Coordinates", coordsText)
                 clipboard.setPrimaryClip(clip)

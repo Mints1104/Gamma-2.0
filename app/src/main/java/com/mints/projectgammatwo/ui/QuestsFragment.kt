@@ -1,17 +1,11 @@
 package com.mints.projectgammatwo.ui
 
-import android.content.Intent
 import android.os.Bundle
-import android.provider.Settings
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
-import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -20,7 +14,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.Quests
-import com.mints.projectgammatwo.helpers.OverlayServiceManager
+import com.mints.projectgammatwo.helpers.OverlayButtonController
 import com.mints.projectgammatwo.recyclerviews.QuestsAdapter
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
 
@@ -32,7 +26,7 @@ class QuestsFragment : Fragment() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var questsAdapter: QuestsAdapter
     private lateinit var questsViewModel: QuestsViewModel
-    private lateinit var serviceManager: OverlayServiceManager
+    private val overlayButton = OverlayButtonController(this, "quests")
     private lateinit var scrollToTopFab: FloatingActionButton
     private lateinit var questErrorHandler: TextView
 
@@ -51,7 +45,6 @@ class QuestsFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         // Removed fragment menu provider; MainActivity owns the app bar menu
 
-        serviceManager = OverlayServiceManager(requireContext())
         swipeRefresh = view.findViewById(R.id.swipeRefresh)
         questsCountText = view.findViewById(R.id.questsCountText)
         recyclerView = view.findViewById(R.id.questsRecyclerView)
@@ -101,11 +94,7 @@ class QuestsFragment : Fragment() {
             questsViewModel.fetchQuests()
         }
 
-        val startServiceButton = view.findViewById<Button>(R.id.startServiceButton)
-        startServiceButton.setOnClickListener {
-            handleStartServiceClick()
-        }
-        updateServiceButtonState(startServiceButton)
+        overlayButton.bind(view.findViewById(R.id.startServiceButton))
 
         if (questsViewModel.refreshIfStale()) {
             swipeRefresh.isRefreshing = true
@@ -169,62 +158,13 @@ class QuestsFragment : Fragment() {
         scrollToTopFab.show()
     }
 
-    private fun handleStartServiceClick() {
-        // Check if we have overlay permission
-        if (Settings.canDrawOverlays(requireContext())) {
-            // We have permission, start service directly
-            serviceManager.startOverlayService("quests")
-            return
-        }
-
-        val builder = AlertDialog.Builder(requireContext())
-        val inflater = requireActivity().layoutInflater
-        val dialogView = inflater.inflate(R.layout.dialog_overlay_permission, null)
-
-        val notNowButton = dialogView.findViewById<Button>(R.id.notNowButton)
-        val openSettingsButton = dialogView.findViewById<Button>(R.id.openSettingsButton)
-
-        builder.setView(dialogView)
-        builder.setCancelable(false)
-        val dialog = builder.create()
-
-        // Set up button click listeners
-        notNowButton.setOnClickListener {
-            dialog.dismiss()
-        }
-
-        openSettingsButton.setOnClickListener {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                "package:${requireContext().packageName}".toUri()
-            )
-            startActivity(intent)
-            dialog.dismiss()
-        }
-
-        dialog.show()
-    }
-
-    private fun updateServiceButtonState(button: Button) {
-        val overlayPermission = Settings.canDrawOverlays(requireContext())
-        Log.d("PermissionStatus", "Overlay permission: $overlayPermission")
-
-        if (!overlayPermission) {
-            button.setText(R.string.enable_overlay_permissions)
-        } else {
-            button.setText(R.string.enable_overlay)
-        }
-    }
-
     private fun updateQuestsCount(count: Int) {
         questsCountText.text = getString(R.string.total_quests, count)
     }
 
     override fun onResume() {
         super.onResume()
-        view?.findViewById<Button>(R.id.startServiceButton)?.let {
-            updateServiceButtonState(it)
-        }
+        overlayButton.updateLabel()
         checkAndUpdateFabVisibility()
 
     }

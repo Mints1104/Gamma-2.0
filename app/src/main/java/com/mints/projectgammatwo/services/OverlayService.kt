@@ -1,7 +1,9 @@
 package com.mints.projectgammatwo.services
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -30,6 +32,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.edit
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
@@ -74,7 +78,12 @@ private const val PREF_FILTER_SORT_ORDER = "filter_sort_order"
 class OverlayService : Service() {
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
-    private var currentIndex = 0
+    /**
+     * Position in the current list of the last teleport, or -1 before the first one, so that ▶
+     * lands on item 0. It used to start at 0 and be reset to 0 on refresh, which made ▶ skip
+     * straight to the second item.
+     */
+    private var currentIndex = -1
     private val TAG = "OverlayService"
 
     /**
@@ -132,6 +141,18 @@ class OverlayService : Service() {
         private const val TAG = "OverlayService"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "overlay_service_channel"
+
+        /** Sent by the notification's Stop action. */
+        const val ACTION_STOP = "com.mints.projectgammatwo.action.STOP_OVERLAY"
+
+        private val _running = MutableLiveData(false)
+
+        /**
+         * Whether the service is alive, for the screens' Start/Stop Overlay button. Held in memory
+         * rather than in prefs: it dies with the process along with the service, so it can't be
+         * left stale by a crash or a force-stop.
+         */
+        val running: LiveData<Boolean> = _running
     }
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -156,13 +177,7 @@ class OverlayService : Service() {
         deletedInvasionsRepository = DeletedInvasionsRepository(this)
         customizationManager = OverlayCustomizationManager(this)
 
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Invasion Overlay")
-            .setContentText("Overlay service is running")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
-        startForeground(NOTIFICATION_ID, notification)
+        startForeground(NOTIFICATION_ID, buildNotification())
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val favorites = FavoritesManager.getFavorites(this)
         if (favorites.isNotEmpty()) {
@@ -171,9 +186,30 @@ class OverlayService : Service() {
             Log.d(TAG, "No favorites found")
         }
 
-        // Save overlay running state
-        val sharedPrefs = getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE)
-        sharedPrefs.edit().putBoolean("overlay_running", true).apply()
+        _running.value = true
+    }
+
+    private fun buildNotification(): Notification {
+        // Tapping the notification brings the app back (resuming its task if it has one).
+        val openApp = packageManager.getLaunchIntentForPackage(packageName)?.let {
+            PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        }
+        val stop = PendingIntent.getService(
+            this, 1,
+            Intent(this, OverlayService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(getString(R.string.overlay_notification_title))
+            .setContentText(getString(R.string.overlay_notification_text))
+            // Small icons are drawn from the alpha channel only: the adaptive launcher foreground
+            // rendered as a solid blob, the single-path logo renders as the "R".
+            .setSmallIcon(R.drawable.team_rocket_logo)
+            .setContentIntent(openApp)
+            .addAction(0, getString(R.string.overlay_notification_stop), stop)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
     }
 
     // Android 15 compatibility: Handle foreground service timeout
@@ -233,6 +269,11 @@ class OverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            Log.d(TAG, "Stop requested from the notification")
+            stopSelf()
+            return START_NOT_STICKY
+        }
         val mode = intent?.getStringExtra("mode").toString()
         Log.d(TAG, "Service onStartCommand with mode: $mode")
 
@@ -253,6 +294,9 @@ class OverlayService : Service() {
 
     private fun addOverlay(mode: String) {
         if (overlayView != null) return
+        // A new overlay (including a mode switch) walks its list from the top; the index of the
+        // other mode's list means nothing here.
+        currentIndex = -1
         overlayView = LayoutInflater.from(this).inflate(R.layout.overlay_layout, null)
         val params = WindowManager.LayoutParams().apply {
             width = WRAP_CONTENT
@@ -401,7 +445,8 @@ class OverlayService : Service() {
                     fetchQuests()
                     return@setOnClickListener
                 }
-                currentIndex = (currentIndex + 1) % currentQuests.size
+                // floorMod: the list may have shrunk since the last teleport.
+                currentIndex = Math.floorMod(currentIndex + 1, currentQuests.size)
                 Log.d(TAG, "Navigating to quest at index $currentIndex: ${currentQuests[currentIndex].lat}, ${currentQuests[currentIndex].lng}")
                 showOverlayToast( "Teleporting to ${currentQuests[currentIndex].rewardsString}")
                 launchQuest(currentQuests[currentIndex])
@@ -445,7 +490,9 @@ class OverlayService : Service() {
                     fetchQuests()
                     return@setOnClickListener
                 }
-                currentIndex = if (currentIndex - 1 < 0) currentQuests.size - 1 else currentIndex - 1
+                // From "before the first" (-1), ◀ goes to the last item. floorMod also covers an
+                // index left past the end of a list that has since shrunk, which used to crash.
+                currentIndex = Math.floorMod(currentIndex.coerceAtLeast(0) - 1, currentQuests.size)
                 showOverlayToast("Teleporting to ${currentQuests[currentIndex].name}")
                 launchQuest(currentQuests[currentIndex])
             } else {
@@ -456,7 +503,8 @@ class OverlayService : Service() {
                     fetchInvasions()
                     return@setOnClickListener
                 }
-                val previous = nextLiveInvasionIndex(currentInvasions, currentIndex, -1, nowSeconds())
+                // From "before the first" (-1), step back from 0 so ◀ lands on the last one.
+                val previous = nextLiveInvasionIndex(currentInvasions, currentIndex.coerceAtLeast(0), -1, nowSeconds())
                 if (previous == null) {
                     refetchExpiredInvasions()
                     return@setOnClickListener
@@ -515,7 +563,7 @@ class OverlayService : Service() {
             CurrentInvasionData.currentInvasions = invasions.toMutableList()
             if (invasions.isNotEmpty()) {
                 showOverlayToast("Found ${invasions.size} invasions")
-                currentIndex = 0
+                currentIndex = -1
             } else {
                 showOverlayToast("No invasions found")
             }
@@ -535,6 +583,9 @@ class OverlayService : Service() {
 
     private fun fetchQuests() {
         Log.d(TAG, "Fetching quests...")
+        // Nothing observes the quest result here, so restart the walk now: ▶ then begins at the
+        // top of whichever list it finds.
+        currentIndex = -1
         questsViewModel.fetchQuests()
     }
 
@@ -620,10 +671,8 @@ class OverlayService : Service() {
         viewModelStore.clear()
         serviceScope.cancel()
 
-        // Clear overlay running state
-        val sharedPrefs = getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE)
-        sharedPrefs.edit().putBoolean("overlay_running", false).apply()
-        
+        _running.value = false
+
         Log.d(TAG, "Service destroyed completely")
     }
 

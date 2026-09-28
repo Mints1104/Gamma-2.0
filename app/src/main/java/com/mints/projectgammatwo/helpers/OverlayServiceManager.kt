@@ -37,5 +37,9 @@ class OverlayServiceManager(private val context: Context) {
         }
     }
 
-
+    /** Stop the overlay service; its onDestroy removes every overlay window and the notification. */
+    fun stopOverlayService() {
+        Log.d(TAG, "Stopping OverlayService")
+        context.stopService(Intent(context, OverlayService::class.java))
+    }
 }

@@ -10,6 +10,7 @@ import androidx.fragment.app.DialogFragment
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.FavoriteLocation
 import com.mints.projectgammatwo.data.FavoriteTimeFormatter
+import com.mints.projectgammatwo.helpers.isValidLatLng
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -96,6 +97,11 @@ class FavoriteDialogFragment : DialogFragment() {
             val lng = parts[1].toDoubleOrNull()
             if (lat == null || lng == null) {
                 Toast.makeText(context, "Invalid coordinates", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            // Any number used to parse, so a typo like 407.128 was saved and later teleported to.
+            if (!isValidLatLng(lat, lng)) {
+                Toast.makeText(context, R.string.favorite_coordinates_out_of_range, Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
 

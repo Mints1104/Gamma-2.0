@@ -2,6 +2,7 @@ package com.mints.projectgammatwo.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.mints.projectgammatwo.helpers.isValidLatLng
 
 /**
  * Utility class for managing home coordinates throughout the application.
@@ -52,8 +53,7 @@ class HomeCoordinatesManager(private val context: Context) {
             val lat = parts[0].toDouble()
             val lng = parts[1].toDouble()
 
-            // Validate coordinates are in valid range
-            if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
+            if (!isValidLatLng(lat, lng)) return null
 
             Pair(lat, lng)
         } catch (e: Exception) {
@@ -82,9 +82,7 @@ class HomeCoordinatesManager(private val context: Context) {
      * @return Boolean indicating if coordinates were successfully saved
      */
     fun saveHomeCoordinates(latitude: Double, longitude: Double): Boolean {
-        if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-            return false
-        }
+        if (!isValidLatLng(latitude, longitude)) return false
 
         val coordString = "$latitude, $longitude"
         sharedPreferences.edit().putString(KEY_HOME_COORDS, coordString).apply()
@@ -106,7 +104,7 @@ class HomeCoordinatesManager(private val context: Context) {
             val lat = parts[0].toDouble()
             val lng = parts[1].toDouble()
 
-            lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+            isValidLatLng(lat, lng)
         } catch (e: Exception) {
             false
         }

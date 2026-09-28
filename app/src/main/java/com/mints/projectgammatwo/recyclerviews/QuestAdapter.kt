@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.Quests.Quest
 import com.mints.projectgammatwo.helpers.Teleporter
+import com.mints.projectgammatwo.helpers.toPlainCoordinate
 
 class QuestsAdapter(
     private val onQuestVisited: (Quest) -> Unit
@@ -62,7 +63,10 @@ class QuestsAdapter(
 
             copyButton.setOnClickListener {
                 val clipboard = itemView.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val clip = ClipData.newPlainText("Coordinates", coordsFormatted)
+                // Not the display text: that's formatted in the device locale, which writes
+                // "40,77839" where the decimal separator is a comma.
+                val coordsText = "${quest.lat.toPlainCoordinate()}, ${quest.lng.toPlainCoordinate()}"
+                val clip = ClipData.newPlainText("Coordinates", coordsText)
                 clipboard.setPrimaryClip(clip)
                 Toast.makeText(itemView.context, "Quest info copied", Toast.LENGTH_SHORT).show()
             }

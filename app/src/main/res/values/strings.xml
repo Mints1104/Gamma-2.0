@@ -13,6 +13,11 @@
     <string name="battles_last_24h">Battled in last 24h: %1$d</string>
     <string name="enable_overlay_permissions">Enable Overlay Permissions</string>
     <string name="enable_overlay">Enable Overlay</string>
+    <string name="stop_overlay">Stop Overlay</string>
+    <string name="overlay_notification_title">Gamma overlay is running</string>
+    <string name="overlay_notification_text">Tap to open Gamma</string>
+    <string name="overlay_notification_stop">Stop</string>
+    <string name="favorite_coordinates_out_of_range">Latitude must be -90 to 90, longitude -180 to 180</string>
     <string name="no_quest_filters_message">No quest filters enabled. Please go to the filter tab to filter quests.</string>
     <string name="no_quests_available_message">No quests available. Please check your filters or change the data source in the Settings.</string>
     <string name="total_quests">Total Quests: %1$d</string>

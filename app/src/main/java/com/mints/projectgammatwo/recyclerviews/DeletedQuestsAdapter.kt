@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.helpers.Teleporter
+import com.mints.projectgammatwo.helpers.toPlainCoordinate
 import java.util.Date
 
 class DeletedQuestsAdapter : ListAdapter<DeletedQuestsAdapter.UIModel, DeletedQuestsAdapter.VH>(Diff()) {
@@ -79,7 +80,7 @@ class DeletedQuestsAdapter : ListAdapter<DeletedQuestsAdapter.UIModel, DeletedQu
 
             btnCopy.setOnClickListener {
                 val c = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val text = "${m.lat},${m.lng}"
+                val text = "${m.lat.toPlainCoordinate()},${m.lng.toPlainCoordinate()}"
                 c.setPrimaryClip(ClipData.newPlainText("Coordinates", text))
                 Toast.makeText(ctx, R.string.coords_copied, Toast.LENGTH_SHORT).show()
             }

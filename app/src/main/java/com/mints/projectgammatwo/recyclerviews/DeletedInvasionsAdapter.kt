@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.helpers.Teleporter
+import com.mints.projectgammatwo.helpers.toPlainCoordinate
 import java.util.Date
 
 class DeletedInvasionsAdapter : ListAdapter<DeletedInvasionsAdapter.UIModel, DeletedInvasionsAdapter.VH>(Diff()) {
@@ -64,7 +65,7 @@ class DeletedInvasionsAdapter : ListAdapter<DeletedInvasionsAdapter.UIModel, Del
 
             btnCopy.setOnClickListener {
                 val c = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val text = "${m.lat},${m.lng}"
+                val text = "${m.lat.toPlainCoordinate()},${m.lng.toPlainCoordinate()}"
                 c.setPrimaryClip(ClipData.newPlainText("Coordinates", text))
                 val toast = Toast.makeText(ctx, R.string.coords_copied, Toast.LENGTH_SHORT)
                 toast.show()
