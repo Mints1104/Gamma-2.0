@@ -79,7 +79,14 @@ class HomeFragment : Fragment() {
         }
 
         viewModel.invasions.observe(viewLifecycleOwner) { invasions ->
-            adapter.submitList(invasions)
+            // Scroll to top once the new list is actually applied. ListAdapter diffs in the
+            // background, so scrolling straight after submitList ran against the old list and
+            // RecyclerView then kept the previously visible card on screen: switching sort mode
+            // left the view somewhere in the middle, making the new order look wrong.
+            adapter.submitList(invasions) {
+                recyclerView.scrollToPosition(0)
+                recyclerView.post { checkAndUpdateFabVisibility() }
+            }
             swipeRefresh.isRefreshing = false
 
             val filterSize = viewModel.currentFilterSize.value
@@ -91,12 +98,6 @@ class HomeFragment : Fragment() {
                 errorHandlerText.setText(R.string.no_invasions_available_message)
             } else {
                 errorHandlerText.visibility = View.GONE
-            }
-
-            recyclerView.post {
-                checkAndUpdateFabVisibility()
-                // Scroll to top on list updates to prevent jumping to bottom
-                recyclerView.scrollToPosition(0)
             }
         }
 

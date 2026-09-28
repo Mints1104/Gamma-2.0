@@ -49,6 +49,7 @@ import com.mints.projectgammatwo.helpers.DragTouchListener
 import com.mints.projectgammatwo.helpers.Event
 import com.mints.projectgammatwo.helpers.ItemTouchHelperAdapter
 import com.mints.projectgammatwo.helpers.ItemTouchHelperCallback
+import com.mints.projectgammatwo.helpers.nextLiveInvasionIndex
 import com.mints.projectgammatwo.helpers.Teleporter
 import com.mints.projectgammatwo.recyclerviews.FiltersRecyclerView
 import com.mints.projectgammatwo.recyclerviews.OverlayFavoritesAdapter
@@ -411,7 +412,12 @@ class OverlayService : Service() {
                     fetchInvasions()
                     return@setOnClickListener
                 }
-                currentIndex = (currentIndex + 1) % currentInvasions.size
+                val next = nextLiveInvasionIndex(currentInvasions, currentIndex, 1, nowSeconds())
+                if (next == null) {
+                    refetchExpiredInvasions()
+                    return@setOnClickListener
+                }
+                currentIndex = next
                 val invasion = currentInvasions[currentIndex]
                 Log.d(TAG, "Navigating to invasion at index $currentIndex: ${invasion.lat}, ${invasion.lng}")
                 // Record it against the daily limit only once the teleport has actually launched,
@@ -450,11 +456,25 @@ class OverlayService : Service() {
                     fetchInvasions()
                     return@setOnClickListener
                 }
-                currentIndex = if (currentIndex - 1 < 0) currentInvasions.size - 1 else currentIndex - 1
+                val previous = nextLiveInvasionIndex(currentInvasions, currentIndex, -1, nowSeconds())
+                if (previous == null) {
+                    refetchExpiredInvasions()
+                    return@setOnClickListener
+                }
+                currentIndex = previous
                 showOverlayToast("Teleporting to ${currentInvasions[currentIndex].characterName}")
                 launchMap(currentInvasions[currentIndex])
             }
         }
+    }
+
+    private fun nowSeconds() = System.currentTimeMillis() / 1000
+
+    /** Every invasion in the overlay's list has ended: fetch a fresh list instead of teleporting. */
+    private fun refetchExpiredInvasions() {
+        Log.d(TAG, "Every invasion in the overlay's list has expired, refreshing...")
+        showOverlayToast("Invasions expired, refreshing...")
+        fetchInvasions()
     }
 
     private fun updateOverlayBasedOnMode(mode: String) {

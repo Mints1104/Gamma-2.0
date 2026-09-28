@@ -88,6 +88,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         /** A published list younger than this, built from the current inputs, is reused. */
         private const val STALE_AFTER_MS = 60_000L
 
+        /** How many invasions the list shows, after sorting. */
+        private const val MAX_LISTED = 500
+
         private const val APP_PREFS_NAME = "app_preferences"
         private const val KEY_SORT_BY_DISTANCE = "invasions_sort_by_distance"
     }
@@ -244,29 +247,42 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Apply time or distance sort based on current sortByDistance flag
+    /**
+     * Sorts by time or distance, then keeps the first [MAX_LISTED].
+     *
+     * The cap used to be applied before sorting, so the sort only reordered whichever 500 the
+     * API happened to return first. With NYC's ~5,400 active invasions, distance order showed
+     * its nearest invasion kilometres away while ones tens of metres away had been cut, and time
+     * order included none of the newest.
+     */
     private fun applySorting(list: List<Invasion>): List<Invasion> {
         if (list.isEmpty()) return list
 
-        // Limit to 500 items before sorting to reduce processing time
-        val limitedList = list.take(500)
-        Log.d(TAG, "Limited invasions from ${list.size} to ${limitedList.size} before sorting")
-
-        return if (sortByDistanceInternal) {
+        val sorted = if (sortByDistanceInternal) {
             val (lat, lng) = loadLastInvasionCoordinates()
-            if (lat != null && lng != null) {
+            val (refLat, refLng) = if (lat != null && lng != null) {
                 Log.d(TAG, "Sorting by distance using stored last invasion coordinates: ($lat, $lng)")
-                limitedList.sortedBy { haversineDistanceFromPoint(lat, lng, it) }
+                lat to lng
             } else {
                 // Fallback to first invasion's coordinates
-                val first = limitedList.first()
+                val first = list.first()
                 Log.d(TAG, "Sorting by distance using first invasion coordinates (no stored coords): (${first.lat}, ${first.lng})")
-                limitedList.sortedBy { haversineDistanceFromPoint(first.lat, first.lng, it) }
+                first.lat to first.lng
             }
+            // Each distance computed once, rather than twice per comparison inside sortedBy.
+            list.map { it to haversineDistanceFromPoint(refLat, refLng, it) }
+                .sortedBy { it.second }
+                .take(MAX_LISTED)
+                .map { it.first }
         } else {
-            Log.d(TAG, "Sorting by time (reversed)")
-            limitedList.sortedBy { it.invasion_start }.asReversed()
+            Log.d(TAG, "Sorting by time (newest first)")
+            // sortedByDescending is stable, so invasions that started at the same moment keep
+            // their relative order on every re-sort. sortedBy + asReversed flipped them each time,
+            // so cards swapped places after every delete.
+            list.sortedByDescending { it.invasion_start }.take(MAX_LISTED)
         }
+        Log.d(TAG, "Sorted ${list.size} invasions, listing ${sorted.size}")
+        return sorted
     }
 
     // Distance helpers from a point
