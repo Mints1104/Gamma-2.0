@@ -744,35 +744,43 @@ class FilterFragment : Fragment() {
                 ""
             }
 
-            // Remove legacy base filter keys (non-encounters only).
-            if (!isEncounter && enabledQuestFilters.remove(baseFilter)) {
-                // We'll add it back only if a condition key exists.
-                changed = true
-            }
-
-            // Migrate any legacy variant filterStrings to the base filter.
             if (!isEncounter) {
-                val hadLegacyVariant = variants.any { it.filterString in enabledQuestFilters }
-                if (hadLegacyVariant) {
-                    variants.forEach { enabledQuestFilters.remove(it.filterString) }
-                    // Base filter will be re-added below if any condition key exists.
-                    changed = true
+                val conditionKeys = variants.map {
+                    questConditionKey(it.type, it.id, it.amount, it.condition, it.reward)
                 }
-            }
 
-            // Ensure base filter exists when any condition key is present; remove it otherwise.
-            val hasAnyCondition = variants.any { variant ->
-                questConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward) in enabledEncounterConditions
-            }
-            if (!isEncounter) {
-                if (hasAnyCondition && baseFilter !in enabledQuestFilters) {
+                // Take the base filter and any legacy per-variant filter strings out; the base is
+                // put back below exactly when one of its variants is ticked.
+                val baseWasSelected = enabledQuestFilters.remove(baseFilter)
+                val legacyVariants = variants.filter { it.filterString in enabledQuestFilters }
+                legacyVariants.forEach { enabledQuestFilters.remove(it.filterString) }
+                if (baseWasSelected || legacyVariants.isNotEmpty()) changed = true
+
+                // A reward ticked with no variant chosen was ticked before its variants were known:
+                // by Toggle All or a tap while they were still loading (the variant cache expires
+                // after a day), or by an older backup. The quest list already shows all of its
+                // quests, so tick its variants to match. This used to drop the reward instead,
+                // undoing Toggle All for every such reward once the variants arrived.
+                if (conditionKeys.none { it in enabledEncounterConditions }) {
+                    val adopted = when {
+                        legacyVariants.isNotEmpty() -> legacyVariants.map {
+                            questConditionKey(it.type, it.id, it.amount, it.condition, it.reward)
+                        }
+                        baseWasSelected -> conditionKeys
+                        else -> emptyList()
+                    }
+                    if (adopted.isNotEmpty()) {
+                        enabledEncounterConditions.addAll(adopted)
+                        changed = true
+                    }
+                }
+
+                if (conditionKeys.any { it in enabledEncounterConditions }) {
                     enabledQuestFilters.add(baseFilter)
-                    addedFilters += 1
-                    changed = true
-                }
-                if (!hasAnyCondition && baseFilter in enabledQuestFilters) {
-                    enabledQuestFilters.remove(baseFilter)
-                    changed = true
+                    if (!baseWasSelected) {
+                        addedFilters += 1
+                        changed = true
+                    }
                 }
             }
 

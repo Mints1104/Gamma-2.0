@@ -31,6 +31,11 @@ class QuestMatchingTest {
     private val catchFive = quest("C", "7", "25", "1", "Catch 5 Pokémon", "Pikachu")
     private val rareCandy = quest("D", "2", "1301", "3", "Win a raid", "3 Rare Candy")
 
+    // Real API shape: a stardust reward's id is always "0"; the amount is what tells them apart.
+    private val dust200Spin = quest("F", "3", "0", "200", "Spin 3 PokéStops", "200 Stardust")
+    private val dust200Catch = quest("G", "3", "0", "200", "Catch 5 Pokémon", "200 Stardust")
+    private val dust500 = quest("H", "3", "0", "500", "Hatch an egg", "500 Stardust")
+
     private fun key(q: Quest) =
         questConditionKey(q.rewardsTypes, q.rewardsIds, q.rewardsAmounts, q.conditionsString, q.rewardsString)
 
@@ -76,10 +81,37 @@ class QuestMatchingTest {
 
     @Test
     fun `a quest with several rewards is kept when any of them matches`() {
-        // The API puts a stardust reward's amount in its id too.
-        val double = quest("E", "3,7", "500,25", "500,1", "Hatch an egg", "500 Stardust, Pikachu")
+        val double = quest("E", "3,7", "0,25", "500,1", "Hatch an egg", "500 Stardust, Pikachu")
         val stardustOnly = filterQuestsByConditions(listOf(double), listOf("3,500,0"), setOf(key(spinOne)))
         assertEquals(listOf(double), stardustOnly)
+    }
+
+    @Test
+    fun `stardust quests are kept while variants are ticked for other rewards`() {
+        // Regression: stardust was matched by its id ("0"), so any variant selection (Toggle
+        // All ticks them all) dropped every stardust quest.
+        val quests = listOf(spinOne, dust200Spin, dust500)
+        val result = filterQuestsByConditions(quests, listOf("7,0,25", "3,200,0"), setOf(key(spinOne)))
+        assertEquals(listOf(spinOne, dust200Spin), result)
+    }
+
+    @Test
+    fun `stardust variants narrow by task like other rewards`() {
+        val quests = listOf(dust200Spin, dust200Catch, dust500)
+        val result = filterQuestsByConditions(quests, listOf("3,200,0", "3,500,0"), setOf(key(dust200Catch)))
+        // 200 has a variant ticked, so only that task; 500 has none, so all of its quests.
+        assertEquals(listOf(dust200Catch, dust500), result)
+    }
+
+    @Test
+    fun `base filters match the filter screen's for every reward type`() {
+        assertEquals("3,200,0", questBaseFilter("3", "0", "200"))
+        assertEquals("8,50,0", questBaseFilter("8", "0", "50"))
+        assertEquals("7,0,25", questBaseFilter("7", "25", "1"))
+        assertEquals("4,0,483", questBaseFilter("4", "483", "3"))
+        assertEquals("2,0,1301", questBaseFilter("2", "1301", "3"))
+        // Each base filter selects the same (type, discriminator) a quest reward produces.
+        assertEquals("3" to "200", questFilterPrefix(questBaseFilter("3", "0", "200")))
     }
 
     @Test

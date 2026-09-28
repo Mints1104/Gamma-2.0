@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.map
 import com.mints.projectgammatwo.helpers.Event
 import com.mints.projectgammatwo.helpers.filterQuestsByConditions
+import com.mints.projectgammatwo.helpers.questBaseFilter
 import com.mints.projectgammatwo.helpers.questConditionKey
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
@@ -200,7 +201,13 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 val type = object : com.google.gson.reflect.TypeToken<Map<String, List<SubVariant>>>() {}.type
                 val map: Map<String, List<SubVariant>> = Gson().fromJson(cached, type)
-                if (map.isNotEmpty()) _rewardSubVariantsLiveData.value = map
+                // Regroup under each variant's own base filter. Caches written before the
+                // stardust fix hold every stardust variant under "3,0,0", which matches none of
+                // the filter screen's stardust rows; regrouping gives them their variants straight
+                // away instead of after the next fetch. Correctly keyed groups come out unchanged.
+                val regrouped = map.values.flatten()
+                    .groupBy { questBaseFilter(it.type, it.id, it.amount) }
+                if (regrouped.isNotEmpty()) _rewardSubVariantsLiveData.value = regrouped
             } catch (e: Exception) {
                 Log.w("QuestsViewModel", "Failed to restore cached sub-variants", e)
             }
@@ -570,16 +577,16 @@ filters.t4.forEach { list.add("4,0,$it") }
                         val amt  = amts.getOrNull(i)  ?: return@forEach
                         if (id.isBlank() || amt.isBlank() || type.isBlank()) return@forEach
 
-                        val (baseKey, filterStr, label) = when (type) {
-                            "3"  -> Triple("3,$id,0",    "3,$amt,0",    "$rewardLabel — $condition")
-                            "8"  -> Triple("8,$amt,0",    "8,$amt,0",    "$rewardLabel — $condition")
-"2"  -> Triple("2,0,$id",    "2,$amt,$id",  "$rewardLabel — $condition")
-                            "4"  -> Triple("4,0,$id",    "4,$amt,$id",  "$rewardLabel — $condition")
-                            "7"  -> Triple("7,0,$id",    "7,0,$id",     "$rewardLabel — $condition")
-                            "9"  -> Triple("9,0,$id",    "9,$amt,$id",  "$rewardLabel — $condition")
-                            "12" -> Triple("12,0,$id",   "12,$amt,$id", "$rewardLabel — $condition")
-                            else -> Triple("$type,0,$id","$type,$amt,$id","$rewardLabel — $condition")
+                        // Grouped under the filter screen's own base filter so the two agree.
+                        // Stardust used to be grouped by its id, "3,0,0" for every amount: that
+                        // matched none of the stardust checkboxes, and the filter screen's
+                        // reconcile step then removed every stardust selection.
+                        val baseKey = questBaseFilter(type, id, amt)
+                        val filterStr = when (type) {
+                            "3", "8", "7" -> baseKey
+                            else -> "$type,$amt,$id"
                         }
+                        val label = "$rewardLabel — $condition"
 
                         val list = subVariantMap.getOrPut(baseKey) { mutableListOf() }
                         val conditionKey = questConditionKey(type, id, amt, condition, rewardLabel)
