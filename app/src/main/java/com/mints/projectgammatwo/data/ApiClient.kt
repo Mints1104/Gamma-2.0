@@ -18,7 +18,7 @@ object ApiClient {
     /**
      * The one HTTP client for the whole app, so every request shares a connection pool and
      * dispatcher. Invasion fetches used to build a new client — and with it a new pool and
-     * thread pool — on every call, while quests and raids each kept their own.
+     * thread pool — on every call, while the quest fetch kept its own.
      *
      * 30s timeouts: the quest endpoints are slow, and the invasion fetch's former 10s default
      * was the odd one out.
@@ -48,7 +48,4 @@ object ApiClient {
 
     fun questsApi(baseUrl: String): QuestsApiService =
         retrofitFor(baseUrl).create(QuestsApiService::class.java)
-
-    fun raidsApi(baseUrl: String): RaidApiService =
-        retrofitFor(baseUrl).create(RaidApiService::class.java)
 }
