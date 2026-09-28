@@ -13,6 +13,10 @@ import com.mints.projectgammatwo.data.VisitedQuestsPreferences
 import com.mints.projectgammatwo.recyclerviews.DeletedQuestsAdapter
 import androidx.appcompat.app.AlertDialog
 import android.widget.Button
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class DeletedQuestsFragment : Fragment() {
 
@@ -107,30 +111,38 @@ class DeletedQuestsFragment : Fragment() {
     }
 
     private fun loadData() {
-        val prefs = VisitedQuestsPreferences(requireContext())
-        val records = prefs.getVisitedRecords()
-            .sortedByDescending { it.timestamp }
-        val models = records.mapNotNull { r ->
-            val parts = r.id.split("|")
-            val name = parts.getOrNull(0) ?: return@mapNotNull null
-            val lat = parts.getOrNull(1)?.toDoubleOrNull() ?: return@mapNotNull null
-            val lng = parts.getOrNull(2)?.toDoubleOrNull() ?: return@mapNotNull null
-            DeletedQuestsAdapter.UIModel(
-                name = name,
-                lat = lat,
-                lng = lng,
-                timestamp = r.timestamp,
-                source = r.source.orEmpty(),
-                rewards = r.rewards.orEmpty(),
-                conditions = r.conditions.orEmpty()
-            )
-        }
-        adapter.submitList(models)
-        swipeRefresh.isRefreshing = false
+        swipeRefresh.isRefreshing = true
+        val context = requireContext().applicationContext
+        viewLifecycleOwner.lifecycleScope.launch {
+            // Off the main thread, like the invasion history: getVisitedRecords parses every
+            // stored record (and may prune and rewrite the set), which made the screen stutter
+            // as it opened.
+            val models = withContext(Dispatchers.IO) {
+                VisitedQuestsPreferences(context).getVisitedRecords()
+                    .sortedByDescending { it.timestamp }
+                    .mapNotNull { r ->
+                        val parts = r.id.split("|")
+                        val name = parts.getOrNull(0) ?: return@mapNotNull null
+                        val lat = parts.getOrNull(1)?.toDoubleOrNull() ?: return@mapNotNull null
+                        val lng = parts.getOrNull(2)?.toDoubleOrNull() ?: return@mapNotNull null
+                        DeletedQuestsAdapter.UIModel(
+                            name = name,
+                            lat = lat,
+                            lng = lng,
+                            timestamp = r.timestamp,
+                            source = r.source.orEmpty(),
+                            rewards = r.rewards.orEmpty(),
+                            conditions = r.conditions.orEmpty()
+                        )
+                    }
+            }
+            adapter.submitList(models)
+            swipeRefresh.isRefreshing = false
 
-        countText.text = resources.getQuantityString(R.plurals.visited_count, models.size, models.size)
-        emptyText.visibility = if (models.isEmpty()) View.VISIBLE else View.GONE
-        checkFab()
+            countText.text = resources.getQuantityString(R.plurals.visited_count, models.size, models.size)
+            emptyText.visibility = if (models.isEmpty()) View.VISIBLE else View.GONE
+            checkFab()
+        }
     }
 
     private fun checkFab() {

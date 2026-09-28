@@ -22,6 +22,7 @@ import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.gson.Gson
+import com.google.gson.JsonElement
 import com.google.gson.reflect.TypeToken
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.DataSourcePreferences
@@ -40,6 +41,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.descriptors.elementNames
 import kotlinx.serialization.json.Json
 import java.io.IOException
 import java.text.SimpleDateFormat
@@ -60,6 +62,10 @@ class SettingsFragment : Fragment() {
 
         private const val FILTER_TYPE_ROCKET = "Rocket"
         private const val FILTER_TYPE_QUEST = "Quest"
+
+        private const val IMPORT_REQUEST_KEY = "import_settings"
+        private const val TAG_IMPORT_DIALOG = "import_settings_dialog"
+        private const val TAG_CONFIRM_DEEPLINK = "confirm_imported_deeplink"
     }
 
     private lateinit var checkboxNYC: CheckBox
@@ -110,6 +116,26 @@ class SettingsFragment : Fragment() {
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) readImportFile(uri)
         }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Registered here rather than where the dialogs are shown: after a rotation the dialogs
+        // come back on their own, and only a listener set up in onCreate is there to hear them.
+        childFragmentManager.setFragmentResultListener(IMPORT_REQUEST_KEY, this) { _, result ->
+            if (result.getBoolean(JsonImportDialogFragment.RESULT_CHOOSE_FILE)) {
+                // Export writes a file, so importing one is the matching path back in; pasting
+                // JSON still works for backups made by older versions.
+                importSettingsFileLauncher.launch(
+                    arrayOf("application/json", "text/plain", "application/octet-stream")
+                )
+            } else {
+                result.getString(JsonImportDialogFragment.RESULT_JSON)?.let { importSettings(it) }
+            }
+        }
+        childFragmentManager.setFragmentResultListener(ConfirmImportedDeeplinkDialogFragment.REQUEST_KEY, this) { _, result ->
+            result.getString(ConfirmImportedDeeplinkDialogFragment.RESULT_URL)?.let { applyCustomDeeplink(it) }
+        }
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         return inflater.inflate(R.layout.fragment_settings, container, false)
@@ -663,40 +689,32 @@ class SettingsFragment : Fragment() {
      * Displays a dialog for importing settings from JSON.
      */
     private fun importSettingsDialog() {
-        val builder = AlertDialog.Builder(requireContext())
-        val inflater = requireActivity().layoutInflater
-        val dialogView = inflater.inflate(R.layout.dialog_import_settings, null)
+        // The result is handled by the listener registered in onCreate.
+        JsonImportDialogFragment.newInstance(IMPORT_REQUEST_KEY, R.layout.dialog_import_settings)
+            .show(childFragmentManager, TAG_IMPORT_DIALOG)
+    }
 
-        val editText = dialogView.findViewById<EditText>(R.id.editImportSettingsJson)
-        val cancelButton = dialogView.findViewById<Button>(R.id.cancelSettingsImportButton)
-        val importButton = dialogView.findViewById<Button>(R.id.importSettingsButton)
-        val chooseFileButton = dialogView.findViewById<Button>(R.id.chooseSettingsFileButton)
-
-        builder.setView(dialogView)
-        val dialog = builder.create()
-
-        cancelButton.setOnClickListener { dialog.dismiss() }
-
-        // Export now writes a file, so importing one is the matching path back in; pasting JSON
-        // still works for backups made by older versions.
-        chooseFileButton.setOnClickListener {
-            dialog.dismiss()
-            importSettingsFileLauncher.launch(
-                arrayOf("application/json", "text/plain", "application/octet-stream")
-            )
+    /** Whether [json] is an object carrying at least one [ExportData] field. */
+    private fun looksLikeSettingsBackup(json: String): Boolean {
+        // Parsed as leniently as the Gson fallback in importSettings, so nothing it accepts is
+        // turned away here.
+        val root = try {
+            gson.fromJson(json, JsonElement::class.java)
+        } catch (e: Exception) {
+            return false
         }
+        if (root == null || !root.isJsonObject) return false
+        val knownKeys = ExportData.serializer().descriptor.elementNames.toSet()
+        return root.asJsonObject.keySet().any { it in knownKeys }
+    }
 
-        importButton.setOnClickListener {
-            val jsonString = editText.text.toString()
-            if (jsonString.isBlank()) {
-                Toast.makeText(requireContext(), getString(R.string.settings_import_input_empty), Toast.LENGTH_SHORT).show()
-            } else {
-                importSettings(jsonString)
-                dialog.dismiss()
-            }
-        }
-
-        dialog.show()
+    /** Points teleports at [url] and shows it in the custom-link field. */
+    private fun applyCustomDeeplink(url: String) {
+        deeplinkManager.setCustomUrl(url)
+        deeplinkManager.setDeeplinkType(DeeplinkManager.TYPE_CUSTOM)
+        customDeeplinkUrl.setText(url)
+        // Its change listener also reveals the custom-link field.
+        radioDeeplinkCustom.isChecked = true
     }
 
     /** Reads a settings file off the main thread, then imports it. */
@@ -727,6 +745,14 @@ class SettingsFragment : Fragment() {
     private fun importSettings(jsonString: String) {
         try {
             Log.d("SettingsImport", "Starting import process with JSON: ${jsonString.take(100)}...")
+
+            // Import replaces every setting, and the Gson fallback below is lenient: it read
+            // text like "{foo:bar}", or any JSON that isn't a Gamma backup, as a backup with
+            // every field missing, and the import then wiped favorites, filters and sources.
+            if (!looksLikeSettingsBackup(jsonString)) {
+                Toast.makeText(requireContext(), R.string.settings_import_not_a_backup, Toast.LENGTH_LONG).show()
+                return
+            }
 
             val importData: ExportData = try {
                 val parsed = kxJson.decodeFromString<ExportData>(jsonString)
@@ -897,25 +923,31 @@ class SettingsFragment : Fragment() {
             customizationManager.saveButtonOrder(importData.overlayButtonOrder ?: emptyList())
             customizationManager.saveButtonVisibility(importData.overlayButtonVisibility ?: emptyMap())
 
-            // Import deeplink preferences
-            val dlType = importData.deeplinkType ?: "ipogo"
-            val dlUrl  = importData.deeplinkCustomUrl ?: ""
+            // Import deeplink preferences. A custom link is where every teleport goes, so a new
+            // one is only applied once the user has seen it and agreed (the import used to
+            // switch it silently, letting a shared backup redirect all teleports). Built-in
+            // types are applied directly and leave the user's own custom link alone.
+            val dlType = importData.deeplinkType ?: DeeplinkManager.TYPE_IPOGO
+            val dlUrl = importData.deeplinkCustomUrl?.trim().orEmpty()
             Log.d("SettingsImport", "Importing deeplink settings - Type: $dlType, Custom URL: $dlUrl")
-            deeplinkManager.setDeeplinkType(dlType)
-            deeplinkManager.setCustomUrl(dlUrl)
-
+            var confirmDeeplink = false
             when (dlType) {
+                DeeplinkManager.TYPE_CUSTOM -> {
+                    val alreadyInUse = deeplinkManager.getDeeplinkType() == DeeplinkManager.TYPE_CUSTOM &&
+                            deeplinkManager.getCustomUrl() == dlUrl
+                    // A blank link falls back to iPogo, so there's nothing to confirm.
+                    if (dlUrl.isNotEmpty() && !alreadyInUse) confirmDeeplink = true
+                    else radioDeeplinkCustom.isChecked = true
+                }
                 DeeplinkManager.TYPE_IPOGO -> radioDeeplinkIpogo.isChecked = true
                 DeeplinkManager.TYPE_POKEMOD -> radioDeeplinkPokemod.isChecked = true
-                DeeplinkManager.TYPE_CUSTOM -> {
-                    radioDeeplinkCustom.isChecked = true
-                    customDeeplinkUrl.setText(dlUrl)
-                    customDeeplinkUrl.visibility = View.VISIBLE
-                    customDeeplinkExample.visibility = View.VISIBLE
-                }
             }
 
             Toast.makeText(requireContext(), getString(R.string.settings_import_success), Toast.LENGTH_LONG).show()
+            if (confirmDeeplink) {
+                ConfirmImportedDeeplinkDialogFragment.newInstance(dlUrl)
+                    .show(childFragmentManager, TAG_CONFIRM_DEEPLINK)
+            }
         } catch (ex: Exception) {
             Log.e("SettingsImport", "Import failed with exception: ${ex.message}", ex)
             Toast.makeText(requireContext(), getString(R.string.settings_import_failed, ex.message ?: "Unknown error"), Toast.LENGTH_LONG).show()

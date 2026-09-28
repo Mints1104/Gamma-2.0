@@ -21,7 +21,7 @@
 
     <!-- JSON Input -->
     <EditText
-        android:id="@+id/editImportSettingsJson"
+        android:id="@+id/editImportJson"
         android:layout_width="0dp"
         android:layout_height="100dp"
         android:hint="Paste settings JSON here"
@@ -34,25 +34,25 @@
         app:layout_constraintTop_toBottomOf="@id/importSettingsTitle"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toTopOf="@id/chooseSettingsFileButton"
+        app:layout_constraintBottom_toTopOf="@id/chooseImportFileButton"
         android:layout_marginTop="12dp"
         android:layout_marginBottom="12dp" />
 
     <!-- Import from a file saved by Export -->
     <Button
-        android:id="@+id/chooseSettingsFileButton"
+        android:id="@+id/chooseImportFileButton"
         style="?attr/borderlessButtonStyle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginBottom="12dp"
         android:text="@string/settings_import_choose_file"
-        app:layout_constraintBottom_toTopOf="@id/cancelSettingsImportButton"
+        app:layout_constraintBottom_toTopOf="@id/cancelImportButton"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- Cancel Button -->
     <Button
-        android:id="@+id/cancelSettingsImportButton"
+        android:id="@+id/cancelImportButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Cancel"
@@ -61,7 +61,7 @@
 
     <!-- Import Button -->
     <Button
-        android:id="@+id/importSettingsButton"
+        android:id="@+id/importButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Import"

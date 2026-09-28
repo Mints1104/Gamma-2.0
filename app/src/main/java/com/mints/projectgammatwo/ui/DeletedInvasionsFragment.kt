@@ -121,8 +121,11 @@ class DeletedInvasionsFragment : Fragment() {
             val unknownStop = getString(R.string.deleted_unknown_stop)
             val unknownSource = getString(R.string.deleted_unknown_source)
 
+            val context = requireContext().applicationContext
             val mapped = withContext(Dispatchers.IO) {
-                val repo = DeletedInvasionsRepository(requireContext())
+                // Not requireContext() here: off the main thread it can race the fragment
+                // detaching and throw.
+                val repo = DeletedInvasionsRepository(context)
                 val entries: List<DeletedEntry> = repo.getDeletedEntries()
                     .sortedByDescending { it.timestamp }
                     .toList()

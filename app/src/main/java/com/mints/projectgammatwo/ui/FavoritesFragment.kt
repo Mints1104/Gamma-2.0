@@ -23,6 +23,7 @@ import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.FavoriteLocation
 import com.mints.projectgammatwo.data.FavoritesManager
 import com.mints.projectgammatwo.helpers.Teleporter
+import com.mints.projectgammatwo.helpers.isValidLatLng
 import com.mints.projectgammatwo.helpers.toPlainCoordinate
 import com.mints.projectgammatwo.recyclerviews.FavoritesAdapter
 import java.util.Collections
@@ -32,6 +33,8 @@ private const val PREFS_NAME = "FavoritesPrefs"
 private const val SORT_ORDER_KEY = "sort_order"
 private const val SORT_ORDER_NAME = "name"
 private const val SORT_ORDER_DEFAULT = "default"
+private const val IMPORT_FAVORITES_REQUEST_KEY = "import_favorites"
+private const val IMPORT_FAVORITES_DIALOG_TAG = "import_favorites_dialog"
 
 
 class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListener {
@@ -61,6 +64,10 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setHasOptionsMenu(true)
+        // Registered here so the import dialog, which survives rotation, still has a listener.
+        childFragmentManager.setFragmentResultListener(IMPORT_FAVORITES_REQUEST_KEY, this) { _, result ->
+            result.getString(JsonImportDialogFragment.RESULT_JSON)?.let { importFavorites(it) }
+        }
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
@@ -193,33 +200,9 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
      * Displays a dialog for importing favorites via JSON.
      */
     private fun showImportFavoritesDialog() {
-        val builder = AlertDialog.Builder(requireContext())
-        val inflater = requireActivity().layoutInflater
-        val dialogView = inflater.inflate(R.layout.dialog_import_favorites, null)
-
-        val editText = dialogView.findViewById<EditText>(R.id.editImportJson)
-        val cancelButton = dialogView.findViewById<Button>(R.id.cancelImportButton)
-        val importButton = dialogView.findViewById<Button>(R.id.importButton)
-
-        builder.setView(dialogView)
-        val dialog = builder.create()
-
-        // Set up button click listeners
-        cancelButton.setOnClickListener {
-            dialog.dismiss()
-        }
-
-        importButton.setOnClickListener {
-            val jsonString = editText.text.toString()
-            if (jsonString.isBlank()) {
-                Toast.makeText(requireContext(), "Input cannot be empty", Toast.LENGTH_SHORT).show()
-            } else {
-                importFavorites(jsonString)
-                dialog.dismiss()
-            }
-        }
-
-        dialog.show()
+        // The result is handled by the listener registered in onCreate.
+        JsonImportDialogFragment.newInstance(IMPORT_FAVORITES_REQUEST_KEY, R.layout.dialog_import_favorites)
+            .show(childFragmentManager, IMPORT_FAVORITES_DIALOG_TAG)
     }
 
     /**
@@ -313,8 +296,19 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
                 .getParameterized(List::class.java, FavoriteLocation::class.java)
                 .type
             val importedFavorites: List<FavoriteLocation> = gson.fromJson(jsonString, importType)
-            // Merge imported favorites with the current list, avoiding duplicates.
-            for (fav in importedFavorites) {
+            // Merge imported favorites with the current list, avoiding duplicates. Gson leaves
+            // missing fields null or 0 whatever the declared type, so skip entries without a
+            // name or a real position rather than saving a blank favorite at 0,0.
+            val usable = importedFavorites.filter {
+                @Suppress("SENSELESS_COMPARISON")
+                it != null && it.name != null && it.name.isNotBlank() && isValidLatLng(it.lat, it.lng) &&
+                    !(it.lat == 0.0 && it.lng == 0.0)
+            }
+            if (usable.isEmpty()) {
+                Toast.makeText(requireContext(), "No favorites found to import", Toast.LENGTH_SHORT).show()
+                return
+            }
+            for (fav in usable) {
                 if (!favoritesList.any { it.lat == fav.lat && it.lng == fav.lng && it.name == fav.name }) {
                     favoritesList.add(fav)
                 }

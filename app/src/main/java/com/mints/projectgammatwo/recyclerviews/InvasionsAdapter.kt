@@ -3,6 +3,7 @@ package com.mints.projectgammatwo.recyclerviews
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.text.format.DateFormat
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -16,7 +17,6 @@ import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.helpers.Teleporter
 import com.mints.projectgammatwo.helpers.toPlainCoordinate
-import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
@@ -47,7 +47,9 @@ class InvasionsAdapter(
         private val teleportButton: Button = itemView.findViewById(R.id.teleportButton)
         private val copyButton: Button = itemView.findViewById(R.id.copyButton)
         private val deleteButton: Button = itemView.findViewById(R.id.deleteButton)
-        private val dateFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        // Follows the phone's 12/24-hour setting, like the favorites' local times; a fixed
+        // "HH:mm" always showed 24-hour.
+        private val dateFormat = DateFormat.getTimeFormat(itemView.context)
 
         fun bind(invasion: Invasion) {
             val ctx = itemView.context
