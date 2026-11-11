@@ -59,6 +59,10 @@ class OverlayCustomizationAdapter(
         fun bind(item: OverlayButtonItem, position: Int) {
             buttonIcon.setImageResource(item.iconResId)
             buttonName.text = item.name
+            // Detach the previous row's listener before setting the state. A recycled holder
+            // still carried the listener for the button it showed before, so setting isChecked
+            // here fired it and saved this row's state onto that other button.
+            visibilitySwitch.setOnCheckedChangeListener(null)
             visibilitySwitch.isChecked = item.isVisible
 
             // Disable switch for required buttons
@@ -69,7 +73,10 @@ class OverlayCustomizationAdapter(
             buttonIcon.alpha = 1.0f
 
             visibilitySwitch.setOnCheckedChangeListener { _, isChecked ->
-                item.isVisible = isChecked
+                // The item this row shows now, not the one it was bound to: rows move on drag.
+                val current = items.getOrNull(bindingAdapterPosition) ?: return@setOnCheckedChangeListener
+                if (current.isVisible == isChecked) return@setOnCheckedChangeListener
+                current.isVisible = isChecked
                 onItemChanged(items)
             }
 

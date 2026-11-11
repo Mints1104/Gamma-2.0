@@ -111,7 +111,8 @@ class OverlayService : Service() {
     private lateinit var filtersAdapter: FiltersRecyclerView
     private lateinit var filterPreferences: FilterPreferences
     private lateinit var deletedInvasionsRepository: DeletedInvasionsRepository
-    private var currentMode = "invasions" // Default mode
+    /** The main overlay's mode; set by [addOverlay] for every overlay it shows. */
+    private var currentMode = MODE_INVASIONS
     private var currentSortOrder = FilterSortOrder.DEFAULT
     private var currentX = 0
     private var currentY = 100
@@ -136,6 +137,9 @@ class OverlayService : Service() {
         private const val TAG = "OverlayService"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "overlay_service_channel"
+
+        const val MODE_INVASIONS = "invasions"
+        const val MODE_QUESTS = "quests"
 
         /** Sent by the notification's Stop action. */
         const val ACTION_STOP = "com.mints.projectgammatwo.action.STOP_OVERLAY"
@@ -262,26 +266,44 @@ class OverlayService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        val mode = intent?.getStringExtra("mode").toString()
+        // getStringExtra(...).toString() turned a missing extra into the mode "null".
+        val mode = if (intent?.getStringExtra("mode") == MODE_QUESTS) MODE_QUESTS else MODE_INVASIONS
         Log.d(TAG, "Service onStartCommand with mode: $mode")
 
-        // Save the current mode
-        val sharedPrefs = getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE)
-        sharedPrefs.edit().putString("overlay_mode", mode).apply()
-
         // Android 15 compatibility: Ensure overlay is visible for SYSTEM_ALERT_WINDOW compliance
-        if (overlayView == null) {
-            addOverlay(mode)
-            Log.d(TAG, "Overlay re-added on onStartCommand with mode: $mode")
-        } else {
-            updateOverlayBasedOnMode(mode)
-            Log.d(TAG, "Overlay updated in onStartCommand with mode: $mode")
+        when {
+            overlayView == null -> addOverlay(mode)
+            // Started again from the other screen while running: switch to that screen's mode.
+            // It used to keep the old mode and only toast "Updated: Quests mode".
+            mode != currentMode -> switchMode(mode)
+            else -> updateOverlayBasedOnMode(mode)
         }
         return START_NOT_STICKY
     }
 
+    /** Rebuilds the main overlay in [newMode] where it currently sits. */
+    private fun switchMode(newMode: String) {
+        if (::dragTouchListener.isInitialized) {
+            currentX = dragTouchListener.getCurrentParamsX()
+            currentY = dragTouchListener.getCurrentParamsY()
+        }
+        // The panels belong to the old mode (the filter panel lists that mode's saved filters).
+        hideFiltersOverlay()
+        hideFavoritesOverlay()
+        cleanupObservers()
+        removeOverlayView(overlayView)
+        overlayView = null
+        addOverlay(newMode)
+    }
+
     private fun addOverlay(mode: String) {
         if (overlayView != null) return
+        // Everything mode-dependent reads this, including the filter panel. It used to be set
+        // only by the switch button, so an overlay started from the Quests screen listed and
+        // applied rocket filters and fetched invasions.
+        currentMode = mode
+        // Remembered so a restart (e.g. after changing the overlay's look) comes back in it.
+        getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE).edit { putString("overlay_mode", mode) }
         // A new overlay (including a mode switch) walks its list from the top; the index of the
         // other mode's list means nothing here.
         currentIndex = -1
@@ -301,10 +323,13 @@ class OverlayService : Service() {
             Log.d(TAG, "Overlay added successfully with mode: $mode")
         } catch (e: Exception) {
             Log.e(TAG, "Error adding overlay: ${e.message}")
+            // Not attached, so don't keep it: a later start would otherwise see an overlay
+            // "already shown" and never add one.
+            overlayView = null
             return
         }
         setupButtons(mode, params)
-        if (mode == "quests") {
+        if (mode == MODE_QUESTS) {
             if (CurrentQuestData.currentQuests.isEmpty())
                 fetchQuests()
         } else {
@@ -384,33 +409,10 @@ class OverlayService : Service() {
         }
 
         switchModesBtn.setOnClickListener {
-            if (mode == "quests") {
-                Log.d(TAG, "Switching to invasions mode")
-                showOverlayToast("Switching to invasions mode")
-                currentX = dragTouchListener.getCurrentParamsX()
-                currentY = dragTouchListener.getCurrentParamsY()
-                currentMode = "invasions"
-
-                cleanupObservers()
-                if (overlayView != null) {
-                    windowManager.removeView(overlayView)
-                    overlayView = null
-                }
-                addOverlay("invasions")
-            } else {
-                showOverlayToast("Switching to quests mode")
-                Log.d(TAG, "Switching to quests mode")
-                currentX = dragTouchListener.getCurrentParamsX()
-                currentY = dragTouchListener.getCurrentParamsY()
-                currentMode = "quests"
-
-                cleanupObservers()
-                if (overlayView != null) {
-                    windowManager.removeView(overlayView)
-                    overlayView = null
-                }
-                addOverlay("quests")
-            }
+            val newMode = if (mode == MODE_QUESTS) MODE_INVASIONS else MODE_QUESTS
+            Log.d(TAG, "Switching to $newMode mode")
+            showOverlayToast("Switching to $newMode mode")
+            switchMode(newMode)
         }
 
         filtersButton.setOnClickListener {

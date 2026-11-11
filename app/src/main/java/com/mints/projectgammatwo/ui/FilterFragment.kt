@@ -190,7 +190,7 @@ class FilterFragment : Fragment() {
             override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
                 R.id.action_save_rocket -> { showSaveFilterDialog(true); true }
                 R.id.action_save_quest -> { showSaveFilterDialog(false); true }
-                R.id.action_refresh_filters -> { questsViewModel.fetchQuests(); true }
+                R.id.action_refresh_filters -> { questsViewModel.fetchQuests(refreshVariants = true); true }
                 else -> false
             }
         }, viewLifecycleOwner, Lifecycle.State.RESUMED)
@@ -560,13 +560,12 @@ class FilterFragment : Fragment() {
                         setupRocketFilters(parent)
                     }
                     "Quest" -> {
-                        val filtersJson = questCachePrefs.getString(QuestCache.KEY_API_FILTERS, null) ?: return@setOnClickListener
-                        val filtersFromApi = Gson().fromJson(filtersJson, Quests.Filters::class.java)
+                        val filtersFromApi = readCachedApiFilters() ?: return@setOnClickListener
                         val subVariants = questsViewModel.rewardSubVariantsLiveData.value ?: emptyMap()
                         val allPossibleQuestFilters = mutableSetOf<String>()
                         Log.d(
                             "QuestFilterDebug",
-                            "Toggle-all quest sections: t3=${filtersFromApi.t3.size}, t8=${filtersFromApi.t8?.size ?: 0}, t4=${filtersFromApi.t4.size}, t9=${filtersFromApi.t9?.size ?: 0}, t12=${filtersFromApi.t12.size}, t7=${filtersFromApi.t7.size}, t2=${filtersFromApi.t2.size}"
+                            "Toggle-all quest sections: t3=${filtersFromApi.stardust.size}, t8=${filtersFromApi.pokecoins.size}, t4=${filtersFromApi.candy.size}, t9=${filtersFromApi.candyXl.size}, t12=${filtersFromApi.megaEnergy.size}, t7=${filtersFromApi.encounters.size}, t2=${filtersFromApi.items.size}"
                         )
 
                         fun addFiltersForSection(list: List<String>, section: String) {
@@ -589,13 +588,13 @@ class FilterFragment : Fragment() {
                             }
                         }
 
-                        addFiltersForSection(filtersFromApi.t3, "Stardust")
-                        addFiltersForSection(filtersFromApi.t8.orEmpty(), "Pokecoins")
-                        addFiltersForSection(filtersFromApi.t4, "Pokémon Candy")
-                        addFiltersForSection(filtersFromApi.t9.orEmpty(), "Pokémon Candy XL")
-                        addFiltersForSection(filtersFromApi.t12, "Mega Energy")
-                        addFiltersForSection(filtersFromApi.t7, "Pokémon Encounter")
-                        addFiltersForSection(filtersFromApi.t2, "Item")
+                        addFiltersForSection(filtersFromApi.stardust, "Stardust")
+                        addFiltersForSection(filtersFromApi.pokecoins, "Pokecoins")
+                        addFiltersForSection(filtersFromApi.candy, "Pokémon Candy")
+                        addFiltersForSection(filtersFromApi.candyXl, "Pokémon Candy XL")
+                        addFiltersForSection(filtersFromApi.megaEnergy, "Mega Energy")
+                        addFiltersForSection(filtersFromApi.encounters, "Pokémon Encounter")
+                        addFiltersForSection(filtersFromApi.items, "Item")
 
                         if (allPossibleQuestFilters.isNotEmpty()) {
                             val allCurrentlySelected = enabledQuestFilters.containsAll(allPossibleQuestFilters) &&
@@ -629,31 +628,43 @@ class FilterFragment : Fragment() {
         addSelectFilterButton(parent, "Quest")
         if (currentFilterType == "Quest") updateCurrentQuestFilter()
 
-        val filtersJson = questCachePrefs.getString(QuestCache.KEY_API_FILTERS, null)
-        if (filtersJson != null) {
-            val filters = Gson().fromJson(filtersJson, Quests.Filters::class.java)
+        val filters = readCachedApiFilters()
+        if (filters != null) {
             val subVariants: Map<String, List<QuestsViewModel.SubVariant>> =
                 questsViewModel.rewardSubVariantsLiveData.value ?: emptyMap()
             Log.d(
                 "QuestFilterDebug",
-                "setupQuestFilters: sections t3=${filters.t3.size}, t8=${filters.t8?.size ?: 0}, t4=${filters.t4.size}, t9=${filters.t9?.size ?: 0}, t12=${filters.t12.size}, t7=${filters.t7.size}, t2=${filters.t2.size}; subVariants keys=${subVariants.size}"
+                "setupQuestFilters: sections t3=${filters.stardust.size}, t8=${filters.pokecoins.size}, t4=${filters.candy.size}, t9=${filters.candyXl.size}, t12=${filters.megaEnergy.size}, t7=${filters.encounters.size}, t2=${filters.items.size}; subVariants keys=${subVariants.size}"
             )
 
             reconcileVariantSelections(subVariants)
 
-            addFilterSectionWithVariants(parent, "Stardust",        filters.t3,                subVariants)
-            addFilterSectionWithVariants(parent, "Pokecoins",       filters.t8.orEmpty(),      subVariants)
-            addFilterSectionWithVariants(parent, "Pokémon Candy",   filters.t4,                subVariants)
-            addFilterSectionWithVariants(parent, "Pokémon Candy XL",filters.t9.orEmpty(),      subVariants)
-            addFilterSectionWithVariants(parent, "Mega Energy",     filters.t12,               subVariants)
-            addFilterSectionWithVariants(parent, "Pokémon Encounter",filters.t7,               subVariants)
-            addFilterSectionWithVariants(parent, "Item",            filters.t2,                subVariants)
+            addFilterSectionWithVariants(parent, "Stardust",         filters.stardust,   subVariants)
+            addFilterSectionWithVariants(parent, "Pokecoins",        filters.pokecoins,  subVariants)
+            addFilterSectionWithVariants(parent, "Pokémon Candy",    filters.candy,      subVariants)
+            addFilterSectionWithVariants(parent, "Pokémon Candy XL", filters.candyXl,    subVariants)
+            addFilterSectionWithVariants(parent, "Mega Energy",      filters.megaEnergy, subVariants)
+            addFilterSectionWithVariants(parent, "Pokémon Encounter",filters.encounters, subVariants)
+            addFilterSectionWithVariants(parent, "Item",             filters.items,      subVariants)
         } else {
-            questsViewModel.fetchQuests()
+            // Called on every rebuild (two or three as the screen opens); this starts at most one
+            // fetch, which rediscovers the filter lists since none are cached.
+            questsViewModel.ensureFilterData()
             addSectionHeader(parent, "Please open quests tab to update data (or data loading)")
         }
         isRebuildingQuestFilters = false
         Log.d("QuestFilterDebug", "setupQuestFilters: end (enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size})")
+    }
+
+    /** The API's filter lists from the quest cache; null if absent or unreadable. */
+    private fun readCachedApiFilters(): Quests.Filters? {
+        val json = questCachePrefs.getString(QuestCache.KEY_API_FILTERS, null) ?: return null
+        return try {
+            Gson().fromJson(json, Quests.Filters::class.java)
+        } catch (e: Exception) {
+            Log.w("QuestFilterDebug", "Unreadable cached quest filters", e)
+            null
+        }
     }
 
     private fun addSectionHeader(parent: LinearLayout, text: String) {

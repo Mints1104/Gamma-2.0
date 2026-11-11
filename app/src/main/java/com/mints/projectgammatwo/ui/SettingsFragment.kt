@@ -25,6 +25,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.reflect.TypeToken
 import com.mints.projectgammatwo.R
+import com.mints.projectgammatwo.data.ApiClient
 import com.mints.projectgammatwo.data.DataSourcePreferences
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
 import com.mints.projectgammatwo.data.FavoriteLocation
@@ -770,7 +771,10 @@ class SettingsFragment : Fragment() {
             // Basic settings import — guard every field with ?: in case Gson returned
             // null for a missing key (Gson does not apply Kotlin default parameter values).
             Log.d("SettingsImport", "Importing data sources: ${importData.dataSources}")
-            dataSourcePreferences.setSelectedSources(importData.dataSources ?: emptySet())
+            // Only sources this version knows. A backup without any (or none it recognises) keeps
+            // the current selection: saving an empty one left the app loading nothing.
+            DataSourcePreferences.sanitizeSources(importData.dataSources, ApiClient.DATA_SOURCE_URLS.keys)
+                ?.let { dataSourcePreferences.setSelectedSources(it) }
 
             Log.d("SettingsImport", "Importing enabled characters: ${importData.enabledCharacters}")
             // The live filter selections are written after the saved filters below: saving each
@@ -914,17 +918,20 @@ class SettingsFragment : Fragment() {
                 Log.d("SettingsImport", "Restored ${importedEncounterConditions.size} active encounter conditions")
             }
 
-            // Update UI checkboxes
-            val sources = importData.dataSources ?: emptySet()
+            // Update UI checkboxes from what was actually stored
+            val sources = dataSourcePreferences.getSelectedSources()
             checkboxNYC.isChecked = sources.contains(SOURCE_NYC)
             checkboxLondon.isChecked = sources.contains(SOURCE_LONDON)
             checkboxSG.isChecked = sources.contains(SOURCE_SINGAPORE)
             checkboxVancouver.isChecked = sources.contains(SOURCE_VANCOUVER)
             checkboxSydney.isChecked = sources.contains(SOURCE_SYDNEY)
 
-            customizationManager.saveButtonSize(importData.overlayButtonSize ?: 48)
-            customizationManager.saveButtonOrder(importData.overlayButtonOrder ?: emptyList())
-            customizationManager.saveButtonVisibility(importData.overlayButtonVisibility ?: emptyMap())
+            // Overlay look: only what the backup carries (older ones have none of it, and this
+            // used to save an empty button order), and the manager clamps the size and drops
+            // unknown buttons, so a shared backup can't make the overlay cover the screen.
+            importData.overlayButtonSize?.let { customizationManager.saveButtonSize(it) }
+            importData.overlayButtonOrder?.let { customizationManager.saveButtonOrder(it) }
+            importData.overlayButtonVisibility?.let { customizationManager.saveButtonVisibility(it) }
 
             // Import deeplink preferences. A custom link is where every teleport goes, so a new
             // one is only applied once the user has seen it and agreed (the import used to

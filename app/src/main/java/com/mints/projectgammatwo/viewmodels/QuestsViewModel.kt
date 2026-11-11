@@ -13,8 +13,10 @@ import com.mints.projectgammatwo.helpers.Event
 import com.mints.projectgammatwo.helpers.filterQuestsByConditions
 import com.mints.projectgammatwo.helpers.questBaseFilter
 import com.mints.projectgammatwo.helpers.questConditionKey
+import com.mints.projectgammatwo.helpers.VARIANT_CACHE_MAX_AGE_MS
+import com.mints.projectgammatwo.helpers.isPublishedQuestListFresh
+import com.mints.projectgammatwo.helpers.shouldRediscoverVariants
 import com.google.gson.Gson
-import com.google.gson.JsonSyntaxException
 import com.mints.projectgammatwo.data.ApiClient
 import com.mints.projectgammatwo.data.DataSourcePreferences
 import com.mints.projectgammatwo.data.QuestFilterPreferences
@@ -26,6 +28,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -33,8 +39,6 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 import com.mints.projectgammatwo.data.CurrentQuestData
-import okio.IOException
-import retrofit2.HttpException
 import androidx.core.content.edit
 import kotlinx.coroutines.withContext
 import com.mints.projectgammatwo.R
@@ -62,7 +66,12 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         val id: String,
         val amount: String,
         val reward: String
-    )
+    ) {
+        /** False for a cached entry missing a field: Gson leaves those null despite the types. */
+        @Suppress("SENSELESS_COMPARISON")
+        fun isComplete(): Boolean = filterString != null && label != null && condition != null &&
+            type != null && id != null && amount != null && reward != null
+    }
 
     private val _rewardSubVariantsLiveData = MutableLiveData<Map<String, List<SubVariant>>>()
     val rewardSubVariantsLiveData: LiveData<Map<String, List<SubVariant>>> = _rewardSubVariantsLiveData
@@ -71,18 +80,13 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
     val variantsLoadingLiveData: LiveData<Boolean> = _variantsLoadingLiveData
 
     companion object {
-        /** Sub-variant cache is considered stale after 24 hours. */
-        private const val CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000L
-
-        /**
-         * A published list younger than this, built from the current inputs, is reused. Longer
-         * than the invasion screen's: quests change daily and one fetch is several requests
-         * per source (filtered, unfiltered, and chunked variant discovery).
-         */
-        private const val STALE_AFTER_MS = 5 * 60_000L
+        private const val TAG = "QuestsViewModel"
     }
 
     private var fetchJob: Job? = null
+
+    /** What the running [fetchJob] was started for; only meaningful while it's active. */
+    private var inFlightInputs: Inputs? = null
 
     /** Everything that decides what the quest list contains. */
     private data class Inputs(
@@ -92,9 +96,11 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         val visitedFingerprint: Int,
     )
 
-    /** What the published list was built from, and when; null until a fetch fully succeeds. */
+    /** What the published list was built from, and when; null until a fetch succeeds. */
     private var publishedInputs: Inputs? = null
     private var publishedAtMs = 0L
+    /** Whether every source succeeded for the published list; a partial one is retried sooner. */
+    private var publishedComplete = false
 
     private fun currentInputs(): Inputs {
         val context = getApplication<Application>().applicationContext
@@ -108,18 +114,21 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * Fetches only if the published list is out of date: older than [STALE_AFTER_MS], or built
-     * from different sources, filters or visited quests than are now in effect.
+     * Fetches only if the published list is out of date (see [isPublishedQuestListFresh]): too
+     * old, or built from different sources, filters or visited quests than are now in effect.
+     * Does nothing while a fetch for the current inputs is already running.
      *
      * This view model is activity-scoped — shared by the quest list and the filter screen, and
      * surviving tab switches. The list used to refetch everything on every visit. Pull-to-refresh
      * and the filter screen's refresh still call [fetchQuests].
      *
-     * @return whether a fetch was started.
+     * @return whether a fetch is now running, either started here or already in flight.
      */
     fun refreshIfStale(): Boolean {
+        val inputs = currentInputs()
+        if (fetchJob?.isActive == true && inputs == inFlightInputs) return true
         val age = SystemClock.elapsedRealtime() - publishedAtMs
-        if (currentInputs() == publishedInputs && age < STALE_AFTER_MS) return false
+        if (isPublishedQuestListFresh(inputs == publishedInputs, age, publishedComplete)) return false
         fetchQuests()
         return true
     }
@@ -191,7 +200,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         // in memory after the first file load, so individual key reads are fast.
         val cacheTimestamp = QuestCache.prefs(context).getLong(QuestCache.KEY_SUB_VARIANTS_TIMESTAMP, 0L)
         val cacheAge = System.currentTimeMillis() - cacheTimestamp
-        val cached = if (cacheAge < CACHE_MAX_AGE_MS) {
+        val cached = if (cacheAge in 0 until VARIANT_CACHE_MAX_AGE_MS) {
             QuestCache.prefs(context).getString(QuestCache.KEY_SUB_VARIANTS, null)
         } else {
             Log.d("QuestsViewModel", "Sub-variant cache is stale (${cacheAge / 3600000}h old), discarding")
@@ -200,12 +209,16 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         if (!cached.isNullOrEmpty()) {
             try {
                 val type = object : com.google.gson.reflect.TypeToken<Map<String, List<SubVariant>>>() {}.type
-                val map: Map<String, List<SubVariant>> = Gson().fromJson(cached, type)
+                val map: Map<String, List<SubVariant?>?>? = Gson().fromJson(cached, type)
                 // Regroup under each variant's own base filter. Caches written before the
                 // stardust fix hold every stardust variant under "3,0,0", which matches none of
                 // the filter screen's stardust rows; regrouping gives them their variants straight
                 // away instead of after the next fetch. Correctly keyed groups come out unchanged.
-                val regrouped = map.values.flatten()
+                // Entries missing a field (Gson leaves them null) are dropped rather than shown.
+                val regrouped = map.orEmpty().values
+                    .flatMap { it.orEmpty() }
+                    .filterNotNull()
+                    .filter { it.isComplete() }
                     .groupBy { questBaseFilter(it.type, it.id, it.amount) }
                 if (regrouped.isNotEmpty()) _rewardSubVariantsLiveData.value = regrouped
             } catch (e: Exception) {
@@ -214,17 +227,14 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun buildFullFilterList(filters: Quests.Filters): List<String> {
-        val list = mutableListOf<String>()
-        filters.t3.forEach { list.add("3,$it,0") }
-        filters.t8.orEmpty().forEach { list.add("8,$it,0") }
-filters.t4.forEach { list.add("4,0,$it") }
-        (filters.t9 ?: emptyList()).forEach { list.add("9,0,$it") }
-        filters.t12.forEach { list.add("12,0,$it") }
-        filters.t7.forEach { list.add("7,0,$it") }
-        filters.t2.forEach { list.add("2,0,$it") }
-        return list
-    }
+    private fun buildFullFilterList(filters: Quests.Filters): List<String> =
+        filters.stardust.map { "3,$it,0" } +
+            filters.pokecoins.map { "8,$it,0" } +
+            filters.candy.map { "4,0,$it" } +
+            filters.candyXl.map { "9,0,$it" } +
+            filters.megaEnergy.map { "12,0,$it" } +
+            filters.encounters.map { "7,0,$it" } +
+            filters.items.map { "2,0,$it" }
 
     private val _error = MutableLiveData<String>()
     val error: LiveData<Event<String>> = _error.map { Event(it) } // One-shot, so a replay to a re-created view doesn't show the last error again.
@@ -351,37 +361,34 @@ filters.t4.forEach { list.add("4,0,$it") }
         return result
     }
 
-    fun fetchQuests() {
-        Log.d("QuestsViewModel", "Starting fetchQuests()")
+    /**
+     * Starts [fetchQuests] unless one is already running. For the filter screen, which asks for
+     * data each time it rebuilds while the filter lists are missing — two or three times as it
+     * opens — and used to start (and cancel) a full fetch each time.
+     */
+    fun ensureFilterData() {
+        if (fetchJob?.isActive == true) return
+        fetchQuests()
+    }
+
+    /**
+     * Fetches the quest list from every selected source, cancelling any fetch still running.
+     *
+     * Reward sub-variants (what the filter screen lists) are rediscovered alongside only when
+     * [refreshVariants] is set or the cached ones are missing or a day old; see
+     * [shouldRediscoverVariants].
+     */
+    fun fetchQuests(refreshVariants: Boolean = false) {
+        Log.d(TAG, "Starting fetchQuests(refreshVariants=$refreshVariants)")
         val context = getApplication<Application>().applicationContext
         val inputs = currentInputs()
 
         val filterPreferences = QuestFilterPreferences(context)
         val visitedPreferences = VisitedQuestsPreferences(context)
-        val dataSourcePreferences = DataSourcePreferences(context)
 
-        val enabledFilters = filterPreferences.getEnabledFilters()
-        val filtersToUse = if (enabledFilters.isEmpty()) emptyList() else enabledFilters.toList()
-        Log.d("QuestsViewModel","Filters enabled: $filtersToUse")
-        val enabledConditionsSnapshot = filterPreferences.getEnabledEncounterConditions()
-        val encounterConditionPrefixes = enabledConditionsSnapshot
-            .asSequence()
-            .mapNotNull { key ->
-                val parts = key.split("|")
-                if (parts.size >= 2 && parts[0] == "7") parts[1] else null
-            }
-            .toSet()
-        Log.d(
-            "QuestsViewModel",
-            "Filter state snapshot: enabledFilters=${filtersToUse.size}, enabledEncounterConditions=${enabledConditionsSnapshot.size}, encounterConditionIds=${encounterConditionPrefixes.size}"
-        )
-        if (filtersToUse.isEmpty() && encounterConditionPrefixes.isNotEmpty()) {
-            Log.w(
-                "QuestsViewModel",
-                "Encounter condition keys exist but enabled_quest_filters is empty; quest tab will show no active filters"
-            )
-        }
-        _filterSizeLiveData.postValue(filtersToUse.size)
+        val filtersToUse = inputs.filters.toList()
+        Log.d(TAG, "Filters enabled: $filtersToUse")
+        _filterSizeLiveData.value = filtersToUse.size
 
         // The API expects base filter keys ("4,0,483", "9,0,1006", "3,200,0", "7,0,483")
         // not variant-specific strings ("4,1,483"). Convert variant filter strings to their
@@ -390,258 +397,79 @@ filters.t4.forEach { list.add("4,0,$it") }
         val apiFiltersToUse = filtersToUse.map { filter ->
             val parts = filter.split(",")
             if (parts.size < 3) return@map filter
-            val type = parts[0]
-            val last = parts[2]
-            when (type) {
-                // Stardust: "3,<amount>,0" — amount is the meaningful discriminator; keep as-is
-                "3"  -> filter
-                // Encounter: "7,0,<id>" — already base form
-                "7"  -> filter
+            when (val type = parts[0]) {
+                // Stardust/PokéCoins: the amount is the discriminator; encounters are already
+                // in base form.
+                "3", "8", "7" -> filter
                 // Candy, XL Candy, Mega Energy, Item: "T,<amt>,<id>" → "T,0,<id>"
-                "4"  -> "4,0,$last"
-                "9"  -> "9,0,$last"
-                "12" -> "12,0,$last"
-                "2"  -> "2,0,$last"
+                "4", "9", "12", "2" -> "$type,0,${parts[2]}"
                 else -> filter
             }
         }.distinct()
 
-        val selectedSources = dataSourcePreferences.getSelectedSources()
-
-        // Load last visited coordinates using cached helper
+        val selectedSources = inputs.sources
         val (startLat, startLng) = loadLastVisitedCoordinates()
 
         // Shared by the quest list and the filter screen, so overlapping fetches are possible;
         // cancel the older one so a slow fetch with stale filters can't finish last and win.
+        // With suspend calls this now also cancels its HTTP requests.
         fetchJob?.cancel()
+        inFlightInputs = inputs
         fetchJob = viewModelScope.launch {
             try {
-                Log.d("QuestsViewModel", "Selected data sources: $selectedSources")
+                Log.d(TAG, "Selected data sources: $selectedSources")
                 val deferredList = selectedSources.mapNotNull { source ->
                     ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
-                        async(Dispatchers.IO) {
-                            try {
-                                val service = ApiClient.questsApi(baseUrl)
-                                val response = if (apiFiltersToUse.isEmpty()) {
-                                    service.getAllQuests(System.currentTimeMillis()).execute()
-                                } else {
-                                    service.getQuests(apiFiltersToUse, System.currentTimeMillis()).execute()
-                                }
-
-                                if (response.isSuccessful) {
-                                    Log.d("QuestsViewModel", "API call successful for source $source")
-                                    Pair(source, Result.success(response))
-                                } else {
-                                    val errorMsg = "HTTP ${response.code()}: ${response.message()}"
-                                    Log.w("QuestsViewModel", "API error for source $source: $errorMsg")
-                                    Pair(source, Result.failure<retrofit2.Response<Quests.QuestsResponse>>(
-                                        HttpException(response)
-                                    ))
-                                }
-                            } catch (e: IOException) {
-                                Log.e("QuestsViewModel", "Network error for source $source", e)
-                                Pair(source, Result.failure<retrofit2.Response<Quests.QuestsResponse>>(
-                                    IOException("Network error for source $source", e)
-                                ))
-                            } catch (e: HttpException) {
-                                Log.e("QuestsViewModel", "HTTP error for source $source: ${e.code()}", e)
-                                Pair(source, Result.failure<retrofit2.Response<Quests.QuestsResponse>>(
-                                    e
-                                ))
-                            } catch (e: JsonSyntaxException) {
-                                Log.e("QuestsViewModel", "JSON parsing error for source $source", e)
-                                Pair(source, Result.failure<retrofit2.Response<Quests.QuestsResponse>>(
-                                    IOException("JSON parsing error for source $source", e)
-                                ))
-                            } catch (e: Exception) {
-                                Log.e("QuestsViewModel", "Unexpected error for source $source", e)
-                                Pair(source, Result.failure<retrofit2.Response<Quests.QuestsResponse>>(
-                                    Exception("Unexpected error for source $source", e)
-                                ))
-                            }
-                        }
+                        async(Dispatchers.IO) { fetchSourceQuests(source, baseUrl, apiFiltersToUse) }
                     }
                 }
+                val results = deferredList.awaitAll()
+                val successful = results.filterNotNull()
 
-                val responses = deferredList.map { it.await() }
-
-                val successfulResponses = responses.mapNotNull { (source, result) ->
-                    result.getOrNull()?.let { response ->
-                        Pair(source, response)
-                    }
-                }
-
-                if (successfulResponses.isEmpty()) {
-                    Log.w("QuestsViewModel", "No successful API responses received")
-                    _questsLiveData.postValue(emptyList())
-                    _error.postValue(getApplication<Application>().getString(R.string.quests_error_unable_fetch))
+                if (successful.isEmpty()) {
+                    Log.w(TAG, "No successful API responses received")
+                    // Not a published state: the next visit retries rather than reusing this.
+                    publishedInputs = null
+                    _questsLiveData.value = emptyList()
+                    _questsCountLiveData.value = 0
+                    _error.value = getApplication<Application>().getString(R.string.quests_error_unable_fetch)
                     return@launch
                 }
-                Log.d("QuestsViewModel", "Successfully fetched quests from ${successfulResponses.size} sources")
+                Log.d(TAG, "Fetched quests from ${successful.size} of ${deferredList.size} sources")
 
-                // Write the refresh timestamp now — we have confirmed a live network response.
-                // This is done eagerly so the UI always shows the correct "last refreshed" time
-                // even if sub-variant discovery later finds nothing new.
+                // We have a live network response, so record the refresh time now; the filter
+                // screen shows it as "last refreshed" whether or not variants are rediscovered.
                 val fetchTimestamp = System.currentTimeMillis()
-                withContext(Dispatchers.IO) {
-                    QuestCache.prefs(context)
-                        .edit { putLong(QuestCache.KEY_FILTERS_LAST_REFRESHED, fetchTimestamp) }
-                }
-
-                // Fetch unfiltered quests for variant discovery to avoid filter-dependent gaps
-                _variantsLoadingLiveData.postValue(true)
-                val variantDeferredList = selectedSources.mapNotNull { source ->
-                    ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
-                        async(Dispatchers.IO) {
-                            try {
-                                val service = ApiClient.questsApi(baseUrl)
-                                service.getAllQuests(System.currentTimeMillis()).execute()
-                            } catch (e: Exception) {
-                                Log.w("QuestsViewModel", "Variant fetch failed for source $source", e)
-                                null
-                            }
-                        }
-                    }
-                }
-                val variantResponses = variantDeferredList.mapNotNull { it.await() }
-                val variantBodies = variantResponses
-                    .filter { it.isSuccessful }
-                    .mapNotNull { it.body() }
-
-                // Save filters to SharedPreferences from unfiltered response if available
-                variantBodies.firstOrNull()?.filters?.let { filters ->
-                    withContext(Dispatchers.IO) {
-                        val filtersJson = Gson().toJson(filters)
-                        QuestCache.prefs(context)
-                            .edit { putString(QuestCache.KEY_API_FILTERS, filtersJson) }
+                val cache = withContext(Dispatchers.IO) {
+                    QuestCache.prefs(context).also {
+                        it.edit { putLong(QuestCache.KEY_FILTERS_LAST_REFRESHED, fetchTimestamp) }
                     }
                 }
 
-                val cachedFilters = QuestCache.prefs(context)
-                    .getString(QuestCache.KEY_API_FILTERS, null)
-                    ?.let { json -> Gson().fromJson(json, Quests.Filters::class.java) }
-
-                val filtersForVariants = variantBodies.firstOrNull()?.filters ?: cachedFilters
-                Log.d(
-                    "QuestsViewModel",
-                    "Quest filter sections: t3=${filtersForVariants?.t3?.size ?: 0}, t8=${filtersForVariants?.t8?.size ?: 0}, t4=${filtersForVariants?.t4?.size ?: 0}, t9=${filtersForVariants?.t9?.size ?: 0}, t12=${filtersForVariants?.t12?.size ?: 0}, t7=${filtersForVariants?.t7?.size ?: 0}, t2=${filtersForVariants?.t2?.size ?: 0}"
+                val allQuests = successful.flatten()
+                val rediscover = shouldRediscoverVariants(
+                    forced = refreshVariants,
+                    hasCachedFilters = cache.contains(QuestCache.KEY_API_FILTERS),
+                    hasCachedVariants = !_rewardSubVariantsLiveData.value.isNullOrEmpty(),
+                    cachedAtMs = cache.getLong(QuestCache.KEY_SUB_VARIANTS_TIMESTAMP, 0L),
+                    nowMs = fetchTimestamp,
                 )
-                val fullFilterList = filtersForVariants?.let { buildFullFilterList(it) }.orEmpty()
-
-                // If the unfiltered endpoint returns no quests, expand the filter list in chunks.
-                val variantQuests = if (fullFilterList.isNotEmpty()) {
-                    val chunks = fullFilterList.chunked(80)
-                    val variantQuestDeferredList = selectedSources.mapNotNull { source ->
-                        ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
-                            async(Dispatchers.IO) {
-                                val service = ApiClient.questsApi(baseUrl)
-                                val all = mutableListOf<Quest>()
-                                for (chunk in chunks) {
-                                    try {
-                                        val response = service.getQuests(chunk, System.currentTimeMillis()).execute()
-                                        if (response.isSuccessful) {
-                                            all.addAll(response.body()?.quests ?: emptyList())
-                                        } else {
-                                            Log.w("QuestsViewModel", "Variant chunk fetch failed: HTTP ${response.code()}")
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.w("QuestsViewModel", "Variant chunk fetch failed", e)
-                                    }
-                                }
-                                all
-                            }
-                        }
-                    }
-                    variantQuestDeferredList.flatMap { it.await() }
-                } else {
-                    emptyList()
+                if (rediscover) {
+                    discoverVariants(context, selectedSources, allQuests, fetchTimestamp)
                 }
-
-                val allQuestsForVariants = when {
-                    variantQuests.isNotEmpty() -> variantQuests
-                    variantBodies.isNotEmpty() -> variantBodies.flatMap { it.quests }
-                    else -> successfulResponses.flatMap { (_, response) -> response.body()?.quests ?: emptyList() }
-                }
-
-                // Build sub-variant map: keep same-amount variants distinct by reward label + condition
-                val subVariantMap = mutableMapOf<String, MutableList<SubVariant>>()
-                for (quest in allQuestsForVariants) {
-                    val types = quest.rewardsTypes.split(",").map { it.trim() }
-                    val ids   = quest.rewardsIds.split(",").map { it.trim() }
-                    val amts  = quest.rewardsAmounts.split(",").map { it.trim() }
-                    val condition = quest.conditionsString.trim()
-                    val rewardLabel = quest.rewardsString.trim()
-                    types.indices.forEach { i ->
-                        val type = types.getOrNull(i) ?: return@forEach
-                        val id   = ids.getOrNull(i)   ?: return@forEach
-                        val amt  = amts.getOrNull(i)  ?: return@forEach
-                        if (id.isBlank() || amt.isBlank() || type.isBlank()) return@forEach
-
-                        // Grouped under the filter screen's own base filter so the two agree.
-                        // Stardust used to be grouped by its id, "3,0,0" for every amount: that
-                        // matched none of the stardust checkboxes, and the filter screen's
-                        // reconcile step then removed every stardust selection.
-                        val baseKey = questBaseFilter(type, id, amt)
-                        val filterStr = when (type) {
-                            "3", "8", "7" -> baseKey
-                            else -> "$type,$amt,$id"
-                        }
-                        val label = "$rewardLabel — $condition"
-
-                        val list = subVariantMap.getOrPut(baseKey) { mutableListOf() }
-                        val conditionKey = questConditionKey(type, id, amt, condition, rewardLabel)
-                        val isDuplicate = list.any {
-                            questConditionKey(it.type, it.id, it.amount, it.condition, it.reward) == conditionKey
-                        }
-                        if (!isDuplicate) {
-                            if (type == "8") {
-                                Log.d("QuestsViewModel", "Detected Pokecoins quest: baseKey=$baseKey filterStr=$filterStr label=$label")
-                            }
-                            list.add(SubVariant(filterStr, label, condition, type, id, amt, rewardLabel))
-                        }
-                    }
-                }
-                subVariantMap.forEach { (key, list) ->
-                    if (key.startsWith("7,")) {
-                        list.sortBy { it.label }
-                    } else {
-                        list.sortBy { it.filterString.split(",").getOrNull(1)?.toIntOrNull() ?: 0 }
-                    }
-                }
-                if (subVariantMap.isNotEmpty()) {
-                    _rewardSubVariantsLiveData.postValue(subVariantMap)
-                    // Persist so the filter UI is populated immediately on the next app launch.
-                    withContext(Dispatchers.IO) {
-                        val json = Gson().toJson(subVariantMap)
-                        QuestCache.prefs(context)
-                            .edit {
-                                putString(QuestCache.KEY_SUB_VARIANTS, json)
-                                putLong(QuestCache.KEY_SUB_VARIANTS_TIMESTAMP, fetchTimestamp)
-                            }
-                    }
-                }
-                _variantsLoadingLiveData.postValue(false)
 
                 // Perform CPU-intensive filtering and sorting on background thread
                 val sortedQuests = withContext(Dispatchers.Default) {
-                    val allQuests = successfulResponses.flatMap { (source, response) ->
-                        response.body()?.quests?.map { quest ->
-                            quest.copy(source = source)
-                        } ?: emptyList()
-                    }
-                    Log.d("QuestsViewModel", "Total quests fetched: ${allQuests.size}")
+                    Log.d(TAG, "Total quests fetched: ${allQuests.size}")
 
                     val visited = visitedPreferences.getVisitedQuests()
                     var filteredQuests = allQuests.filter { quest ->
-                        val id = "${quest.name}|${quest.lat}|${quest.lng}"
-                        !visited.contains(id)
+                        "${quest.name}|${quest.lat}|${quest.lng}" !in visited
                     }
-                    Log.d("QuestsViewModel", "Filtered quests after removing visited: ${filteredQuests.size}")
-
 
                     val enabledConditions = filterPreferences.getEnabledEncounterConditions()
                     filteredQuests = filterQuestsByConditions(filteredQuests, filtersToUse, enabledConditions)
-                    Log.d("QuestsViewModel", "Filtered quests after condition filtering: ${filteredQuests.size}")
+                    Log.d(TAG, "Quests after visited and condition filtering: ${filteredQuests.size}")
 
                     // Pre-limit by proximity to last visited when available to reduce sorting cost
                     filteredQuests = if (startLat != null && startLng != null) {
@@ -650,33 +478,185 @@ filters.t4.forEach { list.add("4,0,$it") }
                         filteredQuests.take(500)
                     }
 
-                    // Sort the filtered quests using the last visited coordinates
                     sortQuestsByNearestNeighbor(filteredQuests, startLat, startLng)
                 }
 
-                _questsCountLiveData.postValue(sortedQuests.size)
-                _questsLiveData.postValue(sortedQuests)
+                _questsCountLiveData.value = sortedQuests.size
+                _questsLiveData.value = sortedQuests
                 CurrentQuestData.currentQuests = sortedQuests.toMutableList()
 
-                // Only a complete result counts as the published state; a partial one retries.
-                if (successfulResponses.size == deferredList.size) {
-                    publishedInputs = inputs
-                    publishedAtMs = SystemClock.elapsedRealtime()
-                }
-
+                // A partial result is published too, but goes stale sooner so it's retried.
+                publishedInputs = inputs
+                publishedAtMs = SystemClock.elapsedRealtime()
+                publishedComplete = successful.size == deferredList.size
             } catch (e: CancellationException) {
                 // Coroutine was cancelled - this is normal behavior, don't treat it as an error
-                Log.d("QuestsViewModel", "Fetch quests was cancelled")
-                throw e // Re-throw to properly propagate cancellation
+                Log.d(TAG, "Fetch quests was cancelled")
+                throw e
             } catch (e: Exception) {
-                Log.e("QuestsViewModel", "Error in fetchQuests", e)
-                _questsLiveData.postValue(emptyList())
-                _error.postValue(getApplication<Application>().getString(R.string.quests_error_unexpected))
-            } finally {
-                _variantsLoadingLiveData.postValue(false)
+                ensureActive()
+                Log.e(TAG, "Error in fetchQuests", e)
+                publishedInputs = null
+                _questsLiveData.value = emptyList()
+                _error.value = getApplication<Application>().getString(R.string.quests_error_unexpected)
             }
         }
     }
 
-}
+    /**
+     * One source's quests, tagged with [source]; null if the source failed. Malformed quests are
+     * dropped by [Quests.QuestsResponse.validQuests] rather than failing the source.
+     */
+    private suspend fun fetchSourceQuests(source: String, baseUrl: String, filters: List<String>): List<Quest>? =
+        try {
+            val service = ApiClient.questsApi(baseUrl)
+            val now = System.currentTimeMillis()
+            val response = if (filters.isEmpty()) service.getAllQuests(now) else service.getQuests(filters, now)
+            if (response.isSuccessful) {
+                response.body()?.validQuests(source).orEmpty()
+            } else {
+                Log.w(TAG, "API error for source $source: HTTP ${response.code()}")
+                null
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Cancelling an OkHttp call can surface as IOException("Canceled"); that's not a
+            // source failure.
+            currentCoroutineContext().ensureActive()
+            Log.e(TAG, "Fetching quests from $source failed", e)
+            null
+        }
 
+    /** One request's quests, or null on failure; for variant discovery, where failures only log. */
+    private suspend fun fetchVariantQuests(
+        service: com.mints.projectgammatwo.data.QuestsApiService,
+        filters: List<String>?,
+    ): Quests.QuestsResponse? = try {
+        val now = System.currentTimeMillis()
+        val response = if (filters == null) service.getAllQuests(now) else service.getQuests(filters, now)
+        if (response.isSuccessful) response.body() else {
+            Log.w(TAG, "Variant fetch failed: HTTP ${response.code()}")
+            null
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        currentCoroutineContext().ensureActive()
+        Log.w(TAG, "Variant fetch failed", e)
+        null
+    }
+
+    /**
+     * Refreshes the API's filter lists and the reward sub-variants from unfiltered data, so the
+     * filter screen offers every reward rather than only the ones already selected.
+     *
+     * @param fallbackQuests used for the variants if no unfiltered data could be fetched.
+     */
+    private suspend fun discoverVariants(
+        context: Context,
+        selectedSources: Set<String>,
+        fallbackQuests: List<Quest>,
+        fetchTimestamp: Long,
+    ) {
+        _variantsLoadingLiveData.value = true
+        try {
+            val services = selectedSources.mapNotNull { source ->
+                ApiClient.DATA_SOURCE_URLS[source]?.let { ApiClient.questsApi(it) }
+            }
+            val unfilteredBodies = coroutineScope {
+                services.map { service -> async(Dispatchers.IO) { fetchVariantQuests(service, null) } }
+            }.awaitAll().filterNotNull()
+
+            // Save the API's filter lists from the unfiltered response if there is one.
+            val freshFilters = unfilteredBodies.firstNotNullOfOrNull { it.filters }
+            val filtersForVariants = withContext(Dispatchers.IO) {
+                val cache = QuestCache.prefs(context)
+                if (freshFilters != null) {
+                    cache.edit { putString(QuestCache.KEY_API_FILTERS, Gson().toJson(freshFilters)) }
+                    freshFilters
+                } else {
+                    cache.getString(QuestCache.KEY_API_FILTERS, null)?.let { json ->
+                        runCatching { Gson().fromJson(json, Quests.Filters::class.java) }.getOrNull()
+                    }
+                }
+            }
+            val fullFilterList = filtersForVariants?.let { buildFullFilterList(it) }.orEmpty()
+
+            // Ask for every reward explicitly, in chunks, so variants don't depend on whatever
+            // the unfiltered endpoint chose to return.
+            val chunkedQuests = if (fullFilterList.isEmpty()) emptyList() else {
+                val chunks = fullFilterList.chunked(80)
+                coroutineScope {
+                    services.map { service ->
+                        async(Dispatchers.IO) {
+                            chunks.flatMap { chunk -> fetchVariantQuests(service, chunk)?.validQuests().orEmpty() }
+                        }
+                    }
+                }.awaitAll().flatten()
+            }
+
+            val questsForVariants = when {
+                chunkedQuests.isNotEmpty() -> chunkedQuests
+                unfilteredBodies.isNotEmpty() -> unfilteredBodies.flatMap { it.validQuests() }
+                else -> fallbackQuests
+            }
+
+            val subVariantMap = withContext(Dispatchers.Default) { buildSubVariants(questsForVariants) }
+            if (subVariantMap.isNotEmpty()) {
+                _rewardSubVariantsLiveData.value = subVariantMap
+                // Persist so the filter UI is populated immediately on the next app launch.
+                withContext(Dispatchers.IO) {
+                    QuestCache.prefs(context).edit {
+                        putString(QuestCache.KEY_SUB_VARIANTS, Gson().toJson(subVariantMap))
+                        putLong(QuestCache.KEY_SUB_VARIANTS_TIMESTAMP, fetchTimestamp)
+                    }
+                }
+            }
+        } finally {
+            _variantsLoadingLiveData.value = false
+        }
+    }
+
+    /** Groups every reward of [quests] under its base filter, one [SubVariant] per distinct variant. */
+    private fun buildSubVariants(quests: List<Quest>): Map<String, List<SubVariant>> {
+        // Keep same-amount variants distinct by reward label + condition
+        val subVariantMap = mutableMapOf<String, MutableList<SubVariant>>()
+        val seen = mutableSetOf<String>()
+        for (quest in quests) {
+            val types = quest.rewardsTypes.split(",").map { it.trim() }
+            val ids = quest.rewardsIds.split(",").map { it.trim() }
+            val amts = quest.rewardsAmounts.split(",").map { it.trim() }
+            val condition = quest.conditionsString.trim()
+            val rewardLabel = quest.rewardsString.trim()
+            types.indices.forEach { i ->
+                val type = types[i]
+                val id = ids.getOrNull(i) ?: return@forEach
+                val amt = amts.getOrNull(i) ?: return@forEach
+                if (id.isBlank() || amt.isBlank() || type.isBlank()) return@forEach
+
+                // Grouped under the filter screen's own base filter so the two agree.
+                // Stardust used to be grouped by its id, "3,0,0" for every amount: that
+                // matched none of the stardust checkboxes, and the filter screen's
+                // reconcile step then removed every stardust selection.
+                val baseKey = questBaseFilter(type, id, amt)
+                val filterStr = when (type) {
+                    "3", "8", "7" -> baseKey
+                    else -> "$type,$amt,$id"
+                }
+                if (seen.add(questConditionKey(type, id, amt, condition, rewardLabel))) {
+                    subVariantMap.getOrPut(baseKey) { mutableListOf() }
+                        .add(SubVariant(filterStr, "$rewardLabel — $condition", condition, type, id, amt, rewardLabel))
+                }
+            }
+        }
+        subVariantMap.forEach { (key, list) ->
+            if (key.startsWith("7,")) {
+                list.sortBy { it.label }
+            } else {
+                list.sortBy { it.filterString.split(",").getOrNull(1)?.toIntOrNull() ?: 0 }
+            }
+        }
+        return subVariantMap
+    }
+}

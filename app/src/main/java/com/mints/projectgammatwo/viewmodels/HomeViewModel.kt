@@ -130,7 +130,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         async {
                             try {
                                 ApiClient.getApiForBaseUrl(baseUrl)
-                                    .getInvasions().invasions
+                                    .getInvasions().invasions.orEmpty()
+                                    .filterNotNull()
                                     .map { invasion -> invasion.copy(source = source) }
                             } catch (e: CancellationException) {
                                 throw e
