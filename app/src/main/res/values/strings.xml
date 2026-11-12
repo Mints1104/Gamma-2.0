@@ -209,8 +209,6 @@
     <string name="overlay_no_quests_fetching">No quests available, fetching…</string>
     <string name="overlay_no_invasions_left">No invasions left, refreshing…</string>
     <string name="overlay_no_quests_left">No quests left, refreshing…</string>
-    <string name="overlay_no_earlier_invasion">No earlier invasion to go back to</string>
-    <string name="overlay_no_earlier_quest">No earlier quest to go back to</string>
     <!-- %1$s: the grunt. %2$d: battles in the last 24 hours. -->
     <string name="overlay_teleport_invasion">Teleporting to %1$s\nDaily Limit: %2$d/900</string>
     <!-- %1$s: a quest reward, a grunt or a favorite's name. -->

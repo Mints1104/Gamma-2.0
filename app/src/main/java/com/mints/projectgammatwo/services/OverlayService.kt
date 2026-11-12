@@ -509,12 +509,19 @@ class OverlayService : Service() {
         lastQuestIndex = -1
     }
 
+    /** ▶: see [walkInvasions]. */
+    private fun nextInvasion() = walkInvasions(1)
+
     /**
-     * ▶: teleports to the next invasion that is still live and not yet battled, and records it
-     * against the daily limit, like a tap on the list. Battled ones are skipped: after wrapping
-     * around, ▶ used to teleport to them again and count them a second time.
+     * Teleports to the next invasion along the list ([step] = 1 for ▶, -1 for ◀ when it has no
+     * earlier stop to return to) that is still live and not yet battled. Battled ones are
+     * skipped: after wrapping around, ▶ used to teleport to them again and count them a second
+     * time.
+     *
+     * ▶ records the invasion against the daily limit, like a tap on the list, and adds it to the
+     * history ◀ returns through. Walking back along the list records nothing, as ◀ always has.
      */
-    private fun nextInvasion() {
+    private fun walkInvasions(step: Int) {
         if (navigating) return
         val invasions = CurrentInvasionData.currentInvasions.toList()
         if (invasions.isEmpty()) {
@@ -532,7 +539,7 @@ class OverlayService : Service() {
                     DeletedInvasions(deletedInvasionsRepository.getDeletedEntries())
                 }
                 val now = nowSeconds()
-                val index = nextOverlayIndex(invasions, lastInvasion, lastInvasionIndex, 1) {
+                val index = nextOverlayIndex(invasions, lastInvasion, lastInvasionIndex, step) {
                     isLiveInvasion(it, now) && it !in handledInvasions && it !in deleted
                 }
                 if (index == null) {
@@ -543,6 +550,12 @@ class OverlayService : Service() {
                 lastInvasion = invasion
                 lastInvasionIndex = index
                 Log.d(TAG, "Navigating to invasion at index $index: ${invasion.lat}, ${invasion.lng}")
+                if (step < 0) {
+                    if (launchMap(invasion)) {
+                        showOverlayToast(getString(R.string.overlay_teleporting_to, invasion.characterName))
+                    }
+                    return@launch
+                }
                 // Record it only once the teleport has actually launched, so a failed teleport
                 // neither consumes the invasion nor inflates the count.
                 if (launchMap(invasion)) {
@@ -560,12 +573,19 @@ class OverlayService : Service() {
         }
     }
 
+    /** ▶: see [walkQuests]. */
+    private fun nextQuest() = walkQuests(1)
+
     /**
-     * ▶: teleports to the next quest not yet visited, and records the visit, like a tap on the
-     * quest list. Overlay teleports used to record nothing, so the list kept showing those quests
-     * and the overlay went back to them after wrapping.
+     * Teleports to the next quest along the list ([step] = 1 for ▶, -1 for ◀ when it has no
+     * earlier stop to return to) that hasn't been visited.
+     *
+     * ▶ records the visit, like a tap on the quest list, and adds it to the history ◀ returns
+     * through; overlay teleports used to record nothing, so the list kept showing those quests
+     * and the overlay went back to them after wrapping. Walking back along the list records
+     * nothing, as ◀ always has.
      */
-    private fun nextQuest() {
+    private fun walkQuests(step: Int) {
         if (navigating) return
         val quests = CurrentQuestData.currentQuests.toList()
         if (quests.isEmpty()) {
@@ -578,7 +598,7 @@ class OverlayService : Service() {
         serviceScope.launch {
             try {
                 val visited = withContext(Dispatchers.IO) { visitedQuestsPreferences.getVisitedQuests() }
-                val index = nextOverlayIndex(quests, lastQuest, lastQuestIndex, 1) {
+                val index = nextOverlayIndex(quests, lastQuest, lastQuestIndex, step) {
                     val id = questVisitId(it)
                     id !in handledQuestIds && id !in visited
                 }
@@ -592,6 +612,10 @@ class OverlayService : Service() {
                 lastQuestIndex = index
                 Log.d(TAG, "Navigating to quest at index $index: ${quest.lat}, ${quest.lng}")
                 showOverlayToast(getString(R.string.overlay_teleporting_to, quest.rewardsString))
+                if (step < 0) {
+                    launchQuest(quest)
+                    return@launch
+                }
                 if (launchQuest(quest)) {
                     val id = questVisitId(quest)
                     handledQuestIds += id
@@ -616,13 +640,15 @@ class OverlayService : Service() {
     /**
      * ◀: teleports back to the invasion ▶ teleported to before the current one, passing over any
      * that have since ended. It isn't recorded again: it already counted when ▶ reached it.
+     * With no earlier stop (◀ before any ▶, or after going all the way back) it walks the list
+     * backwards instead, as ◀ always did: from a fresh list, that starts at the last invasion.
      */
     private fun previousInvasion() {
         if (navigating) return
         val now = nowSeconds()
         val index = previousStopIndex(invasionHistory) { isLiveInvasion(it, now) }
         if (index == null) {
-            showOverlayToast(getString(R.string.overlay_no_earlier_invasion))
+            walkInvasions(-1)
             return
         }
         val invasion = invasionHistory[index]
@@ -636,12 +662,15 @@ class OverlayService : Service() {
         }
     }
 
-    /** ◀: teleports back to the quest ▶ teleported to before the current one. */
+    /**
+     * ◀: teleports back to the quest ▶ teleported to before the current one, or with no earlier
+     * stop walks the list backwards, as for invasions ([previousInvasion]).
+     */
     private fun previousQuest() {
         if (navigating) return
         val index = previousStopIndex(questHistory) { true }
         if (index == null) {
-            showOverlayToast(getString(R.string.overlay_no_earlier_quest))
+            walkQuests(-1)
             return
         }
         val quest = questHistory[index]
