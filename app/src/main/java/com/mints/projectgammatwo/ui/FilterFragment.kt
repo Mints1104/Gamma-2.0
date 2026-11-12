@@ -17,6 +17,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
@@ -62,6 +63,18 @@ class FilterFragment : Fragment() {
     private var pokemonDataReady = false
     /** Guard to avoid persisting state while rebuilding the quest filter UI. */
     private var isRebuildingQuestFilters = false
+    /**
+     * Set while a reward's main checkbox ticks or unticks its variant boxes, so each variant's
+     * listener doesn't redo the work and save again; the main checkbox saves once for the group.
+     */
+    private var isSyncingVariantBoxes = false
+    /**
+     * Rebuilds the quest filter tree at most once per frame. Opening the screen used to rebuild it
+     * two or three times in a row (Pokémon names loaded, cached variants replayed, onResume).
+     */
+    private val questRebuild = Runnable {
+        if (view != null && pokemonDataReady) setupQuestFilters(questLayout)
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -104,14 +117,14 @@ class FilterFragment : Fragment() {
             // be gone; questLayout would then belong to a destroyed view.
             // (`view` here is this function's parameter, which is never null; the fragment's
             // current view is what has to be checked.)
-            if (isAdded && this@FilterFragment.view != null) setupQuestFilters(questLayout)
+            if (isAdded && this@FilterFragment.view != null) scheduleQuestRebuild()
         }
 
         questsViewModel.rewardSubVariantsLiveData.observe(viewLifecycleOwner) {
             // Only rebuild the quest filter UI when the quest tab is active AND pokemon
             // data is ready. Rebuilding while on another tab can overwrite user state.
             if (isAdded && pokemonDataReady && currentFilterType == "Quest") {
-                setupQuestFilters(questLayout)
+                scheduleQuestRebuild()
             }
             // Read the timestamp that the ViewModel wrote alongside the fresh network data.
             val lastRefreshed = questCachePrefs.getLong(QuestCache.KEY_FILTERS_LAST_REFRESHED, 0L)
@@ -326,8 +339,7 @@ class FilterFragment : Fragment() {
         // Clear active first so no auto-update hook can fire during the writes.
         Log.d("QuestFilterDebug", "Saving quest filter '$name' (before) -> enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size}")
         filterPreferences.clearActiveQuestFilter()
-        filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-        filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
+        persistQuestSelection()
         filterPreferences.saveCurrentQuestFilter(name)
         filterPreferences.setActiveQuestFilter(name)
         Log.d("QuestFilterDebug", "Saved quest filter '$name' (after) -> enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size}")
@@ -405,8 +417,7 @@ class FilterFragment : Fragment() {
                         enabledQuestFilters.clear()
                         enabledEncounterConditions.clear()
                         filterPreferences.clearActiveQuestFilter()
-                        filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                        filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
+                        persistQuestSelection()
                         setupQuestFilters(parent)
                     }
                 }
@@ -607,8 +618,7 @@ class FilterFragment : Fragment() {
                                 enabledQuestFilters.addAll(allPossibleQuestFilters)
                             }
                             filterPreferences.clearActiveQuestFilter()
-                            filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                            filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
+                            persistQuestSelection()
                             setupQuestFilters(parent)
                         }
                     }
@@ -618,8 +628,45 @@ class FilterFragment : Fragment() {
         parent.addView(toggleButton, 0)
     }
 
+    /** Queues a rebuild of the quest filter tree; several requests in one frame build it once. */
+    private fun scheduleQuestRebuild() {
+        questLayout.removeCallbacks(questRebuild)
+        questLayout.post(questRebuild)
+    }
+
+    /** Saves the live quest selection in one write. */
+    private fun persistQuestSelection() {
+        filterPreferences.saveQuestSelection(enabledQuestFilters, enabledEncounterConditions)
+    }
+
+    /**
+     * Ticks or unticks a group's variant boxes without their listeners running, and enables them
+     * only while the group is ticked. The caller has already updated the selection for the group.
+     */
+    private fun setVariantBoxes(boxes: List<CheckBox>, checked: Boolean) {
+        isSyncingVariantBoxes = true
+        try {
+            boxes.forEach {
+                it.isChecked = checked
+                it.isEnabled = checked
+            }
+        } finally {
+            isSyncingVariantBoxes = false
+        }
+    }
+
     private fun setupQuestFilters(parent: LinearLayout) {
+        // A build now makes any queued one redundant.
+        questLayout.removeCallbacks(questRebuild)
         isRebuildingQuestFilters = true
+        try {
+            buildQuestFilters(parent)
+        } finally {
+            isRebuildingQuestFilters = false
+        }
+    }
+
+    private fun buildQuestFilters(parent: LinearLayout) {
         Log.d("QuestFilterDebug", "setupQuestFilters: start (enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size})")
         parent.removeAllViews()
         addResetButton(parent, "Quest")
@@ -652,7 +699,6 @@ class FilterFragment : Fragment() {
             questsViewModel.ensureFilterData()
             addSectionHeader(parent, "Please open quests tab to update data (or data loading)")
         }
-        isRebuildingQuestFilters = false
         Log.d("QuestFilterDebug", "setupQuestFilters: end (enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size})")
     }
 
@@ -809,8 +855,7 @@ class FilterFragment : Fragment() {
         }
 
         if (changed && currentFilterType == "Quest") {
-            filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-            filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
+            persistQuestSelection()
         }
     }
 
@@ -860,12 +905,14 @@ class FilterFragment : Fragment() {
                     val variant = variants?.firstOrNull()
                     val filterStr = baseFilter
                     addQuestCheckBox(parent, displayText, filterStr, enabledQuestFilters) {
-                        filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
                         if (variant != null) {
                             val key = questConditionKey(variant.type, variant.id, variant.amount, variant.condition, variant.reward)
                             if (enabledQuestFilters.contains(filterStr)) enabledEncounterConditions.add(key)
                             else enabledEncounterConditions.remove(key)
                         }
+                        // Saved after the condition key changes; it used to be saved before, so the
+                        // key only reached disk with the next unrelated write.
+                        persistQuestSelection()
                     }
                 }
             } else {
@@ -874,7 +921,7 @@ class FilterFragment : Fragment() {
                     addCandyFilterWithVariants(parent, displayText, baseFilter, variants)
                 } else {
                     addQuestCheckBox(parent, displayText, baseFilter, enabledQuestFilters) {
-                        filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
+                        persistQuestSelection()
                     }
                 }
             }
@@ -901,6 +948,26 @@ class FilterFragment : Fragment() {
         val baseFilter = "7,0,$pokemonId"
         val allConditionKeys = variants.map { questConditionKey(it.type, it.id, it.amount, it.condition, it.reward) }.toSet()
         val encounterPrefix = "7|$pokemonId|"
+        // Per-variant filter strings a variant tap adds; never the base filter itself.
+        val variantFilterStrings = variants.map { it.filterString }.toSet() - baseFilter
+
+        // Updates the whole group, then saves once; the variant boxes follow without their
+        // listeners running (they used to run, and save, once per variant).
+        val onMainChanged = CompoundButton.OnCheckedChangeListener { _, isChecked ->
+            if (isRebuildingQuestFilters) return@OnCheckedChangeListener
+            Log.d("QuestFilterDebug", "Encounter main '$displayText' -> $isChecked")
+            if (isChecked) {
+                enabledQuestFilters.add(baseFilter)
+                enabledEncounterConditions.addAll(allConditionKeys)
+            } else {
+                enabledEncounterConditions.removeAll(allConditionKeys)
+                enabledQuestFilters.removeAll(variantFilterStrings)
+                if (enabledEncounterConditions.none { it.startsWith(encounterPrefix) })
+                    enabledQuestFilters.remove(baseFilter)
+            }
+            setVariantBoxes(variantCheckboxes, isChecked)
+            persistQuestSelection()
+        }
 
         val mainCheckbox = CheckBox(requireContext()).apply {
             text = displayText
@@ -910,23 +977,7 @@ class FilterFragment : Fragment() {
                         enabledEncounterConditions.any { it.startsWith(encounterPrefix) }
             setPadding(32, 8, 16, 8)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            setOnCheckedChangeListener { _, isChecked ->
-                if (isRebuildingQuestFilters) return@setOnCheckedChangeListener
-                Log.d("QuestFilterDebug", "Encounter main '$displayText' -> $isChecked")
-                if (isChecked) {
-                    enabledQuestFilters.add(baseFilter)
-                    enabledEncounterConditions.addAll(allConditionKeys)
-                    variantCheckboxes.forEach { it.isChecked = true }
-                } else {
-                    enabledEncounterConditions.removeAll(allConditionKeys)
-                    variantCheckboxes.forEach { it.isChecked = false }
-                    if (enabledEncounterConditions.none { it.startsWith(encounterPrefix) })
-                        enabledQuestFilters.remove(baseFilter)
-                }
-                variantCheckboxes.forEach { it.isEnabled = isChecked }
-                filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
-            }
+            setOnCheckedChangeListener(onMainChanged)
         }
 
         val spacer = View(requireContext()).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) }
@@ -951,7 +1002,7 @@ class FilterFragment : Fragment() {
                 setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 setOnCheckedChangeListener { _, isChecked ->
-                    if (isRebuildingQuestFilters) return@setOnCheckedChangeListener
+                    if (isRebuildingQuestFilters || isSyncingVariantBoxes) return@setOnCheckedChangeListener
                     Log.d("QuestFilterDebug", "Encounter variant '$displayText' -> '${variant.label}' = $isChecked")
                     enabledQuestFilters.remove(baseFilter)
                     if (isChecked) {
@@ -971,32 +1022,12 @@ class FilterFragment : Fragment() {
 
                     mainCheckbox.setOnCheckedChangeListener(null)
                     mainCheckbox.isChecked = hasCheckedVariant
-                    mainCheckbox.setOnCheckedChangeListener { _, chk ->
-                        if (isRebuildingQuestFilters) return@setOnCheckedChangeListener
-                        if (chk) {
-                            enabledQuestFilters.add(baseFilter)
-                            enabledEncounterConditions.addAll(allConditionKeys)
-                            variantCheckboxes.forEach { it.isChecked = true }
-                        } else {
-                            enabledEncounterConditions.removeAll(allConditionKeys)
-                            variantCheckboxes.forEach { it.isChecked = false }
-                            if (enabledEncounterConditions.none { it.startsWith(encounterPrefix) })
-                                enabledQuestFilters.remove(baseFilter)
-                        }
-                        variantCheckboxes.forEach { it.isEnabled = chk }
-                        Log.d(
-                            "QuestFilterDebug",
-                            "Encounter main(sync) '$displayText' -> chk=$chk, enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size}"
-                        )
-                        filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                        filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
-                    }
+                    mainCheckbox.setOnCheckedChangeListener(onMainChanged)
                     Log.d(
                         "QuestFilterDebug",
                         "Encounter variant state '$displayText' -> hasCheckedVariant=$hasCheckedVariant, enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size}"
                     )
-                    filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                    filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
+                    persistQuestSelection()
                 }
             }
             variantCheckboxes.add(cb)
@@ -1032,27 +1063,27 @@ class FilterFragment : Fragment() {
         val allConditionKeys  = variants.map { questConditionKey(it.type, it.id, it.amount, it.condition, it.reward) }.toSet()
         val hasMultipleVariants = variants.size > 1
 
+        // Updates the whole group, then saves once; see addEncounterFilterWithVariants.
+        val onMainChanged = CompoundButton.OnCheckedChangeListener { _, isChecked ->
+            if (isRebuildingQuestFilters) return@OnCheckedChangeListener
+            Log.d("QuestFilterDebug", "Main toggle '$displayText' -> $isChecked")
+            if (isChecked) {
+                enabledQuestFilters.add(baseFilter)
+                enabledEncounterConditions.addAll(allConditionKeys)
+            } else {
+                enabledQuestFilters.remove(baseFilter)
+                enabledEncounterConditions.removeAll(allConditionKeys)
+            }
+            setVariantBoxes(variantCheckboxes, isChecked)
+            persistQuestSelection()
+        }
+
         val mainCheckbox = CheckBox(requireContext()).apply {
             text = displayText
             isChecked = enabledEncounterConditions.any { it in allConditionKeys }
             setPadding(32, 8, 16, 8)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            setOnCheckedChangeListener { _, isChecked ->
-                if (isRebuildingQuestFilters) return@setOnCheckedChangeListener
-                Log.d("QuestFilterDebug", "Main toggle '$displayText' -> $isChecked")
-                if (isChecked) {
-                    enabledQuestFilters.add(baseFilter)
-                    enabledEncounterConditions.addAll(allConditionKeys)
-                    variantCheckboxes.forEach { it.isChecked = true }
-                } else {
-                    enabledQuestFilters.remove(baseFilter)
-                    enabledEncounterConditions.removeAll(allConditionKeys)
-                    variantCheckboxes.forEach { it.isChecked = false }
-                }
-                variantCheckboxes.forEach { it.isEnabled = isChecked }
-                filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
-            }
+            setOnCheckedChangeListener(onMainChanged)
         }
 
         topRow.addView(mainCheckbox)
@@ -1078,7 +1109,7 @@ class FilterFragment : Fragment() {
                     setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
                     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                     setOnCheckedChangeListener { _, isChecked ->
-                        if (isRebuildingQuestFilters) return@setOnCheckedChangeListener
+                        if (isRebuildingQuestFilters || isSyncingVariantBoxes) return@setOnCheckedChangeListener
                         Log.d("QuestFilterDebug", "Variant toggle '$displayText' -> '${variant.label}' = $isChecked")
                         if (isChecked) {
                             enabledEncounterConditions.add(key)
@@ -1091,23 +1122,8 @@ class FilterFragment : Fragment() {
                         }
                         mainCheckbox.setOnCheckedChangeListener(null)
                         mainCheckbox.isChecked = variantCheckboxes.any { it.isChecked }
-                        mainCheckbox.setOnCheckedChangeListener { _, chk ->
-                            if (isRebuildingQuestFilters) return@setOnCheckedChangeListener
-                            if (chk) {
-                                enabledQuestFilters.add(baseFilter)
-                                enabledEncounterConditions.addAll(allConditionKeys)
-                                variantCheckboxes.forEach { it.isChecked = true }
-                            } else {
-                                enabledQuestFilters.remove(baseFilter)
-                                enabledEncounterConditions.removeAll(allConditionKeys)
-                                variantCheckboxes.forEach { it.isChecked = false }
-                            }
-                            variantCheckboxes.forEach { it.isEnabled = chk }
-                            filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                            filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
-                        }
-                        filterPreferences.saveEnabledQuestFilters(enabledQuestFilters)
-                        filterPreferences.saveEnabledEncounterConditions(enabledEncounterConditions)
+                        mainCheckbox.setOnCheckedChangeListener(onMainChanged)
+                        persistQuestSelection()
                     }
                 }
                 variantCheckboxes.add(cb)
@@ -1166,8 +1182,13 @@ class FilterFragment : Fragment() {
             // AND pokemon data is ready. If data isn't ready yet, the initializePokemonData
             // callback will trigger the first build once it completes.
             if (currentFilterType == "Quest" && pokemonDataReady) {
-                setupQuestFilters(questLayout)
+                scheduleQuestRebuild()
             }
         }
+    }
+
+    override fun onDestroyView() {
+        if (::questLayout.isInitialized) questLayout.removeCallbacks(questRebuild)
+        super.onDestroyView()
     }
 }

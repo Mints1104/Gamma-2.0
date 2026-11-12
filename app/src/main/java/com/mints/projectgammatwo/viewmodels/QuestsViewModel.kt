@@ -15,6 +15,7 @@ import com.mints.projectgammatwo.helpers.questBaseFilter
 import com.mints.projectgammatwo.helpers.questConditionKey
 import com.mints.projectgammatwo.helpers.VARIANT_CACHE_MAX_AGE_MS
 import com.mints.projectgammatwo.helpers.isPublishedQuestListFresh
+import com.mints.projectgammatwo.helpers.pruneStaleConditionKeys
 import com.mints.projectgammatwo.helpers.shouldRediscoverVariants
 import com.google.gson.Gson
 import com.mints.projectgammatwo.data.ApiClient
@@ -458,6 +459,10 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                     discoverVariants(context, selectedSources, allQuests, fetchTimestamp)
                 }
 
+                // Read after discovery, which may have pruned selections for variants that no
+                // longer exist; the published inputs record what the list was actually built from.
+                val enabledConditions = filterPreferences.getEnabledEncounterConditions()
+
                 // Perform CPU-intensive filtering and sorting on background thread
                 val sortedQuests = withContext(Dispatchers.Default) {
                     Log.d(TAG, "Total quests fetched: ${allQuests.size}")
@@ -467,8 +472,10 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                         "${quest.name}|${quest.lat}|${quest.lng}" !in visited
                     }
 
-                    val enabledConditions = filterPreferences.getEnabledEncounterConditions()
-                    filteredQuests = filterQuestsByConditions(filteredQuests, filtersToUse, enabledConditions)
+                    // allQuests, not the unvisited ones, decides which ticked variants still exist.
+                    filteredQuests = filterQuestsByConditions(
+                        filteredQuests, filtersToUse, enabledConditions, availableQuests = allQuests
+                    )
                     Log.d(TAG, "Quests after visited and condition filtering: ${filteredQuests.size}")
 
                     // Pre-limit by proximity to last visited when available to reduce sorting cost
@@ -486,7 +493,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                 CurrentQuestData.currentQuests = sortedQuests.toMutableList()
 
                 // A partial result is published too, but goes stale sooner so it's retried.
-                publishedInputs = inputs
+                publishedInputs = inputs.copy(conditions = enabledConditions)
                 publishedAtMs = SystemClock.elapsedRealtime()
                 publishedComplete = successful.size == deferredList.size
             } catch (e: CancellationException) {
@@ -564,9 +571,10 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
             val services = selectedSources.mapNotNull { source ->
                 ApiClient.DATA_SOURCE_URLS[source]?.let { ApiClient.questsApi(it) }
             }
-            val unfilteredBodies = coroutineScope {
+            val unfilteredResults = coroutineScope {
                 services.map { service -> async(Dispatchers.IO) { fetchVariantQuests(service, null) } }
-            }.awaitAll().filterNotNull()
+            }.awaitAll()
+            val unfilteredBodies = unfilteredResults.filterNotNull()
 
             // Save the API's filter lists from the unfiltered response if there is one.
             val freshFilters = unfilteredBodies.firstNotNullOfOrNull { it.filters }
@@ -585,16 +593,19 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
 
             // Ask for every reward explicitly, in chunks, so variants don't depend on whatever
             // the unfiltered endpoint chose to return.
-            val chunkedQuests = if (fullFilterList.isEmpty()) emptyList() else {
+            val chunkResults = if (fullFilterList.isEmpty()) emptyList() else {
                 val chunks = fullFilterList.chunked(80)
                 coroutineScope {
                     services.map { service ->
-                        async(Dispatchers.IO) {
-                            chunks.flatMap { chunk -> fetchVariantQuests(service, chunk)?.validQuests().orEmpty() }
-                        }
+                        async(Dispatchers.IO) { chunks.map { chunk -> fetchVariantQuests(service, chunk) } }
                     }
                 }.awaitAll().flatten()
             }
+            val chunkedQuests = chunkResults.flatMap { it?.validQuests().orEmpty() }
+            // Every source asked for every reward, and answered: only then is a variant missing
+            // from the result really gone, rather than on a source that failed.
+            val complete = services.size == selectedSources.size && chunkResults.isNotEmpty() &&
+                unfilteredResults.all { it != null } && chunkResults.all { it != null }
 
             val questsForVariants = when {
                 chunkedQuests.isNotEmpty() -> chunkedQuests
@@ -612,9 +623,28 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                         putLong(QuestCache.KEY_SUB_VARIANTS_TIMESTAMP, fetchTimestamp)
                     }
                 }
+                if (complete) pruneStaleSelections(context, subVariantMap)
             }
         } finally {
             _variantsLoadingLiveData.value = false
+        }
+    }
+
+    /**
+     * Drops the selections for variants that the daily quest rotation has removed, so they don't
+     * pile up (the matching already ignores them; see [filterQuestsByConditions]). Runs on the
+     * main thread in one read-modify-write, so it can't interleave with the filter screen's own.
+     */
+    private fun pruneStaleSelections(context: Context, subVariants: Map<String, List<SubVariant>>) {
+        val variantKeys = subVariants.values.flatten().map {
+            questConditionKey(it.type, it.id, it.amount, it.condition, it.reward)
+        }
+        val preferences = QuestFilterPreferences(context)
+        val enabled = preferences.getEnabledEncounterConditions()
+        val pruned = pruneStaleConditionKeys(enabled, variantKeys)
+        if (pruned.size != enabled.size) {
+            Log.d(TAG, "Pruned ${enabled.size - pruned.size} selections for variants no longer offered")
+            preferences.saveEnabledEncounterConditions(pruned)
         }
     }
 

@@ -12,13 +12,13 @@ class QuestFilterPreferences(context: Context) {
         prefs.getStringSet("enabled_quest_filters", emptySet())?.toSet() ?: emptySet()
 
     fun saveEnabledFilters(filters: Set<String>) {
-        prefs.edit(commit = true) { putStringSet("enabled_quest_filters", HashSet(filters)) }
+        prefs.edit { putStringSet("enabled_quest_filters", HashSet(filters)) }
     }
 
     fun getEnabledEncounterConditions(): Set<String> =
         prefs.getStringSet(FilterPreferences.KEY_ENABLED_ENCOUNTER_CONDITIONS, emptySet())?.toSet() ?: emptySet()
 
     fun saveEnabledEncounterConditions(conditions: Set<String>) {
-        prefs.edit(commit = true) { putStringSet(FilterPreferences.KEY_ENABLED_ENCOUNTER_CONDITIONS, HashSet(conditions)) }
+        prefs.edit { putStringSet(FilterPreferences.KEY_ENABLED_ENCOUNTER_CONDITIONS, HashSet(conditions)) }
     }
 }
