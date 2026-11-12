@@ -10,6 +10,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.VisitedQuestsPreferences
+import com.mints.projectgammatwo.helpers.parseQuestVisitId
 import com.mints.projectgammatwo.recyclerviews.DeletedQuestsAdapter
 import androidx.core.view.MenuProvider
 import androidx.lifecycle.Lifecycle
@@ -112,10 +113,7 @@ class DeletedQuestsFragment : Fragment() {
                 VisitedQuestsPreferences(context).getVisitedRecords()
                     .sortedByDescending { it.timestamp }
                     .mapNotNull { r ->
-                        val parts = r.id.split("|")
-                        val name = parts.getOrNull(0) ?: return@mapNotNull null
-                        val lat = parts.getOrNull(1)?.toDoubleOrNull() ?: return@mapNotNull null
-                        val lng = parts.getOrNull(2)?.toDoubleOrNull() ?: return@mapNotNull null
+                        val (name, lat, lng) = parseQuestVisitId(r.id) ?: return@mapNotNull null
                         DeletedQuestsAdapter.UIModel(
                             name = name,
                             lat = lat,

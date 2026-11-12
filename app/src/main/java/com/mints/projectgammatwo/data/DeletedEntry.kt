@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.google.gson.Gson
+import com.mints.projectgammatwo.helpers.DeletedInvasions
 
 @kotlinx.serialization.Serializable
 data class DeletedEntry(
@@ -14,6 +15,11 @@ data class DeletedEntry(
     val source: String? = null,
     val character: Int? = null,
     val type: Int? = null,
+    /**
+     * The battled invasion's end time (epoch seconds), so a later invasion at the same stop isn't
+     * taken for it; null in entries recorded before this was stored. See DeletedInvasions.
+     */
+    val invasionEnd: Long? = null,
 )
 
 /**
@@ -26,9 +32,8 @@ data class DeletedEntry(
  *   still parsed and represented as DeletedEntry with optional fields null.
  * - Using a Set prevents duplicate entries for the same encoded value.
  *
- * Limitations:
- * - Deletion identity is based on exact lat/lng equality when checking with
- *   isInvasionDeleted; small coordinate precision changes may prevent a match.
+ * Identity: an entry matches an invasion at the same exact lat/lng that ends at about the same
+ * time (see DeletedInvasions); small coordinate precision changes may prevent a match.
  *
  * Concurrency: every read-modify-write of the stored set happens under a process-wide lock.
  * Several instances exist at once (view models, the overlay service, settings) and are called
@@ -75,7 +80,8 @@ class DeletedInvasionsRepository(context: Context) {
             name = invasion.name,
             source = invasion.source,
             character = invasion.character,
-            type = invasion.type
+            type = invasion.type,
+            invasionEnd = invasion.invasion_end,
         )
         val encoded = gson.toJson(entry)
 
@@ -136,14 +142,9 @@ class DeletedInvasionsRepository(context: Context) {
         (prefs.getStringSet(key, emptySet()) ?: emptySet()).hashCode()
     }
 
-    /**
-     * Check if an invasion was previously deleted by matching exact lat/lng.
-     * Note: relies on exact coordinate equality; small precision differences
-     * in source data may prevent a match.
-     */
-    fun isInvasionDeleted(invasion: Invasion): Boolean {
-        return getDeletedEntries().any { it.lat == invasion.lat && it.lng == invasion.lng }
-    }
+    /** Whether [invasion] was battled; see DeletedInvasions. */
+    fun isInvasionDeleted(invasion: Invasion): Boolean =
+        invasion in DeletedInvasions(getDeletedEntries())
 
     /**
      * Count entries deleted within the last 24 hours (rolling window).

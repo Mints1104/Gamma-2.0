@@ -95,8 +95,8 @@ class FilterFragment : Fragment() {
             } else {
                 saveQuestFilterSnapshot(name)
             }
-            val verb = if (result.getBoolean(SaveFilterDialogFragment.RESULT_UPDATED)) "updated" else "saved"
-            Toast.makeText(requireContext(), "Filter '$name' $verb", Toast.LENGTH_SHORT).show()
+            val message = if (result.getBoolean(SaveFilterDialogFragment.RESULT_UPDATED)) R.string.filter_updated else R.string.filter_saved
+            Toast.makeText(requireContext(), getString(message, name), Toast.LENGTH_SHORT).show()
         }
         childFragmentManager.setFragmentResultListener(SelectFilterDialogFragment.REQUEST_KEY, this) { _, result ->
             val name = result.getString(SelectFilterDialogFragment.RESULT_NAME) ?: return@setFragmentResultListener
@@ -315,7 +315,7 @@ class FilterFragment : Fragment() {
         parent.removeAllViews()
         addResetButton(parent, "Rocket")
         addToggleAllButton(parent, "Rocket")
-        addSectionHeader(parent, "Rocket Filters")
+        addSectionHeader(parent, getString(R.string.filter_rocket_header))
         addSelectFilterButton(parent, "Rocket")
         updateCurrentRocketFilter()
         DataMappings.characterNamesMap.forEach { (id, name) ->
@@ -330,20 +330,20 @@ class FilterFragment : Fragment() {
         if (currentFilterType != "Rocket") { updateCurrentQuestFilter(); return }
         val currentFilterName = filterPreferences.getActiveRocketFilter()
         currentFilterTextView.visibility = View.VISIBLE
-        currentFilterTextView.text = if (currentFilterName.isNotEmpty())
-            "Current selected filter: $currentFilterName"
-        else
-            "Current selected filter: Unsaved"
+        currentFilterTextView.text = getString(
+            R.string.filter_current,
+            currentFilterName.ifEmpty { getString(R.string.filter_current_unsaved) }
+        )
     }
 
     private fun updateCurrentQuestFilter() {
         if (currentFilterType != "Quest") { updateCurrentRocketFilter(); return }
         val currentFilterName = filterPreferences.getActiveQuestFilter()
         currentFilterTextView.visibility = View.VISIBLE
-        currentFilterTextView.text = if (currentFilterName.isNotEmpty())
-            "Current selected filter: $currentFilterName"
-        else
-            "Current selected filter: Unsaved"
+        currentFilterTextView.text = getString(
+            R.string.filter_current,
+            currentFilterName.ifEmpty { getString(R.string.filter_current_unsaved) }
+        )
     }
 
     private fun updateQuestLoadingVisibility(isLoading: Boolean) {
@@ -356,13 +356,13 @@ class FilterFragment : Fragment() {
             return
         }
         val formatter = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT, Locale.getDefault())
-        filterLastRefreshedText.text = "Filters Last Refreshed: ${formatter.format(Date(timestampMillis))}"
+        filterLastRefreshedText.text = getString(R.string.filter_last_refreshed, formatter.format(Date(timestampMillis)))
         filterLastRefreshedText.visibility = View.VISIBLE
     }
 
     private fun addResetButton(parent: LinearLayout, filterType: String) {
         val resetButton = MaterialButton(requireContext()).apply {
-            text = "Reset $filterType Filters"
+            setText(if (filterType == "Rocket") R.string.filter_reset_rocket else R.string.filter_reset_quest)
             setPadding(16, 8, 16, 8)
             setOnClickListener {
                 when (filterType) {
@@ -387,7 +387,7 @@ class FilterFragment : Fragment() {
 
     private fun addSelectFilterButton(parent: LinearLayout, filterType: String) {
         val selectButton = MaterialButton(requireContext()).apply {
-            text = "Select $filterType Filter"
+            setText(if (filterType == "Rocket") R.string.filter_select_rocket else R.string.filter_select_quest)
             setPadding(16, 8, 16, 8)
             setOnClickListener { showSelectFilterDialog(filterType) }
         }
@@ -410,7 +410,7 @@ class FilterFragment : Fragment() {
             reloadQuestSelection()
             Log.d("QuestFilterDebug", "Loaded quest filter '$filterName' -> enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size}")
         }
-        Toast.makeText(requireContext(), "Filter '$filterName' applied", Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), getString(R.string.filter_applied, filterName), Toast.LENGTH_SHORT).show()
     }
 
     /** Re-reads the live rocket selection (a saved filter was loaded or deleted) and redraws it. */
@@ -433,7 +433,7 @@ class FilterFragment : Fragment() {
 
     private fun addToggleAllButton(parent: LinearLayout, filterType: String) {
         val toggleButton = MaterialButton(requireContext()).apply {
-            text = "Toggle All $filterType Filters"
+            setText(if (filterType == "Rocket") R.string.filter_toggle_all_rocket else R.string.filter_toggle_all_quest)
             setPadding(16, 8, 16, 8)
             setOnClickListener {
                 when (filterType) {
@@ -546,7 +546,7 @@ class FilterFragment : Fragment() {
         parent.removeAllViews()
         addResetButton(parent, "Quest")
         addToggleAllButton(parent, "Quest")
-        addSectionHeader(parent, "Quest Filters")
+        addSectionHeader(parent, getString(R.string.filter_quest_header))
         addSelectFilterButton(parent, "Quest")
         if (currentFilterType == "Quest") updateCurrentQuestFilter()
 
@@ -572,7 +572,7 @@ class FilterFragment : Fragment() {
             // Called on every rebuild (two or three as the screen opens); this starts at most one
             // fetch, which rediscovers the filter lists since none are cached.
             questsViewModel.ensureFilterData()
-            addSectionHeader(parent, "Please open quests tab to update data (or data loading)")
+            addSectionHeader(parent, getString(R.string.filter_quest_data_missing))
         }
         Log.d("QuestFilterDebug", "setupQuestFilters: end (enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size})")
     }
@@ -635,6 +635,21 @@ class FilterFragment : Fragment() {
             }
             parent.addView(this)
         }
+    }
+
+    /**
+     * The heading shown for a quest section. The section names themselves stay as they are: the
+     * code also uses them as keys.
+     */
+    private fun sectionTitle(section: String): String = when (section) {
+        "Stardust"          -> getString(R.string.filter_section_stardust)
+        "Pokecoins"         -> getString(R.string.filter_section_pokecoins)
+        "Pokémon Candy"     -> getString(R.string.filter_section_candy)
+        "Pokémon Candy XL"  -> getString(R.string.filter_section_candy_xl)
+        "Mega Energy"       -> getString(R.string.filter_section_mega_energy)
+        "Pokémon Encounter" -> getString(R.string.filter_section_encounter)
+        "Item"              -> getString(R.string.filter_section_item)
+        else                -> section
     }
 
     private fun buildQuestFilterString(section: String, rawValue: String): String {
@@ -740,12 +755,12 @@ class FilterFragment : Fragment() {
         filterList: List<String>,
         subVariants: Map<String, List<QuestsViewModel.SubVariant>>
     ) {
-        addSectionHeader(parent, sectionName)
+        addSectionHeader(parent, sectionTitle(sectionName))
 
         if (filterList.isEmpty()) {
             Log.d("QuestFilterDebug", "Section $sectionName has no available values")
             TextView(context).apply {
-                text = "None available for $sectionName"
+                text = getString(R.string.filter_none_available, sectionTitle(sectionName))
                 setPadding(16)
                 parent.addView(this)
             }
@@ -761,13 +776,13 @@ class FilterFragment : Fragment() {
 
         sortedList.forEach { rawValue ->
             val displayText = when (sectionName) {
-                "Pokémon Candy"    -> DataMappings.pokemonEncounterMapNew[rawValue] ?: "Candy for ID: $rawValue"
-                "Pokémon Candy XL" -> DataMappings.pokemonEncounterMapNew[rawValue] ?: "XL Candy for ID: $rawValue"
-                "Pokecoins"        -> "$rawValue PokéCoins"
-                "Mega Energy"      -> DataMappings.pokemonEncounterMapNew[rawValue] ?: "Energy for ID: $rawValue"
-                "Item"             -> DataMappings.itemMap["item$rawValue"] ?: "Item ID: $rawValue"
-                "Stardust"         -> "$rawValue Stardust"
-                else               -> DataMappings.pokemonEncounterMapNew[rawValue] ?: "ID: $rawValue"
+                "Pokémon Candy"    -> DataMappings.pokemonEncounterMapNew[rawValue] ?: getString(R.string.filter_candy_unknown, rawValue)
+                "Pokémon Candy XL" -> DataMappings.pokemonEncounterMapNew[rawValue] ?: getString(R.string.filter_candy_xl_unknown, rawValue)
+                "Pokecoins"        -> getString(R.string.filter_pokecoins_amount, rawValue)
+                "Mega Energy"      -> DataMappings.pokemonEncounterMapNew[rawValue] ?: getString(R.string.filter_energy_unknown, rawValue)
+                "Item"             -> DataMappings.itemMap["item$rawValue"] ?: getString(R.string.filter_item_unknown, rawValue)
+                "Stardust"         -> getString(R.string.filter_stardust_amount, rawValue)
+                else               -> DataMappings.pokemonEncounterMapNew[rawValue] ?: getString(R.string.filter_id_unknown, rawValue)
             }
             val baseFilter = buildQuestFilterString(sectionName, rawValue)
             val variants = subVariants[baseFilter]

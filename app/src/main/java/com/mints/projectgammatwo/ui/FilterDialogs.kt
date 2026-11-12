@@ -59,6 +59,10 @@ class SaveFilterDialogFragment : DialogFragment() {
         val saveButton      = view.findViewById<Button>(R.id.saveFilterButton)
 
         fun report(name: String, updated: Boolean) {
+            if (!isRocket && FilterPreferences.isReservedQuestFilterName(name)) {
+                Toast.makeText(requireContext(), getString(R.string.filter_name_reserved, name), Toast.LENGTH_SHORT).show()
+                return
+            }
             setFragmentResult(
                 REQUEST_KEY,
                 bundleOf(RESULT_NAME to name, RESULT_TYPE to filterType, RESULT_UPDATED to updated)
@@ -72,10 +76,10 @@ class SaveFilterDialogFragment : DialogFragment() {
         if (activeFilterName.isNotEmpty()) {
             // Editing an existing filter: pre-fill the name (a restored dialog keeps what was
             // typed instead) and show all three buttons.
-            titleTextView.text = "Editing: $activeFilterName"
+            titleTextView.text = getString(R.string.filter_editing, activeFilterName)
             editText.setText(activeFilterName)
-            editText.hint = "New name for Save as New"
-            saveButton.text = "Update"
+            editText.setHint(R.string.filter_save_as_new_hint)
+            saveButton.setText(R.string.filter_update)
             saveAsNewButton.visibility = View.VISIBLE
 
             // Update — overwrite the existing snapshot in place.
@@ -85,18 +89,18 @@ class SaveFilterDialogFragment : DialogFragment() {
             saveAsNewButton.setOnClickListener {
                 val newName = editText.text.toString().trim()
                 if (newName.isEmpty() || newName == activeFilterName) {
-                    Toast.makeText(requireContext(), "Enter a different name to save as new", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), R.string.filter_enter_different_name, Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
                 report(newName, updated = false)
             }
         } else {
             // No active filter — standard save flow, two buttons only.
-            titleTextView.text = "Enter a name for the new ${filterType.lowercase()} filter"
+            titleTextView.setText(if (isRocket) R.string.filter_new_rocket_title else R.string.filter_new_quest_title)
             saveButton.setOnClickListener {
                 val newName = editText.text.toString().trim()
                 if (newName.isEmpty()) {
-                    Toast.makeText(requireContext(), "Please enter a name", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), R.string.filter_enter_name, Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
                 report(newName, updated = false)
@@ -141,7 +145,7 @@ class SelectFilterDialogFragment : DialogFragment() {
         ) { _, result ->
             val name = result.getString(DeleteFilterDialogFragment.RESULT_NAME) ?: return@setFragmentResultListener
             FilterPreferences(requireContext()).deleteFilter(name, filterType)
-            Toast.makeText(requireContext(), "Filter '$name' deleted", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), getString(R.string.filter_deleted, name), Toast.LENGTH_SHORT).show()
             populateList()
             setFragmentResult(REQUEST_DELETED_KEY, bundleOf(RESULT_TYPE to filterType))
         }
@@ -149,7 +153,9 @@ class SelectFilterDialogFragment : DialogFragment() {
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val view = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_select_filter, null)
-        view.findViewById<TextView>(R.id.selectFilterTitle).text = "Select $filterType Filter"
+        view.findViewById<TextView>(R.id.selectFilterTitle).setText(
+            if (filterType == "Rocket") R.string.filter_select_rocket else R.string.filter_select_quest
+        )
         view.findViewById<Button>(R.id.cancelSelectButton).setOnClickListener { dismiss() }
         listContainer = view.findViewById(R.id.filterListContainer)
         populateList()
@@ -174,7 +180,7 @@ class SelectFilterDialogFragment : DialogFragment() {
         val filterNames = if (filterType == "Rocket") prefs.listFilterNames() else prefs.listQuestFilterNames()
         if (filterNames.isEmpty()) {
             container.addView(TextView(context).apply {
-                text = "No saved filters available"
+                setText(R.string.filter_none_saved)
                 setPadding(16, 16, 16, 16)
                 gravity = Gravity.CENTER
                 textSize = 16f

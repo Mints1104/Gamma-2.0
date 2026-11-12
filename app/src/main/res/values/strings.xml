@@ -53,6 +53,8 @@
     <string name="quests_error_sources">Could not load quests from %1$s. Showing earlier results from there.</string>
     <string name="invasions_error_sources">Could not load invasions from %1$s. Showing earlier results from there.</string>
     <string name="invasions_error_unexpected">Unable to update invasions. Please check your connection.</string>
+    <!-- %1$s: the name the user typed. -->
+    <string name="filter_name_reserved">A quest filter cannot be called \"%1$s\". Please choose another name.</string>
     <string name="deleted_unknown_character">Unknown Character</string>
     <string name="deleted_unknown_type">Unknown Type</string>
     <string name="deleted_unknown_stop">Unknown Pokéstop</string>
@@ -196,4 +198,102 @@
     <string name="cd_switch_modes">Switch between invasions and quests</string>
     <string name="cd_filters">Filters</string>
     <string name="cd_favorites">Favorites</string>
+    <!-- Overlay toasts -->
+    <string name="overlay_closing">Closing overlay</string>
+    <string name="overlay_home_not_set">Home coordinates not set</string>
+    <string name="overlay_refreshing_quests">Refreshing quests…</string>
+    <string name="overlay_refreshing_invasions">Refreshing invasions…</string>
+    <string name="overlay_switching_to_quests">Switching to quests mode</string>
+    <string name="overlay_switching_to_invasions">Switching to invasions mode</string>
+    <string name="overlay_no_invasions_fetching">No invasions available, fetching…</string>
+    <string name="overlay_no_quests_fetching">No quests available, fetching…</string>
+    <string name="overlay_no_invasions_left">No invasions left, refreshing…</string>
+    <string name="overlay_no_quests_left">No quests left, refreshing…</string>
+    <string name="overlay_no_earlier_invasion">No earlier invasion to go back to</string>
+    <string name="overlay_no_earlier_quest">No earlier quest to go back to</string>
+    <!-- %1$s: the grunt. %2$d: battles in the last 24 hours. -->
+    <string name="overlay_teleport_invasion">Teleporting to %1$s\nDaily Limit: %2$d/900</string>
+    <!-- %1$s: a quest reward, a grunt or a favorite's name. -->
+    <string name="overlay_teleporting_to">Teleporting to %1$s</string>
+    <string name="overlay_back_to">Back to %1$s</string>
+    <string name="overlay_mode_quests">Updated: Quests mode</string>
+    <string name="overlay_mode_invasions">Updated: Invasions mode</string>
+    <string name="overlay_no_invasions_found">No invasions found</string>
+    <string name="overlay_error">Error: %1$s</string>
+    <string name="overlay_applying_filter">Applying filter: %1$s</string>
+    <string name="overlay_applied_filter">Applied filter: %1$s</string>
+    <string name="overlay_channel_name">Overlay Service</string>
+    <string name="overlay_channel_description">Running the Pokémon GO invasion overlay</string>
+    <string name="overlay_service_started">Overlay service started</string>
+    <string name="overlay_service_failed">Failed to start service: %1$s</string>
+    <!-- Quest list item -->
+    <string name="quest_reward">Reward: %1$s</string>
+    <string name="quest_condition">Condition: %1$s</string>
+    <string name="quest_location">Location: %1$s</string>
+    <string name="quest_source">Source: %1$s</string>
+    <string name="quest_info_copied">Quest info copied</string>
+    <!-- Favorites -->
+    <string name="favorite_fill_all_fields">Please fill in all fields</string>
+    <string name="favorite_coordinates_format">Please enter coordinates as \'latitude,longitude\'</string>
+    <string name="favorite_coordinates_invalid">Invalid coordinates</string>
+    <string name="favorites_undo">UNDO</string>
+    <string name="hotspots_none_new">No new hotspots to import</string>
+    <string name="hotspots_import_undone">Import undone</string>
+    <string name="hotspots_import_failed">Failed to import hotspots: %1$s</string>
+    <string name="favorites_import_none">No favorites found to import</string>
+    <string name="favorites_imported">Favorites imported</string>
+    <string name="favorites_import_failed">Failed to import favorites</string>
+    <string name="favorite_coordinates_copied">Coordinates copied to clipboard</string>
+    <string name="favorite_added">Favorite added</string>
+    <string name="favorite_updated">Favorite updated</string>
+    <string name="favorite_deleted">Deleted: %1$s</string>
+    <!-- Filter screen and its dialogs. %1$s: a filter name, or a filter type (Rocket, Quest). -->
+    <string name="filter_saved">Filter \'%1$s\' saved</string>
+    <string name="filter_updated">Filter \'%1$s\' updated</string>
+    <string name="filter_applied">Filter \'%1$s\' applied</string>
+    <string name="filter_deleted">Filter \'%1$s\' deleted</string>
+    <string name="filter_editing">Editing: %1$s</string>
+    <string name="filter_save_as_new_hint">New name for Save as New</string>
+    <string name="filter_update">Update</string>
+    <string name="filter_enter_different_name">Enter a different name to save as new</string>
+    <string name="filter_enter_name">Please enter a name</string>
+    <string name="filter_new_rocket_title">Enter a name for the new rocket filter</string>
+    <string name="filter_new_quest_title">Enter a name for the new quest filter</string>
+    <string name="filter_select_rocket">Select Rocket Filter</string>
+    <string name="filter_select_quest">Select Quest Filter</string>
+    <string name="filter_reset_rocket">Reset Rocket Filters</string>
+    <string name="filter_reset_quest">Reset Quest Filters</string>
+    <string name="filter_toggle_all_rocket">Toggle All Rocket Filters</string>
+    <string name="filter_toggle_all_quest">Toggle All Quest Filters</string>
+    <string name="filter_none_saved">No saved filters available</string>
+    <string name="filter_current">Current selected filter: %1$s</string>
+    <string name="filter_current_unsaved">Unsaved</string>
+    <string name="filter_last_refreshed">Filters Last Refreshed: %1$s</string>
+    <string name="filter_rocket_header">Rocket Filters</string>
+    <string name="filter_quest_header">Quest Filters</string>
+    <string name="filter_quest_data_missing">Please open quests tab to update data (or data loading)</string>
+    <string name="filter_none_available">None available for %1$s</string>
+    <string name="filter_section_stardust">Stardust</string>
+    <string name="filter_section_pokecoins">Pokecoins</string>
+    <string name="filter_section_candy">Pokémon Candy</string>
+    <string name="filter_section_candy_xl">Pokémon Candy XL</string>
+    <string name="filter_section_mega_energy">Mega Energy</string>
+    <string name="filter_section_encounter">Pokémon Encounter</string>
+    <string name="filter_section_item">Item</string>
+    <!-- %1$s: an amount or an id from the map data. -->
+    <string name="filter_stardust_amount">%1$s Stardust</string>
+    <string name="filter_pokecoins_amount">%1$s PokéCoins</string>
+    <string name="filter_candy_unknown">Candy for ID: %1$s</string>
+    <string name="filter_candy_xl_unknown">XL Candy for ID: %1$s</string>
+    <string name="filter_energy_unknown">Energy for ID: %1$s</string>
+    <string name="filter_item_unknown">Item ID: %1$s</string>
+    <string name="filter_id_unknown">ID: %1$s</string>
+    <plurals name="hotspots_imported">
+        <item quantity="one">Imported %1$d hotspot</item>
+        <item quantity="other">Imported %1$d hotspots</item>
+    </plurals>
+    <plurals name="overlay_invasions_found">
+        <item quantity="one">Found %1$d invasion</item>
+        <item quantity="other">Found %1$d invasions</item>
+    </plurals>
 </resources>

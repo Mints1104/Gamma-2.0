@@ -1,7 +1,10 @@
 package com.mints.projectgammatwo.helpers
 
 import com.mints.projectgammatwo.data.Quests.Quest
+import com.mints.projectgammatwo.data.FilterPreferences
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class QuestMatchingTest {
@@ -181,5 +184,28 @@ class QuestMatchingTest {
     fun `nothing is pruned when the variants are unknown`() {
         val enabled = setOf(key(spinOne), key(rareCandy))
         assertEquals(enabled, pruneStaleConditionKeys(enabled, emptyList()))
+    }
+
+    @Test
+    fun `a visit id round-trips, even for a stop whose name contains a bar`() {
+        val plain = quest("Fountain", "7", "25", "1", "Spin", "Pikachu").copy(lat = 40.5, lng = -73.25)
+        assertEquals(Triple("Fountain", 40.5, -73.25), parseQuestVisitId(questVisitId(plain)))
+
+        val barred = plain.copy(name = "Cafe | Bar")
+        assertEquals(Triple("Cafe | Bar", 40.5, -73.25), parseQuestVisitId(questVisitId(barred)))
+    }
+
+    @Test
+    fun `malformed visit ids are rejected`() {
+        assertEquals(null, parseQuestVisitId("no bars here"))
+        assertEquals(null, parseQuestVisitId("name|40.5"))
+        assertEquals(null, parseQuestVisitId("name|north|west"))
+    }
+
+    @Test
+    fun `only the quest filter name that collides with the name list is reserved`() {
+        assertTrue(FilterPreferences.isReservedQuestFilterName("filters"))
+        assertFalse(FilterPreferences.isReservedQuestFilterName("Filters"))
+        assertFalse(FilterPreferences.isReservedQuestFilterName("my filters"))
     }
 }

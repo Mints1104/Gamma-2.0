@@ -16,6 +16,21 @@ fun questConditionKey(type: String, id: String, amount: String, condition: Strin
  */
 fun questVisitId(quest: Quest): String = "${quest.name}|${quest.lat}|${quest.lng}"
 
+/**
+ * Splits a [questVisitId] back into name, lat and lng; null if it isn't one. The coordinates are
+ * taken from the end, so a stop whose name contains "|" keeps its whole name: splitting on every
+ * "|" used to drop such stops from the visited history.
+ */
+fun parseQuestVisitId(id: String): Triple<String, Double, Double>? {
+    val lngSep = id.lastIndexOf('|')
+    if (lngSep <= 0) return null
+    val latSep = id.lastIndexOf('|', lngSep - 1)
+    if (latSep < 0) return null
+    val lat = id.substring(latSep + 1, lngSep).toDoubleOrNull() ?: return null
+    val lng = id.substring(lngSep + 1).toDoubleOrNull() ?: return null
+    return Triple(id.substring(0, latSep), lat, lng)
+}
+
 /** The pre-reward-label form of [questConditionKey], still found in older saved selections. */
 fun legacyQuestConditionKey(type: String, id: String, amount: String, condition: String): String =
     "$type|$id|$amount|$condition"

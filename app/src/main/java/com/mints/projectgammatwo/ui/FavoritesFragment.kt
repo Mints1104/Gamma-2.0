@@ -137,7 +137,7 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         val rootView = requireActivity().findViewById<View>(android.R.id.content)
         undoSnackbar?.dismiss()
         undoSnackbar = Snackbar.make(rootView, message, Snackbar.LENGTH_LONG)
-            .setAction("UNDO") { if (view != null) onUndo() }
+            .setAction(R.string.favorites_undo) { if (view != null) onUndo() }
             .also { it.show() }
     }
 
@@ -259,9 +259,9 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
 
             // Show snackbar with undo option
             val message = if (addedLocations.isNotEmpty()) {
-                "Imported ${addedLocations.size} hotspot(s)"
+                resources.getQuantityString(R.plurals.hotspots_imported, addedLocations.size, addedLocations.size)
             } else {
-                "No new hotspots to import"
+                getString(R.string.hotspots_none_new)
             }
 
             showUndoSnackbar(message) {
@@ -270,11 +270,11 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
                 favoritesList.addAll(previousList)
                 adapter.submitList(favoritesList.toList())
                 saveFavorites()
-                Toast.makeText(requireContext(), "Import undone", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), R.string.hotspots_import_undone, Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            Toast.makeText(requireContext(), "Failed to import hotspots: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), getString(R.string.hotspots_import_failed, e.message.orEmpty()), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -297,7 +297,7 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
                     !(it.lat == 0.0 && it.lng == 0.0)
             }
             if (usable.isEmpty()) {
-                Toast.makeText(requireContext(), "No favorites found to import", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), R.string.favorites_import_none, Toast.LENGTH_SHORT).show()
                 return
             }
             for (fav in usable) {
@@ -309,10 +309,10 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
             applyCurrentSort()
             adapter.submitList(favoritesList.toList())
             saveFavorites()
-            Toast.makeText(requireContext(), "Favorites imported", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), R.string.favorites_imported, Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             e.printStackTrace()
-            Toast.makeText(requireContext(), "Failed to import favorites", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), R.string.favorites_import_failed, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -342,7 +342,7 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         favoritesList.removeAt(deletedIndex)
         adapter.submitList(favoritesList.toList())
         saveFavorites()
-        showUndoSnackbar("Deleted: ${favorite.name}") {
+        showUndoSnackbar(getString(R.string.favorite_deleted, favorite.name)) {
             favoritesList.add(deletedIndex.coerceAtMost(favoritesList.size), favorite)
             adapter.submitList(favoritesList.toList())
             saveFavorites()
@@ -363,7 +363,7 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
             "${favorite.lat.toPlainCoordinate()}, ${favorite.lng.toPlainCoordinate()}"
         )
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(requireContext(), "Coordinates copied to clipboard", Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), R.string.favorite_coordinates_copied, Toast.LENGTH_SHORT).show()
     }
 
 
@@ -399,10 +399,10 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     override fun onFavoriteSaved(favorite: FavoriteLocation, position: Int) {
         if (position == -1) {
             favoritesList.add(favorite)
-            Toast.makeText(requireContext(), "Favorite added", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), R.string.favorite_added, Toast.LENGTH_SHORT).show()
         } else {
             favoritesList[position] = favorite
-            Toast.makeText(requireContext(), "Favorite updated", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), R.string.favorite_updated, Toast.LENGTH_SHORT).show()
         }
         applyCurrentSort()
         adapter.submitList(favoritesList.toList())

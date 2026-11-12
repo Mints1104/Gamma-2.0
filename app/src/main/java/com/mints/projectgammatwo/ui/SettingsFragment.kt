@@ -14,6 +14,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.edit
 import androidx.core.text.HtmlCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -32,6 +33,7 @@ import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.data.ExportData
 import com.mints.projectgammatwo.data.DeeplinkManager
+import com.mints.projectgammatwo.data.OverlayCustomizationManager
 import com.mints.projectgammatwo.data.decodeConditionMap
 import com.mints.projectgammatwo.data.decodeConditionSet
 import com.mints.projectgammatwo.data.encodeConditionMap
@@ -283,26 +285,22 @@ class SettingsFragment : Fragment() {
             }
         }
 
-        // Handle custom URL changes
+        // Saved as it's typed. It used to be saved only when the field lost focus, so leaving the
+        // screen straight from the keyboard lost the edit, and an emptied field was never saved,
+        // so the link could not be cleared. An empty link teleports with iPogo's.
+        customDeeplinkUrl.doAfterTextChanged { text ->
+            val url = text?.toString()?.trim().orEmpty()
+            if (url != deeplinkManager.getCustomUrl()) deeplinkManager.setCustomUrl(url)
+            customDeeplinkUrl.error =
+                if (url.isNotEmpty() && "%s" !in url) getString(R.string.deeplink_custom_url_invalid) else null
+        }
+        var urlWhenFocused = ""
         customDeeplinkUrl.setOnFocusChangeListener { _, hasFocus ->
-            if (!hasFocus) {
-                val url = customDeeplinkUrl.text.toString().trim()
-                if (url.isNotEmpty()) {
-                    deeplinkManager.setCustomUrl(url)
-                    if (!url.contains("%s")) {
-                        Toast.makeText(
-                            requireContext(),
-                            getString(R.string.deeplink_custom_url_invalid),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    } else {
-                        Toast.makeText(
-                            requireContext(),
-                            getString(R.string.deeplink_custom_url_saved),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
+            val url = customDeeplinkUrl.text.toString().trim()
+            if (hasFocus) {
+                urlWhenFocused = url
+            } else if (url != urlWhenFocused && url.isNotEmpty() && "%s" in url) {
+                Toast.makeText(requireContext(), R.string.deeplink_custom_url_saved, Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -375,13 +373,18 @@ class SettingsFragment : Fragment() {
 
         sizeSeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                // android:min is ignored before API 26, so the bar there goes down to 0 dp.
+                if (progress < OverlayCustomizationManager.MIN_BUTTON_SIZE) {
+                    seekBar?.progress = OverlayCustomizationManager.MIN_BUTTON_SIZE
+                    return
+                }
                 sizeValue.text = getString(R.string.overlay_size_dp, progress)
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
 
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                val newSize = seekBar?.progress ?: 48
+                val newSize = OverlayCustomizationManager.sanitizeButtonSize(seekBar?.progress)
                 customizationManager.saveButtonSize(newSize)
                 applyCustomizationToRunningOverlay()
             }

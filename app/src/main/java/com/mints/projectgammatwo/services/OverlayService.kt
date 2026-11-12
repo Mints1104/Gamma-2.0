@@ -55,6 +55,7 @@ import com.mints.projectgammatwo.helpers.DragTouchListener
 import com.mints.projectgammatwo.helpers.Event
 import com.mints.projectgammatwo.helpers.ItemTouchHelperAdapter
 import com.mints.projectgammatwo.helpers.ItemTouchHelperCallback
+import com.mints.projectgammatwo.helpers.DeletedInvasions
 import com.mints.projectgammatwo.helpers.isLiveInvasion
 import com.mints.projectgammatwo.helpers.nextOverlayIndex
 import com.mints.projectgammatwo.helpers.previousStopIndex
@@ -220,10 +221,10 @@ class OverlayService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Overlay Service",
+                getString(R.string.overlay_channel_name),
                 NotificationManager.IMPORTANCE_LOW
             )
-            channel.description = "Running the Pokemon GO invasion overlay"
+            channel.description = getString(R.string.overlay_channel_description)
             val notificationManager = getSystemService(NotificationManager::class.java)
             notificationManager.createNotificationChannel(channel)
         }
@@ -432,7 +433,7 @@ class OverlayService : Service() {
 
         closeBtn.setOnClickListener {
             Log.d(TAG, "Close button clicked")
-            showOverlayToast("Closing overlay")
+            showOverlayToast(getString(R.string.overlay_closing))
             try {
                 if (overlayView != null) {
                     windowManager.removeView(overlayView)
@@ -456,18 +457,18 @@ class OverlayService : Service() {
                 launchHome(latitude,longitude)
             } else {
                 Log.d(TAG, "Home coordinates not set")
-                showOverlayToast("Home coordinates not set")
+                showOverlayToast(getString(R.string.overlay_home_not_set))
             }
         }
 
         refreshBtn.setOnClickListener {
             if (mode == "quests") {
                 Log.d(TAG, "Refresh button clicked in quests mode")
-                showOverlayToast("Refreshing quests...")
+                showOverlayToast(getString(R.string.overlay_refreshing_quests))
                 fetchQuests()
             } else {
                 Log.d(TAG, "Refresh button clicked in invasions mode")
-                showOverlayToast("Refreshing invasions...")
+                showOverlayToast(getString(R.string.overlay_refreshing_invasions))
                 fetchInvasions()
             }
         }
@@ -475,7 +476,9 @@ class OverlayService : Service() {
         switchModesBtn.setOnClickListener {
             val newMode = if (mode == MODE_QUESTS) MODE_INVASIONS else MODE_QUESTS
             Log.d(TAG, "Switching to $newMode mode")
-            showOverlayToast("Switching to $newMode mode")
+            showOverlayToast(getString(
+                if (newMode == MODE_QUESTS) R.string.overlay_switching_to_quests else R.string.overlay_switching_to_invasions
+            ))
             switchMode(newMode)
         }
 
@@ -516,7 +519,7 @@ class OverlayService : Service() {
         val invasions = CurrentInvasionData.currentInvasions.toList()
         if (invasions.isEmpty()) {
             Log.d(TAG, "No invasions available, attempting to fetch...")
-            showOverlayToast("No invasions available, fetching...")
+            showOverlayToast(getString(R.string.overlay_no_invasions_fetching))
             fetchInvasions()
             return
         }
@@ -526,11 +529,11 @@ class OverlayService : Service() {
                 // Off the main thread: this parses the whole stored set (up to the 900/day limit),
                 // and these are the overlay's most-used buttons.
                 val deleted = withContext(Dispatchers.IO) {
-                    deletedInvasionsRepository.getDeletedEntries().map { it.lat to it.lng }.toHashSet()
+                    DeletedInvasions(deletedInvasionsRepository.getDeletedEntries())
                 }
                 val now = nowSeconds()
                 val index = nextOverlayIndex(invasions, lastInvasion, lastInvasionIndex, 1) {
-                    isLiveInvasion(it, now) && it !in handledInvasions && (it.lat to it.lng) !in deleted
+                    isLiveInvasion(it, now) && it !in handledInvasions && it !in deleted
                 }
                 if (index == null) {
                     refetchExpiredInvasions()
@@ -549,7 +552,7 @@ class OverlayService : Service() {
                         deletedInvasionsRepository.addDeletedInvasion(invasion)
                         deletedInvasionsRepository.getDeletionCountLast24Hours()
                     }
-                    showOverlayToast("Teleporting to ${invasion.characterName} \n Daily Limit: $count/900")
+                    showOverlayToast(getString(R.string.overlay_teleport_invasion, invasion.characterName, count))
                 }
             } finally {
                 navigating = false
@@ -567,7 +570,7 @@ class OverlayService : Service() {
         val quests = CurrentQuestData.currentQuests.toList()
         if (quests.isEmpty()) {
             Log.d(TAG, "No quests available, attempting to fetch...")
-            showOverlayToast("No quests available, fetching...")
+            showOverlayToast(getString(R.string.overlay_no_quests_fetching))
             fetchQuests()
             return
         }
@@ -580,7 +583,7 @@ class OverlayService : Service() {
                     id !in handledQuestIds && id !in visited
                 }
                 if (index == null) {
-                    showOverlayToast("No quests left, refreshing...")
+                    showOverlayToast(getString(R.string.overlay_no_quests_left))
                     fetchQuests()
                     return@launch
                 }
@@ -588,7 +591,7 @@ class OverlayService : Service() {
                 lastQuest = quest
                 lastQuestIndex = index
                 Log.d(TAG, "Navigating to quest at index $index: ${quest.lat}, ${quest.lng}")
-                showOverlayToast("Teleporting to ${quest.rewardsString}")
+                showOverlayToast(getString(R.string.overlay_teleporting_to, quest.rewardsString))
                 if (launchQuest(quest)) {
                     val id = questVisitId(quest)
                     handledQuestIds += id
@@ -619,7 +622,7 @@ class OverlayService : Service() {
         val now = nowSeconds()
         val index = previousStopIndex(invasionHistory) { isLiveInvasion(it, now) }
         if (index == null) {
-            showOverlayToast("No earlier invasion to go back to")
+            showOverlayToast(getString(R.string.overlay_no_earlier_invasion))
             return
         }
         val invasion = invasionHistory[index]
@@ -629,7 +632,7 @@ class OverlayService : Service() {
             lastInvasionIndex = CurrentInvasionData.currentInvasions.indexOf(invasion)
                 .takeIf { it >= 0 } ?: lastInvasionIndex
             lastInvasion = invasion
-            showOverlayToast("Back to ${invasion.characterName}")
+            showOverlayToast(getString(R.string.overlay_back_to, invasion.characterName))
         }
     }
 
@@ -638,7 +641,7 @@ class OverlayService : Service() {
         if (navigating) return
         val index = previousStopIndex(questHistory) { true }
         if (index == null) {
-            showOverlayToast("No earlier quest to go back to")
+            showOverlayToast(getString(R.string.overlay_no_earlier_quest))
             return
         }
         val quest = questHistory[index]
@@ -647,7 +650,7 @@ class OverlayService : Service() {
             lastQuestIndex = CurrentQuestData.currentQuests.indexOf(quest)
                 .takeIf { it >= 0 } ?: lastQuestIndex
             lastQuest = quest
-            showOverlayToast("Back to ${quest.rewardsString}")
+            showOverlayToast(getString(R.string.overlay_back_to, quest.rewardsString))
         }
     }
 
@@ -674,15 +677,15 @@ class OverlayService : Service() {
      */
     private fun refetchExpiredInvasions() {
         Log.d(TAG, "No live, unbattled invasion left in the overlay's list, refreshing...")
-        showOverlayToast("No invasions left, refreshing...")
+        showOverlayToast(getString(R.string.overlay_no_invasions_left))
         fetchInvasions()
     }
 
     private fun updateOverlayBasedOnMode(mode: String) {
         if (mode == "quests") {
-            showOverlayToast("Updated: Quests mode")
+            showOverlayToast(getString(R.string.overlay_mode_quests))
         } else {
-            showOverlayToast("Updated: Invasions mode")
+            showOverlayToast(getString(R.string.overlay_mode_invasions))
         }
     }
 
@@ -701,17 +704,17 @@ class OverlayService : Service() {
             Log.d(TAG, "Received ${invasions.size} invasions")
             CurrentInvasionData.currentInvasions = invasions.toMutableList()
             if (invasions.isNotEmpty()) {
-                showOverlayToast("Found ${invasions.size} invasions")
+                showOverlayToast(resources.getQuantityString(R.plurals.overlay_invasions_found, invasions.size, invasions.size))
                 resetInvasionWalk()
             } else {
-                showOverlayToast("No invasions found")
+                showOverlayToast(getString(R.string.overlay_no_invasions_found))
             }
             updateOverlayBasedOnMode("invasions")
         }
         val onError = Observer<Event<String>> { event ->
             event.consume()?.let { errorMsg ->
                 Log.e(TAG, "Error fetching invasions: $errorMsg")
-                showOverlayToast("Error: $errorMsg")
+                showOverlayToast(getString(R.string.overlay_error, errorMsg))
             }
         }
         homeViewModel.invasions.observeForever(onInvasions)
@@ -823,7 +826,7 @@ class OverlayService : Service() {
             onTeleportFavorite = { favorite ->
                 hideFilterOverlay()
                 if (Teleporter.teleport(this@OverlayService, favorite.lat, favorite.lng)) {
-                    showOverlayToast("Teleporting to ${favorite.name}")
+                    showOverlayToast(getString(R.string.overlay_teleporting_to, favorite.name))
                 }
             }
         )
@@ -853,7 +856,7 @@ class OverlayService : Service() {
         // Initialize the adapter with a filter selection callback
         filtersAdapter = FiltersRecyclerView { filterName ->
             Log.d(TAG, "Filter selected: $filterName")
-            showOverlayToast("Applying filter: $filterName")
+            showOverlayToast(getString(R.string.overlay_applying_filter, filterName))
             applyFilter(filterName)
         }
 
@@ -990,7 +993,7 @@ class OverlayService : Service() {
         filterPreferences.loadFilter(filterName, filterType)
 
         // Show a toast message
-        showOverlayToast("Applied filter: $filterName")
+        showOverlayToast(getString(R.string.overlay_applied_filter, filterName))
 
         // Hide the filter overlay
         hideFiltersOverlay()

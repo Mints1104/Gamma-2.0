@@ -14,6 +14,7 @@ import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
 import com.mints.projectgammatwo.R
+import com.mints.projectgammatwo.helpers.DeletedInvasions
 import com.mints.projectgammatwo.helpers.Event
 import com.mints.projectgammatwo.helpers.carryOverFailedSources
 import com.mints.projectgammatwo.helpers.filterInvasions
@@ -165,14 +166,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 val deletedEntries = withContext(Dispatchers.IO) {
                     deletedRepo.getDeletedEntries()
                 }
-                val deletedKeySet = deletedEntries.map { it.lat to it.lng }.toHashSet()
+                val deleted = DeletedInvasions(deletedEntries)
 
                 // Perform CPU-bound mapping/filtering AND sorting off the main thread
                 val finalList = withContext(Dispatchers.Default) {
                     val baseList = filterInvasions(
                         combinedInvasions,
                         enabledCharacters,
-                        deletedKeySet,
+                        deleted,
                         nowSeconds = System.currentTimeMillis() / 1000
                     )
                     applySorting(baseList)

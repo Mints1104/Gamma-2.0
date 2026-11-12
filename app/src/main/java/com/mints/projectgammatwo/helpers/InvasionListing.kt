@@ -1,6 +1,8 @@
 package com.mints.projectgammatwo.helpers
 
+import com.mints.projectgammatwo.data.DeletedEntry
 import com.mints.projectgammatwo.data.Invasion
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -10,8 +12,37 @@ import kotlin.math.sqrt
 const val MAX_LISTED_INVASIONS = 500
 
 /**
+ * Two reports of one invasion end within this many seconds of each other; the next invasion at
+ * the same stop ends at least about half an hour later.
+ */
+private const val SAME_INVASION_END_TOLERANCE_SECONDS = 120L
+
+/**
+ * The battled invasions, for telling whether an invasion in a fetch is one of them.
+ *
+ * An entry matches an invasion at the same stop (exact lat/lng) that ends at about the time the
+ * battled one did. Matching on the stop alone hid every later invasion there for the 24 hours an
+ * entry is kept. Entries recorded before end times were stored still match on the stop alone.
+ */
+class DeletedInvasions(entries: Collection<DeletedEntry>) {
+    private val endsByStop: Map<Pair<Double, Double>, List<Long?>> =
+        entries.groupBy({ it.lat to it.lng }, { it.invasionEnd })
+
+    operator fun contains(invasion: Invasion): Boolean {
+        val ends = endsByStop[invasion.lat to invasion.lng] ?: return false
+        return ends.any { end ->
+            end == null || abs(end - invasion.invasion_end) <= SAME_INVASION_END_TOLERANCE_SECONDS
+        }
+    }
+
+    companion object {
+        val NONE = DeletedInvasions(emptyList())
+    }
+}
+
+/**
  * The invasions worth listing from a raw fetch: those whose character is enabled, that haven't
- * been battled ([deleted] holds their lat/lng) and that haven't ended.
+ * been battled ([deleted]) and that haven't ended.
  *
  * The API reports the two event grunts by type with a placeholder character, so types 8 and 9
  * are mapped to the characters the filter screen offers for them first.
@@ -19,7 +50,7 @@ const val MAX_LISTED_INVASIONS = 500
 fun filterInvasions(
     invasions: List<Invasion>,
     enabledCharacters: Set<Int>,
-    deleted: Set<Pair<Double, Double>>,
+    deleted: DeletedInvasions,
     nowSeconds: Long,
 ): List<Invasion> = invasions
     .asSequence()
@@ -32,7 +63,7 @@ fun filterInvasions(
     }
     .filter { invasion ->
         invasion.character in enabledCharacters &&
-            invasion.lat to invasion.lng !in deleted &&
+            invasion !in deleted &&
             invasion.invasion_end > nowSeconds
     }
     .toList()

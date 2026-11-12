@@ -12,8 +12,8 @@ class FilterPreferences(context: Context) {
 
     private val KEY_ALL_FILTERS = "all_filters"
     private val KEY_FILTER_PREFIX = "filter_"
-    private val QUEST_FILTER_PREFIX = "quest_"
-    private val KEY_QUEST_FILTERS = "quest_filters"
+    private val QUEST_FILTER_PREFIX = QUEST_FILTER_KEY_PREFIX
+    private val KEY_QUEST_FILTERS = QUEST_FILTER_NAMES_KEY
     private val KEY_ACTIVE_ROCKET_FILTER = "active_rocket_filter"
     private val KEY_ACTIVE_QUEST_FILTER = "active_quest_filter"
     private val QUEST_ENCOUNTER_PREFIX = "encounter_"
@@ -60,6 +60,12 @@ class FilterPreferences(context: Context) {
     }
 
     fun saveCurrentQuestFilter(name: String) {
+        if (isReservedQuestFilterName(name)) {
+            // Its snapshot would overwrite the list of saved filter names; the save dialog
+            // refuses the name, so this only guards imports of older backups.
+            Log.w("FilterPreferences", "Not saving a quest filter named '$name': the name is reserved")
+            return
+        }
         val currentQuests = getEnabledQuestFilters()
         Log.d("FilterPreferences", "Saving filter $name with quests: $currentQuests")
         val currentEncounterConditions = getEnabledEncounterConditions()
@@ -179,5 +185,14 @@ class FilterPreferences(context: Context) {
         const val QUEST_PREF_NAME = "quest_filters"
         private const val KEY_CHARACTERS = "enabled_characters"
         const val KEY_ENABLED_ENCOUNTER_CONDITIONS = "enabled_encounter_conditions"
+        private const val QUEST_FILTER_KEY_PREFIX = "quest_"
+        private const val QUEST_FILTER_NAMES_KEY = "quest_filters"
+
+        /**
+         * Whether a quest filter can't be called [name]: each one is stored under "quest_<name>",
+         * so a filter called "filters" would overwrite "quest_filters", the list of saved names.
+         */
+        fun isReservedQuestFilterName(name: String): Boolean =
+            "$QUEST_FILTER_KEY_PREFIX$name" == QUEST_FILTER_NAMES_KEY
     }
 }
