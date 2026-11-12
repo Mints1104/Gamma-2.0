@@ -1,6 +1,5 @@
 package com.mints.projectgammatwo.ui
 
-import android.app.AlertDialog
 import android.content.ClipData
 import android.content.Context
 import android.os.Bundle
@@ -8,7 +7,6 @@ import android.os.Handler
 import android.os.Looper
 import android.text.InputType
 import android.view.*
-import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
 import androidx.coordinatorlayout.widget.CoordinatorLayout
@@ -37,6 +35,8 @@ private const val SORT_ORDER_NAME = "name"
 private const val SORT_ORDER_DEFAULT = "default"
 private const val IMPORT_FAVORITES_REQUEST_KEY = "import_favorites"
 private const val IMPORT_FAVORITES_DIALOG_TAG = "import_favorites_dialog"
+private const val IMPORT_HOTSPOTS_REQUEST_KEY = "import_hotspots"
+private const val IMPORT_HOTSPOTS_DIALOG_TAG = "import_hotspots_dialog"
 
 
 class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListener {
@@ -71,6 +71,9 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         // Registered here so the import dialog, which survives rotation, still has a listener.
         childFragmentManager.setFragmentResultListener(IMPORT_FAVORITES_REQUEST_KEY, this) { _, result ->
             result.getString(JsonImportDialogFragment.RESULT_JSON)?.let { importFavorites(it) }
+        }
+        childFragmentManager.setFragmentResultListener(IMPORT_HOTSPOTS_REQUEST_KEY, this) { _, _ ->
+            importHotspots()
         }
     }
 
@@ -220,27 +223,8 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
      * Displays a confirmation dialog for importing hotspots.
      */
     private fun showImportHotspotsDialog() {
-        val builder = AlertDialog.Builder(requireContext())
-        val inflater = requireActivity().layoutInflater
-        val dialogView = inflater.inflate(R.layout.dialog_confirm_import_hotspots, null)
-
-        val cancelButton = dialogView.findViewById<Button>(R.id.cancelConfirmButton)
-        val confirmButton = dialogView.findViewById<Button>(R.id.confirmImportButton)
-
-        builder.setView(dialogView)
-        val dialog = builder.create()
-
-        // Set up button click listeners
-        cancelButton.setOnClickListener {
-            dialog.dismiss()
-        }
-
-        confirmButton.setOnClickListener {
-            importHotspots()
-            dialog.dismiss()
-        }
-
-        dialog.show()
+        ConfirmDialogFragment.newInstance(IMPORT_HOTSPOTS_REQUEST_KEY)
+            .show(childFragmentManager, IMPORT_HOTSPOTS_DIALOG_TAG)
     }
 
     /**

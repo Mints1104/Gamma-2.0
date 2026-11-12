@@ -1,6 +1,5 @@
 package com.mints.projectgammatwo.ui
 
-import android.app.AlertDialog
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.ColorStateList
@@ -15,16 +14,12 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.CheckBox
 import android.widget.CompoundButton
-import android.widget.EditText
-import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
-import androidx.core.content.ContextCompat
 import androidx.core.view.MenuProvider
 import androidx.core.view.setPadding
 import androidx.fragment.app.Fragment
@@ -75,6 +70,54 @@ class FilterFragment : Fragment() {
     private val questRebuild = Runnable {
         if (view != null && pokemonDataReady) setupQuestFilters(questLayout)
     }
+    /**
+     * Base filters of the reward groups whose variants are shown. Kept across rebuilds (which
+     * used to collapse every group) and across rotation, with the Rocket/Quest tab.
+     */
+    private val expandedGroups = mutableSetOf<String>()
+
+    companion object {
+        private const val STATE_FILTER_TYPE = "filter_type"
+        private const val STATE_EXPANDED_GROUPS = "expanded_groups"
+        private const val SAVE_DIALOG_TAG = "save_filter_dialog"
+        private const val SELECT_DIALOG_TAG = "select_filter_dialog"
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // The filter dialogs are DialogFragments that survive rotation; their listeners are
+        // registered here, the only place one exists when a restored dialog reports back.
+        childFragmentManager.setFragmentResultListener(SaveFilterDialogFragment.REQUEST_KEY, this) { _, result ->
+            val name = result.getString(SaveFilterDialogFragment.RESULT_NAME) ?: return@setFragmentResultListener
+            if (view == null) return@setFragmentResultListener
+            if (result.getString(SaveFilterDialogFragment.RESULT_TYPE) == "Rocket") {
+                saveRocketFilterSnapshot(name)
+            } else {
+                saveQuestFilterSnapshot(name)
+            }
+            val verb = if (result.getBoolean(SaveFilterDialogFragment.RESULT_UPDATED)) "updated" else "saved"
+            Toast.makeText(requireContext(), "Filter '$name' $verb", Toast.LENGTH_SHORT).show()
+        }
+        childFragmentManager.setFragmentResultListener(SelectFilterDialogFragment.REQUEST_KEY, this) { _, result ->
+            val name = result.getString(SelectFilterDialogFragment.RESULT_NAME) ?: return@setFragmentResultListener
+            val type = result.getString(SelectFilterDialogFragment.RESULT_TYPE) ?: return@setFragmentResultListener
+            applySavedFilter(name, type)
+        }
+        childFragmentManager.setFragmentResultListener(SelectFilterDialogFragment.REQUEST_DELETED_KEY, this) { _, result ->
+            // Deleting the active filter clears the live selection; re-read it either way.
+            if (result.getString(SelectFilterDialogFragment.RESULT_TYPE) == "Rocket") {
+                reloadRocketSelection()
+            } else {
+                reloadQuestSelection()
+            }
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(STATE_FILTER_TYPE, currentFilterType)
+        outState.putStringArrayList(STATE_EXPANDED_GROUPS, ArrayList(expandedGroups))
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -101,6 +144,20 @@ class FilterFragment : Fragment() {
         enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters())
         enabledEncounterConditions.clear()
         enabledEncounterConditions.addAll(filterPreferences.getEnabledEncounterConditions())
+
+        // After rotation, reopen the tab and the variant groups that were showing; the screen
+        // used to come back on the Rocket tab with every group collapsed.
+        val restoredQuestTab = savedInstanceState?.getString(STATE_FILTER_TYPE) == "Quest"
+        savedInstanceState?.getStringArrayList(STATE_EXPANDED_GROUPS)?.let {
+            expandedGroups.clear()
+            expandedGroups.addAll(it)
+        }
+        if (restoredQuestTab) {
+            // Set before the observers below run, so the replayed variants build the quest tree.
+            currentFilterType = "Quest"
+            rocketLayoutGlobal.visibility = View.GONE
+            questLayout.visibility = View.VISIBLE
+        }
 
         questsViewModel = ViewModelProvider(requireActivity())[QuestsViewModel::class.java]
 
@@ -140,10 +197,13 @@ class FilterFragment : Fragment() {
             when {
                 isQuestVisible -> {
                     radioGroup.check(R.id.rbQuest)
-                    updateCurrentQuestFilter()
+                    // Set the type first: the label and loading row read it.
                     currentFilterType = "Quest"
+                    updateCurrentQuestFilter()
+                    updateQuestLoadingVisibility(questsViewModel.variantsLoadingLiveData.value == true)
                     val initialLastRefreshed = questCachePrefs.getLong(QuestCache.KEY_FILTERS_LAST_REFRESHED, 0L)
                     if (initialLastRefreshed > 0L) updateFiltersLastRefreshed(initialLastRefreshed)
+                    if (pokemonDataReady) scheduleQuestRebuild()
                 }
                 isRocketVisible -> {
                     radioGroup.check(R.id.rbRocket)
@@ -210,108 +270,9 @@ class FilterFragment : Fragment() {
     }
 
     private fun showSaveFilterDialog(isRocket: Boolean) {
-        val builder = AlertDialog.Builder(requireContext())
-        val inflater = requireActivity().layoutInflater
-        val dialogView = inflater.inflate(R.layout.dialog_save_filter, null)
-
-        val titleTextView    = dialogView.findViewById<TextView>(R.id.saveFilterTitle)
-        val editText         = dialogView.findViewById<EditText>(R.id.editFilterName)
-        val cancelButton     = dialogView.findViewById<Button>(R.id.cancelFilterButton)
-        val saveAsNewButton  = dialogView.findViewById<Button>(R.id.saveAsNewFilterButton)
-        val saveButton       = dialogView.findViewById<Button>(R.id.saveFilterButton)
-
-        val type = if (isRocket) "rocket" else "quest"
-        builder.setView(dialogView)
-        val dialog = builder.create()
-
-        // Cancel always just closes the dialog.
-        cancelButton.setOnClickListener { dialog.dismiss() }
-
-        if (isRocket) {
-            val activeFilterName = filterPreferences.getActiveRocketFilter()
-            val hasActiveFilter = activeFilterName.isNotEmpty()
-
-            if (hasActiveFilter) {
-                // Editing an existing filter: pre-fill name, show all three buttons.
-                titleTextView.text = "Editing: $activeFilterName"
-                editText.setText(activeFilterName)
-                editText.hint = "New name for Save as New"
-                saveButton.text = "Update"
-                saveAsNewButton.visibility = View.VISIBLE
-
-                // Update — overwrite the existing snapshot in-place.
-                saveButton.setOnClickListener {
-                    saveRocketFilterSnapshot(activeFilterName, dialog)
-                    Toast.makeText(requireContext(), "Filter '$activeFilterName' updated", Toast.LENGTH_SHORT).show()
-                }
-
-                // Save as New — require a different name, leave the original untouched.
-                saveAsNewButton.setOnClickListener {
-                    val newName = editText.text.toString().trim()
-                    if (newName.isEmpty() || newName == activeFilterName) {
-                        Toast.makeText(requireContext(), "Enter a different name to save as new", Toast.LENGTH_SHORT).show()
-                        return@setOnClickListener
-                    }
-                    saveRocketFilterSnapshot(newName, dialog)
-                    Toast.makeText(requireContext(), "Filter '$newName' saved", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                // No active filter — standard save flow, two buttons only.
-                titleTextView.text = "Enter a name for the new rocket filter"
-                saveButton.setOnClickListener {
-                    val newFilterName = editText.text.toString().trim()
-                    if (newFilterName.isEmpty()) {
-                        Toast.makeText(requireContext(), "Please enter a name", Toast.LENGTH_SHORT).show()
-                        return@setOnClickListener
-                    }
-                    saveRocketFilterSnapshot(newFilterName, dialog)
-                    Toast.makeText(requireContext(), "Filter '$newFilterName' saved", Toast.LENGTH_SHORT).show()
-                }
-            }
-        } else {
-            val activeFilterName = filterPreferences.getActiveQuestFilter()
-            val hasActiveFilter = activeFilterName.isNotEmpty()
-
-            if (hasActiveFilter) {
-                // Editing an existing filter: pre-fill name, show all three buttons.
-                titleTextView.text = "Editing: $activeFilterName"
-                editText.setText(activeFilterName)
-                editText.hint = "New name for Save as New"
-                saveButton.text = "Update"
-                saveAsNewButton.visibility = View.VISIBLE
-
-                // Update — overwrite the existing snapshot in-place.
-                saveButton.setOnClickListener {
-                    saveQuestFilterSnapshot(activeFilterName, dialog)
-                    Toast.makeText(requireContext(), "Filter '$activeFilterName' updated", Toast.LENGTH_SHORT).show()
-                }
-
-                // Save as New — require a different name, leave the original untouched.
-                saveAsNewButton.setOnClickListener {
-                    val newName = editText.text.toString().trim()
-                    if (newName.isEmpty() || newName == activeFilterName) {
-                        Toast.makeText(requireContext(), "Enter a different name to save as new", Toast.LENGTH_SHORT).show()
-                        return@setOnClickListener
-                    }
-                    saveQuestFilterSnapshot(newName, dialog)
-                    Toast.makeText(requireContext(), "Filter '$newName' saved", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                // No active filter — standard save flow, two buttons only.
-                titleTextView.text = "Enter a name for the new $type filter"
-                saveButton.setOnClickListener {
-                    val newFilterName = editText.text.toString().trim()
-                    if (newFilterName.isEmpty()) {
-                        Toast.makeText(requireContext(), "Please enter a name", Toast.LENGTH_SHORT).show()
-                        return@setOnClickListener
-                    }
-                    saveQuestFilterSnapshot(newFilterName, dialog)
-                    Toast.makeText(requireContext(), "Filter '$newFilterName' saved", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-
-        dialog.show()
+        if (childFragmentManager.findFragmentByTag(SAVE_DIALOG_TAG) != null) return
+        SaveFilterDialogFragment.newInstance(if (isRocket) "Rocket" else "Quest")
+            .show(childFragmentManager, SAVE_DIALOG_TAG)
     }
 
     /**
@@ -319,13 +280,12 @@ class FilterFragment : Fragment() {
      * the active filter. Clears the active name before writing so no auto-update hook
      * in saveEnabledCharacters can fire against the old active filter during the save.
      */
-    private fun saveRocketFilterSnapshot(name: String, dialog: AlertDialog) {
+    private fun saveRocketFilterSnapshot(name: String) {
         filterPreferences.clearActiveRocketFilter()
         filterPreferences.saveEnabledCharacters(enabledRocketFilters)
         filterPreferences.saveCurrentAsFilter(name)
         filterPreferences.setActiveRocketFilter(name)
         setupRocketFilters(rocketLayoutGlobal)
-        dialog.dismiss()
     }
 
     /**
@@ -335,7 +295,7 @@ class FilterFragment : Fragment() {
      * previously active — it always clears the active name before writing
      * so the save path is corruption-free.
      */
-    private fun saveQuestFilterSnapshot(name: String, dialog: AlertDialog) {
+    private fun saveQuestFilterSnapshot(name: String) {
         // Clear active first so no auto-update hook can fire during the writes.
         Log.d("QuestFilterDebug", "Saving quest filter '$name' (before) -> enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size}")
         filterPreferences.clearActiveQuestFilter()
@@ -349,7 +309,6 @@ class FilterFragment : Fragment() {
         // newly-created views, which re-ticks variants the user had explicitly unticked.
         // Just refresh the "Current filter:" label instead.
         updateCurrentQuestFilter()
-        dialog.dismiss()
     }
 
     private fun setupRocketFilters(parent: LinearLayout) {
@@ -430,130 +389,46 @@ class FilterFragment : Fragment() {
         val selectButton = MaterialButton(requireContext()).apply {
             text = "Select $filterType Filter"
             setPadding(16, 8, 16, 8)
-            setOnClickListener { showSelectFilterDialog(parent, filterType) }
+            setOnClickListener { showSelectFilterDialog(filterType) }
         }
         parent.addView(selectButton, 1)
     }
 
-    private fun showSelectFilterDialog(parentLayoutForRefresh: LinearLayout, filterType: String) {
-        val builder = AlertDialog.Builder(requireContext())
-        val inflater = requireActivity().layoutInflater
-        val dialogView = inflater.inflate(R.layout.dialog_select_filter, null)
-
-        val title = dialogView.findViewById<TextView>(R.id.selectFilterTitle)
-        val listContainer = dialogView.findViewById<LinearLayout>(R.id.filterListContainer)
-        val cancelButton = dialogView.findViewById<Button>(R.id.cancelSelectButton)
-
-        title.text = "Select $filterType Filter"
-        builder.setView(dialogView)
-        val dialog = builder.create()
-        cancelButton.setOnClickListener { dialog.dismiss() }
-
-        fun updateDialogContent() {
-            listContainer.removeAllViews()
-            val filterNames: Array<String> = if (filterType == "Rocket")
-                filterPreferences.listFilterNames().toTypedArray()
-            else
-                filterPreferences.listQuestFilterNames().toTypedArray()
-
-            if (filterNames.isEmpty()) {
-                val emptyView = TextView(requireContext()).apply {
-                    text = "No saved filters available"
-                    setPadding(16, 16, 16, 16)
-                    gravity = android.view.Gravity.CENTER
-                    textSize = 16f
-                    setTextColor(ContextCompat.getColor(requireContext(), android.R.color.darker_gray))
-                }
-                listContainer.addView(emptyView)
-                return
-            }
-
-            filterNames.forEach { filterName ->
-                val itemView = inflater.inflate(R.layout.filter_list_item, listContainer, false)
-                val nameTextView = itemView.findViewById<TextView>(R.id.filterNameText)
-                val deleteButton = itemView.findViewById<ImageButton>(R.id.deleteFilterButton)
-                val selectButton = itemView.findViewById<Button>(R.id.selectFilterButton)
-
-                nameTextView.text = filterName
-
-                selectButton.setOnClickListener {
-                    if (filterType == "Rocket") {
-                        filterPreferences.loadFilter(filterName, "Rocket")
-                        enabledRocketFilters.clear()
-                        enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
-                        setupRocketFilters(parentLayoutForRefresh)
-                    } else {
-                        filterPreferences.loadFilter(filterName, "Quest")
-                        enabledQuestFilters.clear()
-                        enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters())
-                        enabledEncounterConditions.clear()
-                        enabledEncounterConditions.addAll(filterPreferences.getEnabledEncounterConditions())
-                        Log.d("QuestFilterDebug", "Loaded quest filter '$filterName' -> enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size}")
-                        setupQuestFilters(parentLayoutForRefresh)
-                    }
-                    Toast.makeText(requireContext(), "Filter '$filterName' applied", Toast.LENGTH_SHORT).show()
-                    dialog.dismiss()
-                }
-
-                deleteButton.setOnClickListener {
-                    showDeleteConfirmationDialog(filterName, filterType) {
-                        if (filterType == "Rocket") {
-                            enabledRocketFilters.clear()
-                            enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
-                            setupRocketFilters(parentLayoutForRefresh)
-                        } else {
-                            enabledQuestFilters.clear()
-                            enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters())
-                            enabledEncounterConditions.clear()
-                            enabledEncounterConditions.addAll(filterPreferences.getEnabledEncounterConditions())
-                            setupQuestFilters(parentLayoutForRefresh)
-                        }
-                        updateDialogContent()
-                    }
-                }
-                listContainer.addView(itemView)
-            }
-        }
-
-        updateDialogContent()
-        dialog.show()
+    private fun showSelectFilterDialog(filterType: String) {
+        if (childFragmentManager.findFragmentByTag(SELECT_DIALOG_TAG) != null) return
+        SelectFilterDialogFragment.newInstance(filterType).show(childFragmentManager, SELECT_DIALOG_TAG)
     }
 
-    private fun showDeleteConfirmationDialog(filterName: String, filterType: String, onDeleted: () -> Unit) {
-        val builder = AlertDialog.Builder(requireContext())
-        val inflater = requireActivity().layoutInflater
-        val dialogView = inflater.inflate(R.layout.dialog_delete_filter, null)
-
-        val filterNameDisplay = dialogView.findViewById<TextView>(R.id.filterNameDisplay)
-        val cancelButton = dialogView.findViewById<Button>(R.id.cancelDeleteButton)
-        val deleteButton = dialogView.findViewById<Button>(R.id.confirmDeleteButton)
-
-        filterNameDisplay.text = filterName
-        builder.setView(dialogView)
-        val dialog = builder.create()
-
-        cancelButton.setOnClickListener { dialog.dismiss() }
-
-        deleteButton.setOnClickListener {
-            val wasActiveRocket = filterType == "Rocket" && filterName == filterPreferences.getActiveRocketFilter()
-            val wasActiveQuest  = filterType == "Quest"  && filterName == filterPreferences.getActiveQuestFilter()
-            filterPreferences.deleteFilter(filterName, filterType)
-            if (wasActiveRocket) {
-                enabledRocketFilters.clear()
-                enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
-            }
-            if (wasActiveQuest) {
-                enabledQuestFilters.clear()
-                enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters())
-                enabledEncounterConditions.clear()
-                enabledEncounterConditions.addAll(filterPreferences.getEnabledEncounterConditions())
-            }
-            Toast.makeText(requireContext(), "Filter '$filterName' deleted", Toast.LENGTH_SHORT).show()
-            dialog.dismiss()
-            onDeleted()
+    /** Applies a saved filter picked in [SelectFilterDialogFragment]. */
+    private fun applySavedFilter(filterName: String, filterType: String) {
+        if (view == null) return
+        if (filterType == "Rocket") {
+            filterPreferences.loadFilter(filterName, "Rocket")
+            reloadRocketSelection()
+        } else {
+            filterPreferences.loadFilter(filterName, "Quest")
+            reloadQuestSelection()
+            Log.d("QuestFilterDebug", "Loaded quest filter '$filterName' -> enabledQuestFilters=${enabledQuestFilters.size}, enabledEncounterConditions=${enabledEncounterConditions.size}")
         }
+        Toast.makeText(requireContext(), "Filter '$filterName' applied", Toast.LENGTH_SHORT).show()
+    }
 
-        dialog.show()
+    /** Re-reads the live rocket selection (a saved filter was loaded or deleted) and redraws it. */
+    private fun reloadRocketSelection() {
+        if (view == null) return
+        enabledRocketFilters.clear()
+        enabledRocketFilters.addAll(filterPreferences.getEnabledCharacters())
+        setupRocketFilters(rocketLayoutGlobal)
+    }
+
+    /** Re-reads the live quest selection (a saved filter was loaded or deleted) and redraws it. */
+    private fun reloadQuestSelection() {
+        if (view == null) return
+        enabledQuestFilters.clear()
+        enabledQuestFilters.addAll(filterPreferences.getEnabledQuestFilters())
+        enabledEncounterConditions.clear()
+        enabledEncounterConditions.addAll(filterPreferences.getEnabledEncounterConditions())
+        setupQuestFilters(questLayout)
     }
 
     private fun addToggleAllButton(parent: LinearLayout, filterType: String) {
@@ -1034,7 +909,7 @@ class FilterFragment : Fragment() {
             variantsContainer.addView(cb)
         }
 
-        wireExpandButton(expandButton, variantsContainer)
+        wireExpandButton(expandButton, variantsContainer, baseFilter)
         container.addView(topRow)
         container.addView(variantsContainer)
         parent.addView(container)
@@ -1129,7 +1004,7 @@ class FilterFragment : Fragment() {
                 variantCheckboxes.add(cb)
                 variantsContainer.addView(cb)
             }
-            wireExpandButton(expandButton, variantsContainer)
+            wireExpandButton(expandButton, variantsContainer, baseFilter)
         }
 
         container.addView(topRow)
@@ -1152,13 +1027,18 @@ class FilterFragment : Fragment() {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 
-    // Wires the expand/collapse toggle between a button and its container.
-    private fun wireExpandButton(button: MaterialButton, container: LinearLayout) {
-        var isExpanded = false
+    // Wires the expand/collapse toggle between a button and its container; [groupKey] (the base
+    // filter) records the state in expandedGroups, so it survives rebuilds and rotation.
+    private fun wireExpandButton(button: MaterialButton, container: LinearLayout, groupKey: String) {
+        fun show(expanded: Boolean) {
+            container.visibility = if (expanded) View.VISIBLE else View.GONE
+            button.text = if (expanded) "▼" else "▶"
+        }
+        show(groupKey in expandedGroups)
         button.setOnClickListener {
-            isExpanded = !isExpanded
-            container.visibility = if (isExpanded) View.VISIBLE else View.GONE
-            button.text = if (isExpanded) "▼" else "▶"
+            val expanded = groupKey !in expandedGroups
+            if (expanded) expandedGroups.add(groupKey) else expandedGroups.remove(groupKey)
+            show(expanded)
         }
     }
 
