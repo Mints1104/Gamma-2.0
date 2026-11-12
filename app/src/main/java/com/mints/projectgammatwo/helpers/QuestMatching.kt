@@ -10,6 +10,12 @@ import com.mints.projectgammatwo.data.Quests.Quest
 fun questConditionKey(type: String, id: String, amount: String, condition: String, reward: String): String =
     "$type|$id|$amount|$condition|$reward"
 
+/**
+ * The id a visited quest is stored under in VisitedQuestsPreferences, "name|lat|lng". The quest
+ * list, its fetch and the overlay all build it here so a visit recorded by one is seen by the others.
+ */
+fun questVisitId(quest: Quest): String = "${quest.name}|${quest.lat}|${quest.lng}"
+
 /** The pre-reward-label form of [questConditionKey], still found in older saved selections. */
 fun legacyQuestConditionKey(type: String, id: String, amount: String, condition: String): String =
     "$type|$id|$amount|$condition"

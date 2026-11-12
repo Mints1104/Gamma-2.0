@@ -36,6 +36,8 @@ class HomeFragment : Fragment() {
     // Track listeners to properly unregister on view teardown
     private var scrollListener: RecyclerView.OnScrollListener? = null
     private var dataObserver: RecyclerView.AdapterDataObserver? = null
+    /** Set by [HomeViewModel.scrollToTop]; the next applied list is shown from the top. */
+    private var scrollToTopPending = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -61,16 +63,25 @@ class HomeFragment : Fragment() {
         setupScrollToTop()
 
         swipeRefresh.setOnRefreshListener {
-            viewModel.fetchInvasions()
+            viewModel.fetchInvasions(scrollToTop = true)
+        }
+
+        // Registered before the list observer, so a request sent with a list is seen first.
+        viewModel.scrollToTop.observe(viewLifecycleOwner) { event ->
+            if (event.consume() != null) scrollToTopPending = true
         }
 
         viewModel.invasions.observe(viewLifecycleOwner) { invasions ->
-            // Scroll to top once the new list is actually applied. ListAdapter diffs in the
-            // background, so scrolling straight after submitList ran against the old list and
-            // RecyclerView then kept the previously visible card on screen: switching sort mode
-            // left the view somewhere in the middle, making the new order look wrong.
+            // Scroll to the top only when asked (a sort change or a pull-to-refresh), and only
+            // once the new list is applied: ListAdapter diffs in the background, so scrolling
+            // straight after submitList ran against the old list and RecyclerView kept the
+            // previously visible card on screen. Other updates keep the position; scrolling on
+            // every one jumped to the top after each deleted card and after rotation.
             adapter.submitList(invasions) {
-                recyclerView.scrollToPosition(0)
+                if (scrollToTopPending) {
+                    scrollToTopPending = false
+                    recyclerView.scrollToPosition(0)
+                }
                 recyclerView.post { checkAndUpdateFabVisibility() }
             }
             swipeRefresh.isRefreshing = false

@@ -49,6 +49,10 @@
     <string name="overlay_button_favorites">Favorites</string>
     <string name="quests_error_unable_fetch">Unable to fetch quests. Please check your connection.</string>
     <string name="quests_error_unexpected">An unexpected error occurred</string>
+    <!-- %1$s: the map names that failed, e.g. "NYC, LONDON". -->
+    <string name="quests_error_sources">Could not load quests from %1$s. Showing earlier results from there.</string>
+    <string name="invasions_error_sources">Could not load invasions from %1$s. Showing earlier results from there.</string>
+    <string name="invasions_error_unexpected">Unable to update invasions. Please check your connection.</string>
     <string name="deleted_unknown_character">Unknown Character</string>
     <string name="deleted_unknown_type">Unknown Type</string>
     <string name="deleted_unknown_stop">Unknown Pokéstop</string>

@@ -43,6 +43,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.CurrentInvasionData
 import com.mints.projectgammatwo.data.CurrentQuestData
+import com.mints.projectgammatwo.data.Quests.Quest
+import com.mints.projectgammatwo.data.VisitedQuestsPreferences
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
 import com.mints.projectgammatwo.data.FavoritesManager
 import com.mints.projectgammatwo.data.FilterPreferences
@@ -53,7 +55,10 @@ import com.mints.projectgammatwo.helpers.DragTouchListener
 import com.mints.projectgammatwo.helpers.Event
 import com.mints.projectgammatwo.helpers.ItemTouchHelperAdapter
 import com.mints.projectgammatwo.helpers.ItemTouchHelperCallback
-import com.mints.projectgammatwo.helpers.nextLiveInvasionIndex
+import com.mints.projectgammatwo.helpers.isLiveInvasion
+import com.mints.projectgammatwo.helpers.nextOverlayIndex
+import com.mints.projectgammatwo.helpers.previousStopIndex
+import com.mints.projectgammatwo.helpers.questVisitId
 import com.mints.projectgammatwo.helpers.Teleporter
 import com.mints.projectgammatwo.recyclerviews.FiltersRecyclerView
 import com.mints.projectgammatwo.recyclerviews.OverlayFavoritesAdapter
@@ -75,15 +80,41 @@ enum class FilterSortOrder {
 
 private const val PREF_FILTER_SORT_ORDER = "filter_sort_order"
 
+/** How many earlier stops the overlay remembers per mode for ◀. */
+private const val MAX_HISTORY = 50
+
 class OverlayService : Service() {
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
     /**
-     * Position in the current list of the last teleport, or -1 before the first one, so that ▶
-     * lands on item 0. It used to start at 0 and be reset to 0 on refresh, which made ▶ skip
-     * straight to the second item.
+     * The invasion and quest last teleported to by ▶/◀, and where they were in the list; null
+     * before the first teleport (or after a refresh), so ▶ starts at the top. ▶ resumes from the
+     * item itself ([nextOverlayIndex]): the lists are shared with the app, whose refreshes and
+     * deletions replace them, and a bare index then pointed at some other item.
      */
-    private var currentIndex = -1
+    private var lastInvasion: Invasion? = null
+    private var lastInvasionIndex = -1
+    private var lastQuest: Quest? = null
+    private var lastQuestIndex = -1
+
+    /**
+     * Invasions and quests this overlay has teleported to. The stored deleted/visited sets cover
+     * most of them, but some invasion types are never stored, and this also covers a record
+     * still being written when the next tap reads the store.
+     */
+    private val handledInvasions = mutableSetOf<Invasion>()
+    private val handledQuestIds = mutableSetOf<String>()
+
+    /**
+     * The stops ▶ has teleported to, oldest first, ending with the current one; ◀ steps back
+     * through them ([previousStopIndex]). Kept per mode and across refreshes, capped at
+     * [MAX_HISTORY].
+     */
+    private val invasionHistory = ArrayDeque<Invasion>()
+    private val questHistory = ArrayDeque<Quest>()
+
+    /** True while a ▶/◀ tap is being handled; further taps are ignored until it's done. */
+    private var navigating = false
 
     /**
      * Owns the service's view models so that clearing it in onDestroy runs their onCleared(),
@@ -111,6 +142,7 @@ class OverlayService : Service() {
     private lateinit var filtersAdapter: FiltersRecyclerView
     private lateinit var filterPreferences: FilterPreferences
     private lateinit var deletedInvasionsRepository: DeletedInvasionsRepository
+    private lateinit var visitedQuestsPreferences: VisitedQuestsPreferences
     /** The main overlay's mode; set by [addOverlay] for every overlay it shows. */
     private var currentMode = MODE_INVASIONS
     private var currentSortOrder = FilterSortOrder.DEFAULT
@@ -198,6 +230,7 @@ class OverlayService : Service() {
         homeCoordinatesManager = HomeCoordinatesManager.getInstance(this)
         filterPreferences = FilterPreferences(this)
         deletedInvasionsRepository = DeletedInvasionsRepository(this)
+        visitedQuestsPreferences = VisitedQuestsPreferences(this)
         customizationManager = OverlayCustomizationManager(this)
 
         startForeground(NOTIFICATION_ID, buildNotification())
@@ -335,9 +368,9 @@ class OverlayService : Service() {
         // only by the switch button, so an overlay started from the Quests screen listed and
         // applied rocket filters and fetched invasions.
         currentMode = mode
-        // A new overlay (including a mode switch) walks its list from the top; the index of the
-        // other mode's list means nothing here.
-        currentIndex = -1
+        // A new overlay (including a mode switch) walks its list from the top.
+        resetInvasionWalk()
+        resetQuestWalk()
         overlayView = LayoutInflater.from(this).inflate(R.layout.overlay_layout, null)
         val params = WindowManager.LayoutParams().apply {
             width = WRAP_CONTENT
@@ -455,83 +488,177 @@ class OverlayService : Service() {
         }
 
         rightBtn.setOnClickListener {
-            if (mode == "quests") {
-                val currentQuests = CurrentQuestData.currentQuests
-                if (currentQuests.isEmpty()) {
-                    Log.d(TAG, "No quests available, attempting to fetch...")
-                    showOverlayToast("No quests available, fetching...")
-                    fetchQuests()
-                    return@setOnClickListener
-                }
-                // floorMod: the list may have shrunk since the last teleport.
-                currentIndex = Math.floorMod(currentIndex + 1, currentQuests.size)
-                Log.d(TAG, "Navigating to quest at index $currentIndex: ${currentQuests[currentIndex].lat}, ${currentQuests[currentIndex].lng}")
-                showOverlayToast( "Teleporting to ${currentQuests[currentIndex].rewardsString}")
-                launchQuest(currentQuests[currentIndex])
-            } else {
-                val currentInvasions = CurrentInvasionData.currentInvasions
-                if (currentInvasions.isEmpty()) {
-                    Log.d(TAG, "No invasions available, attempting to fetch...")
-                    fetchInvasions()
-                    return@setOnClickListener
-                }
-                val next = nextLiveInvasionIndex(currentInvasions, currentIndex, 1, nowSeconds())
-                if (next == null) {
-                    refetchExpiredInvasions()
-                    return@setOnClickListener
-                }
-                currentIndex = next
-                val invasion = currentInvasions[currentIndex]
-                Log.d(TAG, "Navigating to invasion at index $currentIndex: ${invasion.lat}, ${invasion.lng}")
-                // Record it against the daily limit only once the teleport has actually launched,
-                // so a failed teleport neither consumes the invasion nor inflates the count.
-                if (launchMap(invasion)) {
-                    // Off the main thread: both calls parse the whole stored set (up to the
-                    // 900/day limit) and this is the overlay's most-used button.
-                    serviceScope.launch {
-                        val count = withContext(Dispatchers.IO) {
-                            deletedInvasionsRepository.addDeletedInvasion(invasion)
-                            deletedInvasionsRepository.getDeletionCountLast24Hours()
-                        }
-                        showOverlayToast("Teleporting to ${invasion.characterName} \n Daily Limit: $count/900")
-                    }
-                }
-            }
+            if (mode == MODE_QUESTS) nextQuest() else nextInvasion()
         }
 
         leftBtn.setOnClickListener {
-            if (mode == "quests") {
-                val currentQuests = CurrentQuestData.currentQuests
-                if (currentQuests.isEmpty()) {
-                    Log.d(TAG, "No quests available, attempting to fetch...")
-                    showOverlayToast("No quests available, fetching...")
-                    fetchQuests()
-                    return@setOnClickListener
+            if (mode == MODE_QUESTS) previousQuest() else previousInvasion()
+        }
+    }
+
+    private fun resetInvasionWalk() {
+        lastInvasion = null
+        lastInvasionIndex = -1
+    }
+
+    private fun resetQuestWalk() {
+        lastQuest = null
+        lastQuestIndex = -1
+    }
+
+    /**
+     * ▶: teleports to the next invasion that is still live and not yet battled, and records it
+     * against the daily limit, like a tap on the list. Battled ones are skipped: after wrapping
+     * around, ▶ used to teleport to them again and count them a second time.
+     */
+    private fun nextInvasion() {
+        if (navigating) return
+        val invasions = CurrentInvasionData.currentInvasions.toList()
+        if (invasions.isEmpty()) {
+            Log.d(TAG, "No invasions available, attempting to fetch...")
+            showOverlayToast("No invasions available, fetching...")
+            fetchInvasions()
+            return
+        }
+        navigating = true
+        serviceScope.launch {
+            try {
+                // Off the main thread: this parses the whole stored set (up to the 900/day limit),
+                // and these are the overlay's most-used buttons.
+                val deleted = withContext(Dispatchers.IO) {
+                    deletedInvasionsRepository.getDeletedEntries().map { it.lat to it.lng }.toHashSet()
                 }
-                // From "before the first" (-1), ◀ goes to the last item. floorMod also covers an
-                // index left past the end of a list that has since shrunk, which used to crash.
-                currentIndex = Math.floorMod(currentIndex.coerceAtLeast(0) - 1, currentQuests.size)
-                showOverlayToast("Teleporting to ${currentQuests[currentIndex].name}")
-                launchQuest(currentQuests[currentIndex])
-            } else {
-                val currentInvasions = CurrentInvasionData.currentInvasions
-                if (currentInvasions.isEmpty()) {
-                    Log.d(TAG, "No invasions available, attempting to fetch...")
-                    showOverlayToast("No invasions available, fetching...")
-                    fetchInvasions()
-                    return@setOnClickListener
+                val now = nowSeconds()
+                val index = nextOverlayIndex(invasions, lastInvasion, lastInvasionIndex, 1) {
+                    isLiveInvasion(it, now) && it !in handledInvasions && (it.lat to it.lng) !in deleted
                 }
-                // From "before the first" (-1), step back from 0 so ◀ lands on the last one.
-                val previous = nextLiveInvasionIndex(currentInvasions, currentIndex.coerceAtLeast(0), -1, nowSeconds())
-                if (previous == null) {
+                if (index == null) {
                     refetchExpiredInvasions()
-                    return@setOnClickListener
+                    return@launch
                 }
-                currentIndex = previous
-                showOverlayToast("Teleporting to ${currentInvasions[currentIndex].characterName}")
-                launchMap(currentInvasions[currentIndex])
+                val invasion = invasions[index]
+                lastInvasion = invasion
+                lastInvasionIndex = index
+                Log.d(TAG, "Navigating to invasion at index $index: ${invasion.lat}, ${invasion.lng}")
+                // Record it only once the teleport has actually launched, so a failed teleport
+                // neither consumes the invasion nor inflates the count.
+                if (launchMap(invasion)) {
+                    handledInvasions += invasion
+                    pushHistory(invasionHistory, invasion)
+                    val count = withContext(Dispatchers.IO) {
+                        deletedInvasionsRepository.addDeletedInvasion(invasion)
+                        deletedInvasionsRepository.getDeletionCountLast24Hours()
+                    }
+                    showOverlayToast("Teleporting to ${invasion.characterName} \n Daily Limit: $count/900")
+                }
+            } finally {
+                navigating = false
             }
         }
+    }
+
+    /**
+     * ▶: teleports to the next quest not yet visited, and records the visit, like a tap on the
+     * quest list. Overlay teleports used to record nothing, so the list kept showing those quests
+     * and the overlay went back to them after wrapping.
+     */
+    private fun nextQuest() {
+        if (navigating) return
+        val quests = CurrentQuestData.currentQuests.toList()
+        if (quests.isEmpty()) {
+            Log.d(TAG, "No quests available, attempting to fetch...")
+            showOverlayToast("No quests available, fetching...")
+            fetchQuests()
+            return
+        }
+        navigating = true
+        serviceScope.launch {
+            try {
+                val visited = withContext(Dispatchers.IO) { visitedQuestsPreferences.getVisitedQuests() }
+                val index = nextOverlayIndex(quests, lastQuest, lastQuestIndex, 1) {
+                    val id = questVisitId(it)
+                    id !in handledQuestIds && id !in visited
+                }
+                if (index == null) {
+                    showOverlayToast("No quests left, refreshing...")
+                    fetchQuests()
+                    return@launch
+                }
+                val quest = quests[index]
+                lastQuest = quest
+                lastQuestIndex = index
+                Log.d(TAG, "Navigating to quest at index $index: ${quest.lat}, ${quest.lng}")
+                showOverlayToast("Teleporting to ${quest.rewardsString}")
+                if (launchQuest(quest)) {
+                    val id = questVisitId(quest)
+                    handledQuestIds += id
+                    pushHistory(questHistory, quest)
+                    // Also the start point for the quest list's nearest-first order.
+                    questsViewModel.saveLastVisitedCoordinates(quest)
+                    withContext(Dispatchers.IO) {
+                        visitedQuestsPreferences.addVisitedQuest(
+                            questId = id,
+                            rewards = quest.rewardsString,
+                            conditions = quest.conditionsString,
+                            source = quest.source
+                        )
+                    }
+                }
+            } finally {
+                navigating = false
+            }
+        }
+    }
+
+    /**
+     * ◀: teleports back to the invasion ▶ teleported to before the current one, passing over any
+     * that have since ended. It isn't recorded again: it already counted when ▶ reached it.
+     */
+    private fun previousInvasion() {
+        if (navigating) return
+        val now = nowSeconds()
+        val index = previousStopIndex(invasionHistory) { isLiveInvasion(it, now) }
+        if (index == null) {
+            showOverlayToast("No earlier invasion to go back to")
+            return
+        }
+        val invasion = invasionHistory[index]
+        if (launchMap(invasion)) {
+            dropHistoryAfter(invasionHistory, index)
+            // ▶ carries on from here, skipping the ones already battled.
+            lastInvasionIndex = CurrentInvasionData.currentInvasions.indexOf(invasion)
+                .takeIf { it >= 0 } ?: lastInvasionIndex
+            lastInvasion = invasion
+            showOverlayToast("Back to ${invasion.characterName}")
+        }
+    }
+
+    /** ◀: teleports back to the quest ▶ teleported to before the current one. */
+    private fun previousQuest() {
+        if (navigating) return
+        val index = previousStopIndex(questHistory) { true }
+        if (index == null) {
+            showOverlayToast("No earlier quest to go back to")
+            return
+        }
+        val quest = questHistory[index]
+        if (launchQuest(quest)) {
+            dropHistoryAfter(questHistory, index)
+            lastQuestIndex = CurrentQuestData.currentQuests.indexOf(quest)
+                .takeIf { it >= 0 } ?: lastQuestIndex
+            lastQuest = quest
+            showOverlayToast("Back to ${quest.rewardsString}")
+        }
+    }
+
+    private fun <T> pushHistory(history: ArrayDeque<T>, item: T) {
+        history.addLast(item)
+        while (history.size > MAX_HISTORY) history.removeFirst()
+    }
+
+    /** Makes [index] the current stop: the ones after it are left behind, as in a browser. */
+    private fun <T> dropHistoryAfter(history: ArrayDeque<T>, index: Int) {
+        while (history.size > index + 1) history.removeLast()
     }
 
     private fun nowSeconds() = System.currentTimeMillis() / 1000
@@ -541,10 +668,13 @@ class OverlayService : Service() {
     private fun overlayWindowType(): Int =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) TYPE_APPLICATION_OVERLAY else TYPE_SYSTEM_ALERT
 
-    /** Every invasion in the overlay's list has ended: fetch a fresh list instead of teleporting. */
+    /**
+     * Every invasion in the overlay's list has ended or been battled: fetch a fresh list instead
+     * of teleporting.
+     */
     private fun refetchExpiredInvasions() {
-        Log.d(TAG, "Every invasion in the overlay's list has expired, refreshing...")
-        showOverlayToast("Invasions expired, refreshing...")
+        Log.d(TAG, "No live, unbattled invasion left in the overlay's list, refreshing...")
+        showOverlayToast("No invasions left, refreshing...")
         fetchInvasions()
     }
 
@@ -572,7 +702,7 @@ class OverlayService : Service() {
             CurrentInvasionData.currentInvasions = invasions.toMutableList()
             if (invasions.isNotEmpty()) {
                 showOverlayToast("Found ${invasions.size} invasions")
-                currentIndex = -1
+                resetInvasionWalk()
             } else {
                 showOverlayToast("No invasions found")
             }
@@ -594,7 +724,7 @@ class OverlayService : Service() {
         Log.d(TAG, "Fetching quests...")
         // Nothing observes the quest result here, so restart the walk now: ▶ then begins at the
         // top of whichever list it finds.
-        currentIndex = -1
+        resetQuestWalk()
         questsViewModel.fetchQuests()
     }
 
@@ -608,7 +738,7 @@ class OverlayService : Service() {
         return Teleporter.teleport(this, inv.lat, inv.lng)
     }
 
-    private fun launchQuest(quest: com.mints.projectgammatwo.data.Quests.Quest): Boolean {
+    private fun launchQuest(quest: Quest): Boolean {
         Log.d(TAG, "Launching quest map with coords: ${quest.lat}, ${quest.lng}")
         return Teleporter.teleport(this, quest.lat, quest.lng)
     }

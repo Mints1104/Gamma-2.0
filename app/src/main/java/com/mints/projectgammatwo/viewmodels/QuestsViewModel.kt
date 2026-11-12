@@ -43,6 +43,8 @@ import com.mints.projectgammatwo.data.CurrentQuestData
 import androidx.core.content.edit
 import kotlinx.coroutines.withContext
 import com.mints.projectgammatwo.R
+import com.mints.projectgammatwo.helpers.carryOverFailedSources
+import com.mints.projectgammatwo.helpers.questVisitId
 
 class QuestsViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -102,6 +104,12 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
     private var publishedAtMs = 0L
     /** Whether every source succeeded for the published list; a partial one is retried sooner. */
     private var publishedComplete = false
+    /**
+     * The quest filters the list on screen was fetched with. A failed source's earlier quests are
+     * carried over only while these are unchanged: the API did that filtering, so quests fetched
+     * for other rewards would otherwise show up.
+     */
+    private var listFetchedWithFilters: Set<String>? = null
 
     private fun currentInputs(): Inputs {
         val context = getApplication<Application>().applicationContext
@@ -157,7 +165,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
             val visitedFingerprint = withContext(Dispatchers.IO) {
                 val visited = VisitedQuestsPreferences(context)
                 visited.addVisitedQuest(
-                    questId = "${quest.name}|${quest.lat}|${quest.lng}",
+                    questId = questVisitId(quest),
                     rewards = quest.rewardsString,
                     conditions = quest.conditionsString,
                     source = quest.source
@@ -419,24 +427,26 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         fetchJob = viewModelScope.launch {
             try {
                 Log.d(TAG, "Selected data sources: $selectedSources")
-                val deferredList = selectedSources.mapNotNull { source ->
+                val deferredBySource = selectedSources.mapNotNull { source ->
                     ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
-                        async(Dispatchers.IO) { fetchSourceQuests(source, baseUrl, apiFiltersToUse) }
+                        source to async(Dispatchers.IO) { fetchSourceQuests(source, baseUrl, apiFiltersToUse) }
                     }
                 }
-                val results = deferredList.awaitAll()
-                val successful = results.filterNotNull()
+                // Null for a source that failed.
+                val results = deferredBySource.map { (source, deferred) -> source to deferred.await() }
+                val successful = results.mapNotNull { it.second }
+                val failedSources = results.filter { it.second == null }.map { it.first }.toSet()
 
                 if (successful.isEmpty()) {
                     Log.w(TAG, "No successful API responses received")
                     // Not a published state: the next visit retries rather than reusing this.
+                    // The list on screen stays; it used to be emptied.
                     publishedInputs = null
-                    _questsLiveData.value = emptyList()
-                    _questsCountLiveData.value = 0
+                    showEmptyListIfNone()
                     _error.value = getApplication<Application>().getString(R.string.quests_error_unable_fetch)
                     return@launch
                 }
-                Log.d(TAG, "Fetched quests from ${successful.size} of ${deferredList.size} sources")
+                Log.d(TAG, "Fetched quests from ${successful.size} of ${deferredBySource.size} sources")
 
                 // We have a live network response, so record the refresh time now; the filter
                 // screen shows it as "last refreshed" whether or not variants are rediscovered.
@@ -462,19 +472,28 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                 // Read after discovery, which may have pruned selections for variants that no
                 // longer exist; the published inputs record what the list was actually built from.
                 val enabledConditions = filterPreferences.getEnabledEncounterConditions()
+                val previousQuests = _questsLiveData.value.orEmpty()
+                val previousFilters = listFetchedWithFilters
 
                 // Perform CPU-intensive filtering and sorting on background thread
                 val sortedQuests = withContext(Dispatchers.Default) {
                     Log.d(TAG, "Total quests fetched: ${allQuests.size}")
 
-                    val visited = visitedPreferences.getVisitedQuests()
-                    var filteredQuests = allQuests.filter { quest ->
-                        "${quest.name}|${quest.lat}|${quest.lng}" !in visited
+                    // A source that failed keeps the quests the list showed from it.
+                    val listQuests = if (inputs.filters == previousFilters) {
+                        carryOverFailedSources(allQuests, previousQuests, failedSources) { it.source }
+                    } else {
+                        allQuests
                     }
 
-                    // allQuests, not the unvisited ones, decides which ticked variants still exist.
+                    val visited = visitedPreferences.getVisitedQuests()
+                    var filteredQuests = listQuests.filter { quest ->
+                        questVisitId(quest) !in visited
+                    }
+
+                    // All of them, not the unvisited ones, decide which ticked variants still exist.
                     filteredQuests = filterQuestsByConditions(
-                        filteredQuests, filtersToUse, enabledConditions, availableQuests = allQuests
+                        filteredQuests, filtersToUse, enabledConditions, availableQuests = listQuests
                     )
                     Log.d(TAG, "Quests after visited and condition filtering: ${filteredQuests.size}")
 
@@ -490,12 +509,20 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
 
                 _questsCountLiveData.value = sortedQuests.size
                 _questsLiveData.value = sortedQuests
+                listFetchedWithFilters = inputs.filters
                 CurrentQuestData.currentQuests = sortedQuests.toMutableList()
 
                 // A partial result is published too, but goes stale sooner so it's retried.
                 publishedInputs = inputs.copy(conditions = enabledConditions)
                 publishedAtMs = SystemClock.elapsedRealtime()
-                publishedComplete = successful.size == deferredList.size
+                publishedComplete = failedSources.isEmpty()
+                if (failedSources.isNotEmpty()) {
+                    // One message for the fetch, naming every source that failed.
+                    _error.value = getApplication<Application>().getString(
+                        R.string.quests_error_sources,
+                        failedSources.sorted().joinToString(", ")
+                    )
+                }
             } catch (e: CancellationException) {
                 // Coroutine was cancelled - this is normal behavior, don't treat it as an error
                 Log.d(TAG, "Fetch quests was cancelled")
@@ -504,10 +531,20 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                 ensureActive()
                 Log.e(TAG, "Error in fetchQuests", e)
                 publishedInputs = null
-                _questsLiveData.value = emptyList()
+                showEmptyListIfNone()
                 _error.value = getApplication<Application>().getString(R.string.quests_error_unexpected)
             }
         }
+    }
+
+    /**
+     * Publishes an empty list if there is none yet, so a first fetch that fails still ends in the
+     * screen's empty state; a list already on screen is kept.
+     */
+    private fun showEmptyListIfNone() {
+        if (_questsLiveData.value != null) return
+        _questsLiveData.value = emptyList()
+        _questsCountLiveData.value = 0
     }
 
     /**
