@@ -72,6 +72,13 @@ object Teleporter {
             Log.w(TAG, "No app can open teleport link: $url", e)
             Toast.makeText(context, R.string.teleport_failed_no_app, Toast.LENGTH_SHORT).show()
             false
+        } catch (e: RuntimeException) {
+            // A custom link Android refuses to hand out: a file:// link throws
+            // FileUriExposedException, and an app that only lets certain callers open it throws
+            // SecurityException. Both used to crash whichever screen or overlay button teleported.
+            Log.w(TAG, "Teleport link was refused: $url", e)
+            Toast.makeText(context, R.string.teleport_failed_no_app, Toast.LENGTH_SHORT).show()
+            false
         }
     }
 

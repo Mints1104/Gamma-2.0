@@ -52,6 +52,12 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
 
     private val timeHandler = Handler(Looper.getMainLooper())
 
+    /**
+     * The UNDO snackbar on screen, if any. It sits on the activity's content view, so it would
+     * outlive this fragment; it is dismissed with the view (see [onDestroyView]).
+     */
+    private var undoSnackbar: Snackbar? = null
+
     /** Repaints the per-favorite local times, re-posting itself on each wall-clock minute. */
     private val timeTicker = object : Runnable {
         override fun run() {
@@ -115,8 +121,21 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     }
 
     override fun onDestroyView() {
+        // An UNDO tapped after leaving acted on this fragment's stale list: the import UNDO
+        // crashed in requireContext() and the delete UNDO saved nothing. Leaving keeps the change.
+        undoSnackbar?.dismiss()
+        undoSnackbar = null
         super.onDestroyView()
         timeHandler.removeCallbacks(timeTicker)
+    }
+
+    /** Shows [message] with an UNDO action that only runs while this screen is still shown. */
+    private fun showUndoSnackbar(message: String, onUndo: () -> Unit) {
+        val rootView = requireActivity().findViewById<View>(android.R.id.content)
+        undoSnackbar?.dismiss()
+        undoSnackbar = Snackbar.make(rootView, message, Snackbar.LENGTH_LONG)
+            .setAction("UNDO") { if (view != null) onUndo() }
+            .also { it.show() }
     }
 
     /** Aligns the tick to the wall clock so the displayed time flips when the minute does. */
@@ -255,23 +274,20 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
             saveFavorites()
 
             // Show snackbar with undo option
-            val rootView = requireActivity().findViewById<View>(android.R.id.content)
             val message = if (addedLocations.isNotEmpty()) {
                 "Imported ${addedLocations.size} hotspot(s)"
             } else {
                 "No new hotspots to import"
             }
 
-            Snackbar.make(rootView, message, Snackbar.LENGTH_LONG)
-                .setAction("UNDO") {
-                    // Restore the previous list
-                    favoritesList.clear()
-                    favoritesList.addAll(previousList)
-                    adapter.submitList(favoritesList.toList())
-                    saveFavorites()
-                    Toast.makeText(requireContext(), "Import undone", Toast.LENGTH_SHORT).show()
-                }
-                .show()
+            showUndoSnackbar(message) {
+                // Restore the previous list
+                favoritesList.clear()
+                favoritesList.addAll(previousList)
+                adapter.submitList(favoritesList.toList())
+                saveFavorites()
+                Toast.makeText(requireContext(), "Import undone", Toast.LENGTH_SHORT).show()
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(requireContext(), "Failed to import hotspots: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -338,18 +354,15 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
 
 
     private fun deleteFavorite(favorite: FavoriteLocation) {
-        val rootView = requireActivity().findViewById<View>(android.R.id.content)
         val deletedIndex = favoritesList.indexOf(favorite).takeIf { it != -1 } ?: return
         favoritesList.removeAt(deletedIndex)
         adapter.submitList(favoritesList.toList())
         saveFavorites()
-        Snackbar.make(rootView, "Deleted: ${favorite.name}", Snackbar.LENGTH_LONG)
-            .setAction("UNDO") {
-                favoritesList.add(deletedIndex, favorite)
-                adapter.submitList(favoritesList.toList())
-                saveFavorites()
-            }
-            .show()
+        showUndoSnackbar("Deleted: ${favorite.name}") {
+            favoritesList.add(deletedIndex.coerceAtMost(favoritesList.size), favorite)
+            adapter.submitList(favoritesList.toList())
+            saveFavorites()
+        }
     }
 
 

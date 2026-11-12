@@ -144,6 +144,30 @@ class OverlayService : Service() {
         /** Sent by the notification's Stop action. */
         const val ACTION_STOP = "com.mints.projectgammatwo.action.STOP_OVERLAY"
 
+        /** Re-applies the saved button size, order and visibility to the overlay on screen. */
+        const val ACTION_RELOAD_APPEARANCE = "com.mints.projectgammatwo.action.RELOAD_APPEARANCE"
+
+        /**
+         * Applies a changed overlay customization to the running overlay, if there is one.
+         *
+         * This used to stop the service and start it again 500 ms later. Once stopped, the app
+         * no longer had a foreground service, so if the user had left it in that half second the
+         * delayed startForegroundService threw (Android 12+ forbids it from the background).
+         * While the overlay runs the app counts as foreground, so a plain startService is allowed.
+         */
+        fun reloadAppearance(context: Context) {
+            if (running.value != true) return
+            try {
+                context.startService(
+                    Intent(context, OverlayService::class.java).setAction(ACTION_RELOAD_APPEARANCE)
+                )
+            } catch (e: IllegalStateException) {
+                // Not allowed to start services right now; the next overlay start reads the
+                // saved customization anyway.
+                Log.w(TAG, "Couldn't update the overlay's appearance: ${e.message}")
+            }
+        }
+
         private val _running = MutableLiveData(false)
 
         /**
@@ -266,6 +290,15 @@ class OverlayService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_RELOAD_APPEARANCE) {
+            if (overlayView == null) {
+                // The service had stopped before this arrived and was created just for it.
+                stopSelf()
+            } else {
+                applyCustomizationToOverlay()
+            }
+            return START_NOT_STICKY
+        }
         // getStringExtra(...).toString() turned a missing extra into the mode "null".
         val mode = if (intent?.getStringExtra("mode") == MODE_QUESTS) MODE_QUESTS else MODE_INVASIONS
         Log.d(TAG, "Service onStartCommand with mode: $mode")
@@ -302,8 +335,6 @@ class OverlayService : Service() {
         // only by the switch button, so an overlay started from the Quests screen listed and
         // applied rocket filters and fetched invasions.
         currentMode = mode
-        // Remembered so a restart (e.g. after changing the overlay's look) comes back in it.
-        getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE).edit { putString("overlay_mode", mode) }
         // A new overlay (including a mode switch) walks its list from the top; the index of the
         // other mode's list means nothing here.
         currentIndex = -1

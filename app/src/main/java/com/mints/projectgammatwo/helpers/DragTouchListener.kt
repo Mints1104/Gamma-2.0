@@ -3,6 +3,7 @@ package com.mints.projectgammatwo.helpers
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -61,14 +62,25 @@ class DragTouchListener(
                     val newX = initialX + deltaX
                     val newY = initialY + deltaY
 
-                    // Get screen & overlay dimensions
+                    // Keep the window on screen. x/y are offsets from wherever the window's
+                    // gravity anchors it: the main overlay's top-left corner, but the centre for
+                    // the favorites and filter panels, which a [0, screen - size] clamp let slide
+                    // half off-screen. coerceIn also threw when the window was larger than the
+                    // screen (an empty range); onScreenOffsetRange never returns one.
                     val dm = rootView.resources.displayMetrics
-                    val maxX = dm.widthPixels - rootView.width
-                    val maxY = dm.heightPixels - rootView.height
-
-                    // Clamp to [0..max]
-                    params.x = newX.coerceIn(0, maxX)
-                    params.y = newY.coerceIn(0, maxY)
+                    val gravity = params.gravity
+                    params.x = newX.coerceIn(
+                        onScreenOffsetRange(
+                            dm.widthPixels, rootView.width,
+                            centered = (gravity and Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.CENTER_HORIZONTAL
+                        )
+                    )
+                    params.y = newY.coerceIn(
+                        onScreenOffsetRange(
+                            dm.heightPixels, rootView.height,
+                            centered = (gravity and Gravity.VERTICAL_GRAVITY_MASK) == Gravity.CENTER_VERTICAL
+                        )
+                    )
 
                     // Apply update
                     windowManager.updateViewLayout(rootView, params)
@@ -90,4 +102,15 @@ class DragTouchListener(
     /** Expose current overlay Y (top) */
     fun getCurrentParamsY(): Int = params.y
 
+}
+
+/**
+ * The window offsets along one axis that keep a window of size [view] on a screen of size
+ * [screen]: measured from the start edge, or from the centre when the window is [centered].
+ * A window larger than the screen gets the single offset that pins it to the start edge (or
+ * centres it), never an empty range.
+ */
+fun onScreenOffsetRange(screen: Int, view: Int, centered: Boolean): IntRange {
+    val slack = (screen - view).coerceAtLeast(0)
+    return if (centered) -(slack / 2)..(slack / 2) else 0..slack
 }

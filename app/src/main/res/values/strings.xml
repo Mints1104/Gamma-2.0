@@ -163,7 +163,7 @@
     <string name="overlay_customization">Overlay Customization</string>
     <string name="settings_import_export">Settings Import/Export</string>
     <string name="export_settings">Export Settings</string>
-    <string name="about_app">Gamma by Mints\nVersion: 4.1</string>
+    <string name="about_app">Gamma by Mints\nVersion: 4.2</string>
     <string name="teleport_method">Teleport Method:</string>
     <string name="teleport_joystick">GPS Joystick</string>
     <string name="item_teleport">TELEPORT</string>

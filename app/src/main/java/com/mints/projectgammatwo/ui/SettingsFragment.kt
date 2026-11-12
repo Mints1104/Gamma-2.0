@@ -1,9 +1,7 @@
 package com.mints.projectgammatwo.ui
 
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.text.InputFilter
 import android.text.InputType
@@ -354,33 +352,9 @@ class SettingsFragment : Fragment() {
         }
     }
 
-    private fun restartOverlayService() {
-        // The in-memory flag, not the old "overlay_running" pref: a crash or force-stop left the
-        // pref true, and saving a customization then started an overlay nobody had open.
-        val isOverlayRunning = com.mints.projectgammatwo.services.OverlayService.running.value == true
-        val sharedPrefs = requireContext().getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE)
-        val currentMode = sharedPrefs.getString("overlay_mode", "invasions") ?: "invasions"
-
-        if (isOverlayRunning) {
-            // Application context: the restart runs after a delay, by which time this fragment
-            // may be gone and requireContext() would throw.
-            val appContext = requireContext().applicationContext
-            val stopIntent = Intent(appContext, com.mints.projectgammatwo.services.OverlayService::class.java)
-            appContext.stopService(stopIntent)
-
-            // Wait a bit before restarting
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                // Restart the service
-                val startIntent = Intent(appContext, com.mints.projectgammatwo.services.OverlayService::class.java)
-                startIntent.putExtra("mode", currentMode)
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    appContext.startForegroundService(startIntent)
-                } else {
-                    appContext.startService(startIntent)
-                }
-            }, 500)
-        }
+    /** Shows a saved customization change on the running overlay, in place (no restart). */
+    private fun applyCustomizationToRunningOverlay() {
+        com.mints.projectgammatwo.services.OverlayService.reloadAppearance(requireContext())
     }
 
     private fun showOverlayCustomizationDialog() {
@@ -409,7 +383,7 @@ class SettingsFragment : Fragment() {
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 val newSize = seekBar?.progress ?: 48
                 customizationManager.saveButtonSize(newSize)
-                restartOverlayService()
+                applyCustomizationToRunningOverlay()
             }
         })
 
@@ -445,7 +419,7 @@ class SettingsFragment : Fragment() {
                 newVisibility["drag_handle"] = true // Always visible
                 customizationManager.saveButtonOrder(newOrder)
                 customizationManager.saveButtonVisibility(newVisibility)
-                restartOverlayService()
+                applyCustomizationToRunningOverlay()
             },
             onStartDrag = { viewHolder ->
                 itemTouchHelper?.startDrag(viewHolder)
@@ -498,7 +472,7 @@ class SettingsFragment : Fragment() {
             sizeSeekbar.progress = defaultSize
             sizeValue.text = getString(R.string.overlay_size_dp, defaultSize)
 
-            restartOverlayService()
+            applyCustomizationToRunningOverlay()
         }
 
         // Set up Apply button (closes the dialog; changes are applied live)
