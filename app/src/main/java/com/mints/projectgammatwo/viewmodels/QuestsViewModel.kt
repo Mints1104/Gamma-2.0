@@ -15,6 +15,7 @@ import com.mints.projectgammatwo.helpers.questBaseFilter
 import com.mints.projectgammatwo.helpers.questConditionKey
 import com.mints.projectgammatwo.helpers.VARIANT_CACHE_MAX_AGE_MS
 import com.mints.projectgammatwo.helpers.isPublishedQuestListFresh
+import com.mints.projectgammatwo.helpers.pruneStaleConditionKeys
 import com.mints.projectgammatwo.helpers.shouldRediscoverVariants
 import com.google.gson.Gson
 import com.mints.projectgammatwo.data.ApiClient
@@ -42,6 +43,8 @@ import com.mints.projectgammatwo.data.CurrentQuestData
 import androidx.core.content.edit
 import kotlinx.coroutines.withContext
 import com.mints.projectgammatwo.R
+import com.mints.projectgammatwo.helpers.carryOverFailedSources
+import com.mints.projectgammatwo.helpers.questVisitId
 
 class QuestsViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -101,6 +104,12 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
     private var publishedAtMs = 0L
     /** Whether every source succeeded for the published list; a partial one is retried sooner. */
     private var publishedComplete = false
+    /**
+     * The quest filters the list on screen was fetched with. A failed source's earlier quests are
+     * carried over only while these are unchanged: the API did that filtering, so quests fetched
+     * for other rewards would otherwise show up.
+     */
+    private var listFetchedWithFilters: Set<String>? = null
 
     private fun currentInputs(): Inputs {
         val context = getApplication<Application>().applicationContext
@@ -156,7 +165,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
             val visitedFingerprint = withContext(Dispatchers.IO) {
                 val visited = VisitedQuestsPreferences(context)
                 visited.addVisitedQuest(
-                    questId = "${quest.name}|${quest.lat}|${quest.lng}",
+                    questId = questVisitId(quest),
                     rewards = quest.rewardsString,
                     conditions = quest.conditionsString,
                     source = quest.source
@@ -418,24 +427,26 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         fetchJob = viewModelScope.launch {
             try {
                 Log.d(TAG, "Selected data sources: $selectedSources")
-                val deferredList = selectedSources.mapNotNull { source ->
+                val deferredBySource = selectedSources.mapNotNull { source ->
                     ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
-                        async(Dispatchers.IO) { fetchSourceQuests(source, baseUrl, apiFiltersToUse) }
+                        source to async(Dispatchers.IO) { fetchSourceQuests(source, baseUrl, apiFiltersToUse) }
                     }
                 }
-                val results = deferredList.awaitAll()
-                val successful = results.filterNotNull()
+                // Null for a source that failed.
+                val results = deferredBySource.map { (source, deferred) -> source to deferred.await() }
+                val successful = results.mapNotNull { it.second }
+                val failedSources = results.filter { it.second == null }.map { it.first }.toSet()
 
                 if (successful.isEmpty()) {
                     Log.w(TAG, "No successful API responses received")
                     // Not a published state: the next visit retries rather than reusing this.
+                    // The list on screen stays; it used to be emptied.
                     publishedInputs = null
-                    _questsLiveData.value = emptyList()
-                    _questsCountLiveData.value = 0
+                    showEmptyListIfNone()
                     _error.value = getApplication<Application>().getString(R.string.quests_error_unable_fetch)
                     return@launch
                 }
-                Log.d(TAG, "Fetched quests from ${successful.size} of ${deferredList.size} sources")
+                Log.d(TAG, "Fetched quests from ${successful.size} of ${deferredBySource.size} sources")
 
                 // We have a live network response, so record the refresh time now; the filter
                 // screen shows it as "last refreshed" whether or not variants are rediscovered.
@@ -458,17 +469,32 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                     discoverVariants(context, selectedSources, allQuests, fetchTimestamp)
                 }
 
+                // Read after discovery, which may have pruned selections for variants that no
+                // longer exist; the published inputs record what the list was actually built from.
+                val enabledConditions = filterPreferences.getEnabledEncounterConditions()
+                val previousQuests = _questsLiveData.value.orEmpty()
+                val previousFilters = listFetchedWithFilters
+
                 // Perform CPU-intensive filtering and sorting on background thread
                 val sortedQuests = withContext(Dispatchers.Default) {
                     Log.d(TAG, "Total quests fetched: ${allQuests.size}")
 
-                    val visited = visitedPreferences.getVisitedQuests()
-                    var filteredQuests = allQuests.filter { quest ->
-                        "${quest.name}|${quest.lat}|${quest.lng}" !in visited
+                    // A source that failed keeps the quests the list showed from it.
+                    val listQuests = if (inputs.filters == previousFilters) {
+                        carryOverFailedSources(allQuests, previousQuests, failedSources) { it.source }
+                    } else {
+                        allQuests
                     }
 
-                    val enabledConditions = filterPreferences.getEnabledEncounterConditions()
-                    filteredQuests = filterQuestsByConditions(filteredQuests, filtersToUse, enabledConditions)
+                    val visited = visitedPreferences.getVisitedQuests()
+                    var filteredQuests = listQuests.filter { quest ->
+                        questVisitId(quest) !in visited
+                    }
+
+                    // All of them, not the unvisited ones, decide which ticked variants still exist.
+                    filteredQuests = filterQuestsByConditions(
+                        filteredQuests, filtersToUse, enabledConditions, availableQuests = listQuests
+                    )
                     Log.d(TAG, "Quests after visited and condition filtering: ${filteredQuests.size}")
 
                     // Pre-limit by proximity to last visited when available to reduce sorting cost
@@ -483,12 +509,20 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
 
                 _questsCountLiveData.value = sortedQuests.size
                 _questsLiveData.value = sortedQuests
+                listFetchedWithFilters = inputs.filters
                 CurrentQuestData.currentQuests = sortedQuests.toMutableList()
 
                 // A partial result is published too, but goes stale sooner so it's retried.
-                publishedInputs = inputs
+                publishedInputs = inputs.copy(conditions = enabledConditions)
                 publishedAtMs = SystemClock.elapsedRealtime()
-                publishedComplete = successful.size == deferredList.size
+                publishedComplete = failedSources.isEmpty()
+                if (failedSources.isNotEmpty()) {
+                    // One message for the fetch, naming every source that failed.
+                    _error.value = getApplication<Application>().getString(
+                        R.string.quests_error_sources,
+                        failedSources.sorted().joinToString(", ")
+                    )
+                }
             } catch (e: CancellationException) {
                 // Coroutine was cancelled - this is normal behavior, don't treat it as an error
                 Log.d(TAG, "Fetch quests was cancelled")
@@ -497,10 +531,20 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                 ensureActive()
                 Log.e(TAG, "Error in fetchQuests", e)
                 publishedInputs = null
-                _questsLiveData.value = emptyList()
+                showEmptyListIfNone()
                 _error.value = getApplication<Application>().getString(R.string.quests_error_unexpected)
             }
         }
+    }
+
+    /**
+     * Publishes an empty list if there is none yet, so a first fetch that fails still ends in the
+     * screen's empty state; a list already on screen is kept.
+     */
+    private fun showEmptyListIfNone() {
+        if (_questsLiveData.value != null) return
+        _questsLiveData.value = emptyList()
+        _questsCountLiveData.value = 0
     }
 
     /**
@@ -564,9 +608,10 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
             val services = selectedSources.mapNotNull { source ->
                 ApiClient.DATA_SOURCE_URLS[source]?.let { ApiClient.questsApi(it) }
             }
-            val unfilteredBodies = coroutineScope {
+            val unfilteredResults = coroutineScope {
                 services.map { service -> async(Dispatchers.IO) { fetchVariantQuests(service, null) } }
-            }.awaitAll().filterNotNull()
+            }.awaitAll()
+            val unfilteredBodies = unfilteredResults.filterNotNull()
 
             // Save the API's filter lists from the unfiltered response if there is one.
             val freshFilters = unfilteredBodies.firstNotNullOfOrNull { it.filters }
@@ -585,16 +630,19 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
 
             // Ask for every reward explicitly, in chunks, so variants don't depend on whatever
             // the unfiltered endpoint chose to return.
-            val chunkedQuests = if (fullFilterList.isEmpty()) emptyList() else {
+            val chunkResults = if (fullFilterList.isEmpty()) emptyList() else {
                 val chunks = fullFilterList.chunked(80)
                 coroutineScope {
                     services.map { service ->
-                        async(Dispatchers.IO) {
-                            chunks.flatMap { chunk -> fetchVariantQuests(service, chunk)?.validQuests().orEmpty() }
-                        }
+                        async(Dispatchers.IO) { chunks.map { chunk -> fetchVariantQuests(service, chunk) } }
                     }
                 }.awaitAll().flatten()
             }
+            val chunkedQuests = chunkResults.flatMap { it?.validQuests().orEmpty() }
+            // Every source asked for every reward, and answered: only then is a variant missing
+            // from the result really gone, rather than on a source that failed.
+            val complete = services.size == selectedSources.size && chunkResults.isNotEmpty() &&
+                unfilteredResults.all { it != null } && chunkResults.all { it != null }
 
             val questsForVariants = when {
                 chunkedQuests.isNotEmpty() -> chunkedQuests
@@ -612,9 +660,28 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                         putLong(QuestCache.KEY_SUB_VARIANTS_TIMESTAMP, fetchTimestamp)
                     }
                 }
+                if (complete) pruneStaleSelections(context, subVariantMap)
             }
         } finally {
             _variantsLoadingLiveData.value = false
+        }
+    }
+
+    /**
+     * Drops the selections for variants that the daily quest rotation has removed, so they don't
+     * pile up (the matching already ignores them; see [filterQuestsByConditions]). Runs on the
+     * main thread in one read-modify-write, so it can't interleave with the filter screen's own.
+     */
+    private fun pruneStaleSelections(context: Context, subVariants: Map<String, List<SubVariant>>) {
+        val variantKeys = subVariants.values.flatten().map {
+            questConditionKey(it.type, it.id, it.amount, it.condition, it.reward)
+        }
+        val preferences = QuestFilterPreferences(context)
+        val enabled = preferences.getEnabledEncounterConditions()
+        val pruned = pruneStaleConditionKeys(enabled, variantKeys)
+        if (pruned.size != enabled.size) {
+            Log.d(TAG, "Pruned ${enabled.size - pruned.size} selections for variants no longer offered")
+            preferences.saveEnabledEncounterConditions(pruned)
         }
     }
 

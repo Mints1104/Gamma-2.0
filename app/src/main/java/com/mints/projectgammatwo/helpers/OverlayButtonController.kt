@@ -1,20 +1,18 @@
 package com.mints.projectgammatwo.helpers
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import android.widget.Button
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
-import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.services.OverlayService
+import com.mints.projectgammatwo.ui.OverlayPermissionDialogFragment
 
 /**
  * The Start/Stop Overlay button shared by the invasion and quest screens.
@@ -80,22 +78,7 @@ class OverlayButtonController(private val fragment: Fragment, private val mode: 
     }
 
     private fun showOverlayPermissionDialog() {
-        val context = fragment.requireContext()
-        val dialogView = fragment.layoutInflater.inflate(R.layout.dialog_overlay_permission, null)
-        val dialog = AlertDialog.Builder(context)
-            .setView(dialogView)
-            .setCancelable(false)
-            .create()
-
-        dialogView.findViewById<Button>(R.id.notNowButton).setOnClickListener {
-            dialog.dismiss()
-        }
-        dialogView.findViewById<Button>(R.id.openSettingsButton).setOnClickListener {
-            fragment.startActivity(
-                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:${context.packageName}".toUri())
-            )
-            dialog.dismiss()
-        }
-        dialog.show()
+        // A DialogFragment, so it survives rotation instead of vanishing (and leaking its window).
+        OverlayPermissionDialogFragment.show(fragment.childFragmentManager)
     }
 }

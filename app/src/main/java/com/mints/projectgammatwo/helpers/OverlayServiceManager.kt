@@ -7,6 +7,7 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
+import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.services.OverlayService
 
 /**
@@ -30,10 +31,10 @@ class OverlayServiceManager(private val context: Context) {
             } else {
                 context.startService(serviceIntent)
             }
-            Toast.makeText(context, "Overlay service started", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, R.string.overlay_service_started, Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start service: ${e.message}", e)
-            Toast.makeText(context, "Failed to start service: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, context.getString(R.string.overlay_service_failed, e.message.orEmpty()), Toast.LENGTH_LONG).show()
         }
     }
 

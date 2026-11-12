@@ -19,10 +19,22 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
-import androidx.appcompat.app.AlertDialog
-import android.widget.Button
 
 class DeletedInvasionsFragment : Fragment() {
+
+    private companion object {
+        const val CLEAR_HISTORY_REQUEST_KEY = "clear_deleted_invasions"
+        const val CLEAR_HISTORY_DIALOG_TAG = "clear_deleted_invasions_dialog"
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Registered here, not with the view, so a confirmation restored after rotation still
+        // reaches this fragment.
+        childFragmentManager.setFragmentResultListener(CLEAR_HISTORY_REQUEST_KEY, this) { _, _ ->
+            clearHistory()
+        }
+    }
 
     private lateinit var recyclerView: RecyclerView
     private lateinit var adapter: DeletedInvasionsAdapter
@@ -77,32 +89,18 @@ class DeletedInvasionsFragment : Fragment() {
     }
 
     private fun confirmClearHistory() {
-        val dialogView = LayoutInflater.from(requireContext())
-            .inflate(R.layout.dialog_confirm_import_hotspots, null)
+        ConfirmDialogFragment.newInstance(
+            CLEAR_HISTORY_REQUEST_KEY,
+            title = R.string.delete_all_invasions_title,
+            message = R.string.delete_all_invasions_message,
+            confirm = R.string.action_delete,
+            cancel = R.string.action_cancel,
+        ).show(childFragmentManager, CLEAR_HISTORY_DIALOG_TAG)
+    }
 
-        val title = dialogView.findViewById<TextView>(R.id.confirmTitle)
-        val message = dialogView.findViewById<TextView>(R.id.confirmMessage)
-        val cancelButton = dialogView.findViewById<Button>(R.id.cancelConfirmButton)
-        val confirmButton = dialogView.findViewById<Button>(R.id.confirmImportButton)
-
-        title.text = getString(R.string.delete_all_invasions_title)
-        message.text = getString(R.string.delete_all_invasions_message)
-        cancelButton.text = getString(R.string.action_cancel)
-        confirmButton.text = getString(R.string.action_delete)
-
-        val dialog = AlertDialog.Builder(requireContext())
-            .setView(dialogView)
-            .create()
-
-        cancelButton.setOnClickListener { dialog.dismiss() }
-        confirmButton.setOnClickListener {
-            val repo = DeletedInvasionsRepository(requireContext())
-            repo.resetDeletedInvasions()
-            loadData()
-            dialog.dismiss()
-        }
-
-        dialog.show()
+    private fun clearHistory() {
+        DeletedInvasionsRepository(requireContext()).resetDeletedInvasions()
+        loadData()
     }
 
     private fun loadData() {

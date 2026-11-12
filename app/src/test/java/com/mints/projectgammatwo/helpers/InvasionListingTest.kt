@@ -1,7 +1,9 @@
 package com.mints.projectgammatwo.helpers
 
+import com.mints.projectgammatwo.data.DeletedEntry
 import com.mints.projectgammatwo.data.Invasion
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -35,7 +37,7 @@ class InvasionListingTest {
         val result = filterInvasions(
             listOf(kept, disabled, battled, ended),
             enabledCharacters = setOf(4),
-            deleted = setOf(3.0 to 0.0),
+            deleted = DeletedInvasions(listOf(DeletedEntry(3.0, 0.0, timestamp = 0, invasionEnd = 10_000))),
             nowSeconds = 100,
         )
 
@@ -47,8 +49,8 @@ class InvasionListingTest {
         val type8 = invasion(1.0, character = 99, type = 8)
         val type9 = invasion(2.0, character = 99, type = 9)
 
-        val onlyOne = filterInvasions(listOf(type8, type9), setOf(1), emptySet(), nowSeconds = 0)
-        val onlyZero = filterInvasions(listOf(type8, type9), setOf(0), emptySet(), nowSeconds = 0)
+        val onlyOne = filterInvasions(listOf(type8, type9), setOf(1), DeletedInvasions.NONE, nowSeconds = 0)
+        val onlyZero = filterInvasions(listOf(type8, type9), setOf(0), DeletedInvasions.NONE, nowSeconds = 0)
 
         assertEquals(listOf(1.0), onlyOne.map { it.lat })
         assertEquals(1, onlyOne.single().character)
@@ -109,5 +111,23 @@ class InvasionListingTest {
         val meters = distanceMeters(0.0, 0.0, 1.0, 0.0)
         assertTrue("was $meters", meters in 111_100.0..111_300.0)
         assertEquals(0.0, distanceMeters(40.7, -73.9, 40.7, -73.9), 1e-9)
+    }
+
+    @Test
+    fun `a battled invasion hides only itself, not a later one at the same stop`() {
+        val battled = DeletedInvasions(listOf(DeletedEntry(1.0, 0.0, timestamp = 0, invasionEnd = 2_000)))
+        assertTrue(invasion(1.0, end = 2_000) in battled)
+        // Another source reporting the same invasion a little differently.
+        assertTrue(invasion(1.0, end = 2_090) in battled)
+        // The next invasion at that stop, ending half an hour later.
+        assertFalse(invasion(1.0, end = 3_800) in battled)
+        assertFalse(invasion(2.0, end = 2_000) in battled)
+    }
+
+    @Test
+    fun `entries without an end time still hide every invasion at their stop`() {
+        val legacy = DeletedInvasions(listOf(DeletedEntry(1.0, 0.0, timestamp = 0)))
+        assertTrue(invasion(1.0, end = 2_000) in legacy)
+        assertTrue(invasion(1.0, end = 9_000) in legacy)
     }
 }

@@ -46,13 +46,14 @@ class QuestsAdapter(
 
         fun bind(quest: Quest) {
             questNameText.text = quest.name
-            rewardText.text = "Reward: ${quest.rewardsString}"
-            conditionsText.text = "Condition: ${quest.conditionsString}"
+            val context = itemView.context
+            rewardText.text = context.getString(R.string.quest_reward, quest.rewardsString)
+            conditionsText.text = context.getString(R.string.quest_condition, quest.conditionsString)
             val coordsFormatted = String.format("%.5f, %.5f", quest.lat, quest.lng)
-            coordinatesText.text = "Location: $coordsFormatted"
+            coordinatesText.text = context.getString(R.string.quest_location, coordsFormatted)
             val questText = quest.source.lowercase().replaceFirstChar { it.uppercase() }
 
-            sourceText.text = "Source: $questText"
+            sourceText.text = context.getString(R.string.quest_source, questText)
 
             teleportButton.setOnClickListener {
                 // Only record the quest as visited if we actually got there.
@@ -68,7 +69,7 @@ class QuestsAdapter(
                 val coordsText = "${quest.lat.toPlainCoordinate()}, ${quest.lng.toPlainCoordinate()}"
                 val clip = ClipData.newPlainText("Coordinates", coordsText)
                 clipboard.setPrimaryClip(clip)
-                Toast.makeText(itemView.context, "Quest info copied", Toast.LENGTH_SHORT).show()
+                Toast.makeText(itemView.context, R.string.quest_info_copied, Toast.LENGTH_SHORT).show()
             }
 
             deleteButton.setOnClickListener {

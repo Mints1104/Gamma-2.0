@@ -7,23 +7,25 @@ import android.util.Log
 import android.util.Log.e
 import androidx.core.content.edit
 import androidx.lifecycle.*
-import com.google.gson.JsonSyntaxException
 import com.mints.projectgammatwo.data.ApiClient
 import com.mints.projectgammatwo.data.CurrentInvasionData
 import com.mints.projectgammatwo.data.DataSourcePreferences
 import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
+import com.mints.projectgammatwo.R
+import com.mints.projectgammatwo.helpers.DeletedInvasions
 import com.mints.projectgammatwo.helpers.Event
+import com.mints.projectgammatwo.helpers.carryOverFailedSources
 import com.mints.projectgammatwo.helpers.filterInvasions
 import com.mints.projectgammatwo.helpers.sortAndCapInvasions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okio.IOException
 import retrofit2.HttpException
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
@@ -38,6 +40,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val deletedCount: LiveData<Int> get() = _deletedCount
 
     private val _error = MutableLiveData<String>()
+
+    private val _scrollToTop = MutableLiveData<Event<Unit>>()
+
+    /**
+     * Sent just before a list the screen should show from the top (a new sort order, a
+     * pull-to-refresh). Every other list update keeps the scroll position: the screen used to
+     * jump to the top on each one, including deleting a card and the replay after rotation.
+     */
+    val scrollToTop: LiveData<Event<Unit>> get() = _scrollToTop
 
     /**
      * Each error is delivered as a one-shot [Event]: LiveData replays its latest value to every
@@ -112,73 +123,38 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
-    fun fetchInvasions() {
+    /**
+     * Fetches every selected source and publishes the filtered, sorted list.
+     *
+     * A source that fails keeps what the previous list showed from it ([carryOverFailedSources]),
+     * and the failures are reported in one toast for the whole fetch; each failing source used to
+     * queue its own toast and leave its part of the list empty.
+     *
+     * @param scrollToTop ask the screen to show the top of the new list: for a sort change or a
+     * pull-to-refresh, not for the background refreshes that run as the screen opens.
+     */
+    fun fetchInvasions(scrollToTop: Boolean = false) {
         Log.d(TAG, "Starting to fetch invasions...")
         val inputs = currentInputs()
 
         // Cancel any ongoing fetch operation before starting a new one
         fetchJob?.cancel()
         fetchJob = viewModelScope.launch {
-            // Sources that failed. Only a fetch where every source succeeded is recorded as the
-            // published state; otherwise the list is incomplete and the next visit retries.
-            // Only touched on the main thread: the async blocks below inherit it.
-            var failedSources = 0
             try {
                 val selectedSources = dataSourcePreferences.getSelectedSources()
-                val deferredList = selectedSources.mapNotNull { source ->
+                val deferredBySource = selectedSources.mapNotNull { source ->
                     ApiClient.DATA_SOURCE_URLS[source]?.let { baseUrl ->
-                        async {
-                            try {
-                                ApiClient.getApiForBaseUrl(baseUrl)
-                                    .getInvasions().invasions.orEmpty()
-                                    .filterNotNull()
-                                    .map { invasion -> invasion.copy(source = source) }
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch(e: IOException) {
-                                // A superseded fetch cancels its OkHttp calls, which surface
-                                // here as IOException("Canceled") — not as CancellationException.
-                                // Without this the user sees a spurious error toast every time
-                                // they pull-to-refresh twice or change the sort mode.
-                                ensureActive()
-                                e(TAG, "Network error: ${e.message}", e)
-                                _error.value = "Network error: ${e.message}"
-                                failedSources++
-                                emptyList()
-                            } catch (e: HttpException) {
-                                e(TAG, "HTTP error: ${e.code()} - ${e.message}", e)
-                                _error.value = "HTTP error: ${e.code()} - ${e.message}"
-                                failedSources++
-                                emptyList()
-                            } catch (e: JsonSyntaxException) {
-                                e(TAG, "JSON parsing error: ${e.message}", e)
-                                _error.value = "JSON parsing error: ${e.message}"
-                                failedSources++
-                                emptyList()
-                            } catch (e: Exception) {
-                                ensureActive()
-                                e(TAG, "Source “$source” failed: ${e.message}", e)
-                                failedSources++
-                                emptyList()
-                            }
-                        }
+                        source to async { fetchSourceInvasions(source, baseUrl) }
                     }
                 }
-
-                val combinedInvasions = deferredList
-                    .mapNotNull {
-                        try {
-                            it.await()
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            e(TAG, "Failed to await result: ${e.message}", e)
-                            failedSources++
-                            null
-                        }
-                    }
-                    .flatten()
-                    .toMutableList()
+                // Null for a source that failed.
+                val results = deferredBySource.map { (source, deferred) -> source to deferred.await() }
+                val failedSources = results.filter { it.second == null }.map { it.first }.toSet()
+                val combinedInvasions = carryOverFailedSources(
+                    fresh = results.flatMap { it.second.orEmpty() },
+                    previous = _invasions.value.orEmpty(),
+                    failedSources = failedSources,
+                ) { it.source }
 
                 // Load preferences and deleted entries off the main thread
                 val enabledCharacters = withContext(Dispatchers.IO) {
@@ -190,19 +166,21 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 val deletedEntries = withContext(Dispatchers.IO) {
                     deletedRepo.getDeletedEntries()
                 }
-                val deletedKeySet = deletedEntries.map { it.lat to it.lng }.toHashSet()
+                val deleted = DeletedInvasions(deletedEntries)
 
                 // Perform CPU-bound mapping/filtering AND sorting off the main thread
                 val finalList = withContext(Dispatchers.Default) {
                     val baseList = filterInvasions(
                         combinedInvasions,
                         enabledCharacters,
-                        deletedKeySet,
+                        deleted,
                         nowSeconds = System.currentTimeMillis() / 1000
                     )
                     applySorting(baseList)
                 }
 
+                // Before the list, so the screen knows to scroll once the list is shown.
+                if (scrollToTop) _scrollToTop.value = Event(Unit)
                 _invasions.value = finalList
                 _currentInvasionCount.value = finalList.size
 
@@ -210,25 +188,53 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
                 _deletedCount.value = deletedEntries.size
 
-                if (failedSources == 0) {
+                // Only a fetch where every source answered is recorded as the published state;
+                // otherwise the list is partly carried over and the next visit retries.
+                if (failedSources.isEmpty()) {
                     publishedInputs = inputs
                     publishedAtMs = SystemClock.elapsedRealtime()
+                } else {
+                    _error.value = getApplication<Application>().getString(
+                        R.string.invasions_error_sources,
+                        failedSources.sorted().joinToString(", ")
+                    )
                 }
 
                 Log.d(
                     TAG,
-                    "Fetched invasions from ${selectedSources.size} sources. Total items: ${finalList.size}"
+                    "Fetched invasions from ${selectedSources.size} sources (${failedSources.size} failed). Total items: ${finalList.size}"
                 )
             } catch (e: CancellationException) {
                 // Coroutine was cancelled - this is normal behavior, don't treat it as an error
                 Log.d(TAG, "Fetch invasions was cancelled")
                 throw e // Re-throw to properly propagate cancellation
             } catch (e: Exception) {
+                // The current list is left as it is.
                 e(TAG, "Error fetching invasions: ${e.message}", e)
-                _error.value = "Failed to fetch invasions: ${e.message}"
+                _error.value = getApplication<Application>().getString(R.string.invasions_error_unexpected)
             }
         }
     }
+
+    /** One source's invasions, tagged with [source]; null if the source failed. */
+    private suspend fun fetchSourceInvasions(source: String, baseUrl: String): List<Invasion>? =
+        try {
+            ApiClient.getApiForBaseUrl(baseUrl)
+                .getInvasions().invasions.orEmpty()
+                .filterNotNull()
+                .map { invasion -> invasion.copy(source = source) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: HttpException) {
+            e(TAG, "Source $source: HTTP ${e.code()}", e)
+            null
+        } catch (e: Exception) {
+            // A superseded fetch cancels its OkHttp calls, which surface here as
+            // IOException("Canceled"), not as CancellationException; that's not a source failure.
+            currentCoroutineContext().ensureActive()
+            e(TAG, "Source $source failed: ${e.message}", e)
+            null
+        }
 
     /**
      * Sorts by time, or by distance from the last battled invasion (falling back to the first in
@@ -317,7 +323,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
         // Auto-refresh invasions to get fresh data with the new sort mode
         Log.d(TAG, "Auto-refreshing invasions after sort mode change")
-        fetchInvasions()
+        fetchInvasions(scrollToTop = true)
     }
 
     // When an invasion is deleted/handled, record its coords as last invasion and remove from list.

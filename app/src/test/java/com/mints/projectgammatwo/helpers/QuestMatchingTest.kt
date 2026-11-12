@@ -1,7 +1,10 @@
 package com.mints.projectgammatwo.helpers
 
 import com.mints.projectgammatwo.data.Quests.Quest
+import com.mints.projectgammatwo.data.FilterPreferences
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class QuestMatchingTest {
@@ -125,5 +128,84 @@ class QuestMatchingTest {
     @Test
     fun `condition keys use the format the filter screen stores`() {
         assertEquals("7|25|1|Spin 1 stop|Pikachu", key(spinOne))
+    }
+
+    @Test
+    fun `a ticked variant that no longer exists doesn't hide its reward`() {
+        // The daily rotation replaced "Spin 1 stop" with the other two tasks. The reward used to
+        // vanish from the list until the selection was redone.
+        val today = listOf(spinFourteen, catchFive, rareCandy)
+        val result = filterQuestsByConditions(today, listOf("7,0,25"), setOf(key(spinOne)))
+        assertEquals(listOf(spinFourteen, catchFive), result)
+    }
+
+    @Test
+    fun `a gone variant doesn't widen a reward that still has a ticked one`() {
+        val today = listOf(spinFourteen, catchFive)
+        val result = filterQuestsByConditions(today, listOf("7,0,25"), setOf(key(spinOne), key(catchFive)))
+        assertEquals(listOf(catchFive), result)
+    }
+
+    @Test
+    fun `a ticked variant whose quests were all visited still narrows its reward`() {
+        // The visited quests are gone from the list but not from the map: availableQuests says so.
+        val unvisited = listOf(spinFourteen, catchFive)
+        val result = filterQuestsByConditions(
+            unvisited, listOf("7,0,25"), setOf(key(spinOne)), availableQuests = all
+        )
+        assertEquals(emptyList<Quest>(), result)
+    }
+
+    @Test
+    fun `selections for variants no longer offered are pruned`() {
+        val today = listOf(key(spinFourteen), key(catchFive), key(dust200Spin))
+        val enabled = setOf(
+            key(spinOne),                                            // gone: pruned
+            key(catchFive),                                          // still offered
+            legacyQuestConditionKey("7", "25", "1", "Spin 14 stops"),  // legacy form of one offered
+            key(dust200Catch),                                       // 200 dust known, task gone
+            key(dust500),                                            // 500 dust not offered today
+            key(rareCandy),                                          // reward not offered today
+            "spinda_form_3",                                         // not a condition key
+        )
+        assertEquals(
+            setOf(
+                key(catchFive),
+                legacyQuestConditionKey("7", "25", "1", "Spin 14 stops"),
+                key(dust500),
+                key(rareCandy),
+                "spinda_form_3",
+            ),
+            pruneStaleConditionKeys(enabled, today),
+        )
+    }
+
+    @Test
+    fun `nothing is pruned when the variants are unknown`() {
+        val enabled = setOf(key(spinOne), key(rareCandy))
+        assertEquals(enabled, pruneStaleConditionKeys(enabled, emptyList()))
+    }
+
+    @Test
+    fun `a visit id round-trips, even for a stop whose name contains a bar`() {
+        val plain = quest("Fountain", "7", "25", "1", "Spin", "Pikachu").copy(lat = 40.5, lng = -73.25)
+        assertEquals(Triple("Fountain", 40.5, -73.25), parseQuestVisitId(questVisitId(plain)))
+
+        val barred = plain.copy(name = "Cafe | Bar")
+        assertEquals(Triple("Cafe | Bar", 40.5, -73.25), parseQuestVisitId(questVisitId(barred)))
+    }
+
+    @Test
+    fun `malformed visit ids are rejected`() {
+        assertEquals(null, parseQuestVisitId("no bars here"))
+        assertEquals(null, parseQuestVisitId("name|40.5"))
+        assertEquals(null, parseQuestVisitId("name|north|west"))
+    }
+
+    @Test
+    fun `only the quest filter name that collides with the name list is reserved`() {
+        assertTrue(FilterPreferences.isReservedQuestFilterName("filters"))
+        assertFalse(FilterPreferences.isReservedQuestFilterName("Filters"))
+        assertFalse(FilterPreferences.isReservedQuestFilterName("my filters"))
     }
 }

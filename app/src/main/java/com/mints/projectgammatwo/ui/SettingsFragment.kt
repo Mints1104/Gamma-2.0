@@ -1,9 +1,7 @@
 package com.mints.projectgammatwo.ui
 
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.text.InputFilter
 import android.text.InputType
@@ -16,6 +14,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.edit
 import androidx.core.text.HtmlCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -34,6 +33,7 @@ import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.HomeCoordinatesManager
 import com.mints.projectgammatwo.data.ExportData
 import com.mints.projectgammatwo.data.DeeplinkManager
+import com.mints.projectgammatwo.data.OverlayCustomizationManager
 import com.mints.projectgammatwo.data.decodeConditionMap
 import com.mints.projectgammatwo.data.decodeConditionSet
 import com.mints.projectgammatwo.data.encodeConditionMap
@@ -285,26 +285,22 @@ class SettingsFragment : Fragment() {
             }
         }
 
-        // Handle custom URL changes
+        // Saved as it's typed. It used to be saved only when the field lost focus, so leaving the
+        // screen straight from the keyboard lost the edit, and an emptied field was never saved,
+        // so the link could not be cleared. An empty link teleports with iPogo's.
+        customDeeplinkUrl.doAfterTextChanged { text ->
+            val url = text?.toString()?.trim().orEmpty()
+            if (url != deeplinkManager.getCustomUrl()) deeplinkManager.setCustomUrl(url)
+            customDeeplinkUrl.error =
+                if (url.isNotEmpty() && "%s" !in url) getString(R.string.deeplink_custom_url_invalid) else null
+        }
+        var urlWhenFocused = ""
         customDeeplinkUrl.setOnFocusChangeListener { _, hasFocus ->
-            if (!hasFocus) {
-                val url = customDeeplinkUrl.text.toString().trim()
-                if (url.isNotEmpty()) {
-                    deeplinkManager.setCustomUrl(url)
-                    if (!url.contains("%s")) {
-                        Toast.makeText(
-                            requireContext(),
-                            getString(R.string.deeplink_custom_url_invalid),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    } else {
-                        Toast.makeText(
-                            requireContext(),
-                            getString(R.string.deeplink_custom_url_saved),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
+            val url = customDeeplinkUrl.text.toString().trim()
+            if (hasFocus) {
+                urlWhenFocused = url
+            } else if (url != urlWhenFocused && url.isNotEmpty() && "%s" in url) {
+                Toast.makeText(requireContext(), R.string.deeplink_custom_url_saved, Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -354,33 +350,9 @@ class SettingsFragment : Fragment() {
         }
     }
 
-    private fun restartOverlayService() {
-        // The in-memory flag, not the old "overlay_running" pref: a crash or force-stop left the
-        // pref true, and saving a customization then started an overlay nobody had open.
-        val isOverlayRunning = com.mints.projectgammatwo.services.OverlayService.running.value == true
-        val sharedPrefs = requireContext().getSharedPreferences("overlay_prefs", Context.MODE_PRIVATE)
-        val currentMode = sharedPrefs.getString("overlay_mode", "invasions") ?: "invasions"
-
-        if (isOverlayRunning) {
-            // Application context: the restart runs after a delay, by which time this fragment
-            // may be gone and requireContext() would throw.
-            val appContext = requireContext().applicationContext
-            val stopIntent = Intent(appContext, com.mints.projectgammatwo.services.OverlayService::class.java)
-            appContext.stopService(stopIntent)
-
-            // Wait a bit before restarting
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                // Restart the service
-                val startIntent = Intent(appContext, com.mints.projectgammatwo.services.OverlayService::class.java)
-                startIntent.putExtra("mode", currentMode)
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    appContext.startForegroundService(startIntent)
-                } else {
-                    appContext.startService(startIntent)
-                }
-            }, 500)
-        }
+    /** Shows a saved customization change on the running overlay, in place (no restart). */
+    private fun applyCustomizationToRunningOverlay() {
+        com.mints.projectgammatwo.services.OverlayService.reloadAppearance(requireContext())
     }
 
     private fun showOverlayCustomizationDialog() {
@@ -401,15 +373,20 @@ class SettingsFragment : Fragment() {
 
         sizeSeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                // android:min is ignored before API 26, so the bar there goes down to 0 dp.
+                if (progress < OverlayCustomizationManager.MIN_BUTTON_SIZE) {
+                    seekBar?.progress = OverlayCustomizationManager.MIN_BUTTON_SIZE
+                    return
+                }
                 sizeValue.text = getString(R.string.overlay_size_dp, progress)
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
 
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                val newSize = seekBar?.progress ?: 48
+                val newSize = OverlayCustomizationManager.sanitizeButtonSize(seekBar?.progress)
                 customizationManager.saveButtonSize(newSize)
-                restartOverlayService()
+                applyCustomizationToRunningOverlay()
             }
         })
 
@@ -445,7 +422,7 @@ class SettingsFragment : Fragment() {
                 newVisibility["drag_handle"] = true // Always visible
                 customizationManager.saveButtonOrder(newOrder)
                 customizationManager.saveButtonVisibility(newVisibility)
-                restartOverlayService()
+                applyCustomizationToRunningOverlay()
             },
             onStartDrag = { viewHolder ->
                 itemTouchHelper?.startDrag(viewHolder)
@@ -498,7 +475,7 @@ class SettingsFragment : Fragment() {
             sizeSeekbar.progress = defaultSize
             sizeValue.text = getString(R.string.overlay_size_dp, defaultSize)
 
-            restartOverlayService()
+            applyCustomizationToRunningOverlay()
         }
 
         // Set up Apply button (closes the dialog; changes are applied live)

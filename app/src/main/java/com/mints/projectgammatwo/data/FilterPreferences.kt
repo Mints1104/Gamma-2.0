@@ -12,8 +12,8 @@ class FilterPreferences(context: Context) {
 
     private val KEY_ALL_FILTERS = "all_filters"
     private val KEY_FILTER_PREFIX = "filter_"
-    private val QUEST_FILTER_PREFIX = "quest_"
-    private val KEY_QUEST_FILTERS = "quest_filters"
+    private val QUEST_FILTER_PREFIX = QUEST_FILTER_KEY_PREFIX
+    private val KEY_QUEST_FILTERS = QUEST_FILTER_NAMES_KEY
     private val KEY_ACTIVE_ROCKET_FILTER = "active_rocket_filter"
     private val KEY_ACTIVE_QUEST_FILTER = "active_quest_filter"
     private val QUEST_ENCOUNTER_PREFIX = "encounter_"
@@ -37,29 +37,46 @@ class FilterPreferences(context: Context) {
     fun getEnabledQuestFilters(): Set<String> =
         questPrefs.getStringSet("enabled_quest_filters", emptySet())?.toSet() ?: emptySet()
 
+    // Every write here uses apply(): SharedPreferences updates its in-memory copy at once, so later
+    // reads in this process (the view models, the overlay) see the change immediately, and only the
+    // disk write is deferred. commit() blocked the main thread on disk for each checkbox tap.
     fun saveEnabledQuestFilters(filters: Set<String>) {
-        questPrefs.edit(commit = true) { putStringSet("enabled_quest_filters", HashSet(filters)) }
+        questPrefs.edit { putStringSet("enabled_quest_filters", HashSet(filters)) }
     }
 
     fun getEnabledEncounterConditions(): Set<String> =
         questPrefs.getStringSet(KEY_ENABLED_ENCOUNTER_CONDITIONS, emptySet())?.toSet() ?: emptySet()
 
     fun saveEnabledEncounterConditions(conditions: Set<String>) {
-        questPrefs.edit(commit = true) { putStringSet(KEY_ENABLED_ENCOUNTER_CONDITIONS, HashSet(conditions)) }
+        questPrefs.edit { putStringSet(KEY_ENABLED_ENCOUNTER_CONDITIONS, HashSet(conditions)) }
+    }
+
+    /** Saves the live quest selection (base filters and variant condition keys) in one write. */
+    fun saveQuestSelection(filters: Set<String>, conditions: Set<String>) {
+        questPrefs.edit {
+            putStringSet("enabled_quest_filters", HashSet(filters))
+            putStringSet(KEY_ENABLED_ENCOUNTER_CONDITIONS, HashSet(conditions))
+        }
     }
 
     fun saveCurrentQuestFilter(name: String) {
+        if (isReservedQuestFilterName(name)) {
+            // Its snapshot would overwrite the list of saved filter names; the save dialog
+            // refuses the name, so this only guards imports of older backups.
+            Log.w("FilterPreferences", "Not saving a quest filter named '$name': the name is reserved")
+            return
+        }
         val currentQuests = getEnabledQuestFilters()
         Log.d("FilterPreferences", "Saving filter $name with quests: $currentQuests")
-        questPrefs.edit(commit = true) { putStringSet("$QUEST_FILTER_PREFIX$name", HashSet(currentQuests)) }
-
         val currentEncounterConditions = getEnabledEncounterConditions()
         Log.d("FilterPreferences", "Saving encounter conditions for filter $name: $currentEncounterConditions")
-        questPrefs.edit(commit = true) { putStringSet("$QUEST_ENCOUNTER_PREFIX$name", HashSet(currentEncounterConditions)) }
-
         val all = questPrefs.getStringSet(KEY_QUEST_FILTERS, emptySet())!!.toMutableSet()
         all.add(name)
-        questPrefs.edit(commit = true) { putStringSet(KEY_QUEST_FILTERS, all) }
+        questPrefs.edit {
+            putStringSet("$QUEST_FILTER_PREFIX$name", HashSet(currentQuests))
+            putStringSet("$QUEST_ENCOUNTER_PREFIX$name", HashSet(currentEncounterConditions))
+            putStringSet(KEY_QUEST_FILTERS, all)
+        }
     }
 
     fun getSavedQuestFilters(): Map<String, Set<String>> {
@@ -99,11 +116,10 @@ class FilterPreferences(context: Context) {
             // Clear active first so no auto-update hooks can misfire during writes.
             clearActiveQuestFilter()
             val savedQuests = questPrefs.getStringSet("$QUEST_FILTER_PREFIX$name", emptySet())!!.toSet()
-            questPrefs.edit(commit = true) { putStringSet("enabled_quest_filters", HashSet(savedQuests)) }
             val savedEncounterConditions = questPrefs.getStringSet("$QUEST_ENCOUNTER_PREFIX$name", emptySet())!!
                 .filterNot { it.startsWith("spinda_form_") }.toSet()
             Log.d("FilterPreferences", "Restoring encounter conditions for $name: $savedEncounterConditions")
-            questPrefs.edit(commit = true) { putStringSet(KEY_ENABLED_ENCOUNTER_CONDITIONS, HashSet(savedEncounterConditions)) }
+            saveQuestSelection(savedQuests, savedEncounterConditions)
             // Set active after writes so hooks see the correct name.
             setActiveQuestFilter(name)
             return
@@ -169,5 +185,14 @@ class FilterPreferences(context: Context) {
         const val QUEST_PREF_NAME = "quest_filters"
         private const val KEY_CHARACTERS = "enabled_characters"
         const val KEY_ENABLED_ENCOUNTER_CONDITIONS = "enabled_encounter_conditions"
+        private const val QUEST_FILTER_KEY_PREFIX = "quest_"
+        private const val QUEST_FILTER_NAMES_KEY = "quest_filters"
+
+        /**
+         * Whether a quest filter can't be called [name]: each one is stored under "quest_<name>",
+         * so a filter called "filters" would overwrite "quest_filters", the list of saved names.
+         */
+        fun isReservedQuestFilterName(name: String): Boolean =
+            "$QUEST_FILTER_KEY_PREFIX$name" == QUEST_FILTER_NAMES_KEY
     }
 }

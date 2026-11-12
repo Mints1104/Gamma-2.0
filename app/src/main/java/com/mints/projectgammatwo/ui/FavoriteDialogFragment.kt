@@ -83,20 +83,20 @@ class FavoriteDialogFragment : DialogFragment() {
             val coordinates = editCoordinates.text.toString().trim()
 
             if (TextUtils.isEmpty(name) || TextUtils.isEmpty(coordinates)) {
-                Toast.makeText(context, "Please fill in all fields", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, R.string.favorite_fill_all_fields, Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
             val parts = coordinates.split(",")
             if (parts.size != 2) {
-                Toast.makeText(context, "Please enter coordinates as 'latitude,longitude'", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, R.string.favorite_coordinates_format, Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
             val lat = parts[0].toDoubleOrNull()
             val lng = parts[1].toDoubleOrNull()
             if (lat == null || lng == null) {
-                Toast.makeText(context, "Invalid coordinates", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, R.string.favorite_coordinates_invalid, Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             // Any number used to parse, so a typo like 407.128 was saved and later teleported to.

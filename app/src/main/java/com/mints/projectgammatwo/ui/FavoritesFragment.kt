@@ -1,6 +1,5 @@
 package com.mints.projectgammatwo.ui
 
-import android.app.AlertDialog
 import android.content.ClipData
 import android.content.Context
 import android.os.Bundle
@@ -8,7 +7,6 @@ import android.os.Handler
 import android.os.Looper
 import android.text.InputType
 import android.view.*
-import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
 import androidx.coordinatorlayout.widget.CoordinatorLayout
@@ -37,6 +35,8 @@ private const val SORT_ORDER_NAME = "name"
 private const val SORT_ORDER_DEFAULT = "default"
 private const val IMPORT_FAVORITES_REQUEST_KEY = "import_favorites"
 private const val IMPORT_FAVORITES_DIALOG_TAG = "import_favorites_dialog"
+private const val IMPORT_HOTSPOTS_REQUEST_KEY = "import_hotspots"
+private const val IMPORT_HOTSPOTS_DIALOG_TAG = "import_hotspots_dialog"
 
 
 class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListener {
@@ -52,6 +52,12 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
 
     private val timeHandler = Handler(Looper.getMainLooper())
 
+    /**
+     * The UNDO snackbar on screen, if any. It sits on the activity's content view, so it would
+     * outlive this fragment; it is dismissed with the view (see [onDestroyView]).
+     */
+    private var undoSnackbar: Snackbar? = null
+
     /** Repaints the per-favorite local times, re-posting itself on each wall-clock minute. */
     private val timeTicker = object : Runnable {
         override fun run() {
@@ -65,6 +71,9 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
         // Registered here so the import dialog, which survives rotation, still has a listener.
         childFragmentManager.setFragmentResultListener(IMPORT_FAVORITES_REQUEST_KEY, this) { _, result ->
             result.getString(JsonImportDialogFragment.RESULT_JSON)?.let { importFavorites(it) }
+        }
+        childFragmentManager.setFragmentResultListener(IMPORT_HOTSPOTS_REQUEST_KEY, this) { _, _ ->
+            importHotspots()
         }
     }
 
@@ -115,8 +124,21 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     }
 
     override fun onDestroyView() {
+        // An UNDO tapped after leaving acted on this fragment's stale list: the import UNDO
+        // crashed in requireContext() and the delete UNDO saved nothing. Leaving keeps the change.
+        undoSnackbar?.dismiss()
+        undoSnackbar = null
         super.onDestroyView()
         timeHandler.removeCallbacks(timeTicker)
+    }
+
+    /** Shows [message] with an UNDO action that only runs while this screen is still shown. */
+    private fun showUndoSnackbar(message: String, onUndo: () -> Unit) {
+        val rootView = requireActivity().findViewById<View>(android.R.id.content)
+        undoSnackbar?.dismiss()
+        undoSnackbar = Snackbar.make(rootView, message, Snackbar.LENGTH_LONG)
+            .setAction(R.string.favorites_undo) { if (view != null) onUndo() }
+            .also { it.show() }
     }
 
     /** Aligns the tick to the wall clock so the displayed time flips when the minute does. */
@@ -201,27 +223,8 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
      * Displays a confirmation dialog for importing hotspots.
      */
     private fun showImportHotspotsDialog() {
-        val builder = AlertDialog.Builder(requireContext())
-        val inflater = requireActivity().layoutInflater
-        val dialogView = inflater.inflate(R.layout.dialog_confirm_import_hotspots, null)
-
-        val cancelButton = dialogView.findViewById<Button>(R.id.cancelConfirmButton)
-        val confirmButton = dialogView.findViewById<Button>(R.id.confirmImportButton)
-
-        builder.setView(dialogView)
-        val dialog = builder.create()
-
-        // Set up button click listeners
-        cancelButton.setOnClickListener {
-            dialog.dismiss()
-        }
-
-        confirmButton.setOnClickListener {
-            importHotspots()
-            dialog.dismiss()
-        }
-
-        dialog.show()
+        ConfirmDialogFragment.newInstance(IMPORT_HOTSPOTS_REQUEST_KEY)
+            .show(childFragmentManager, IMPORT_HOTSPOTS_DIALOG_TAG)
     }
 
     /**
@@ -255,26 +258,23 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
             saveFavorites()
 
             // Show snackbar with undo option
-            val rootView = requireActivity().findViewById<View>(android.R.id.content)
             val message = if (addedLocations.isNotEmpty()) {
-                "Imported ${addedLocations.size} hotspot(s)"
+                resources.getQuantityString(R.plurals.hotspots_imported, addedLocations.size, addedLocations.size)
             } else {
-                "No new hotspots to import"
+                getString(R.string.hotspots_none_new)
             }
 
-            Snackbar.make(rootView, message, Snackbar.LENGTH_LONG)
-                .setAction("UNDO") {
-                    // Restore the previous list
-                    favoritesList.clear()
-                    favoritesList.addAll(previousList)
-                    adapter.submitList(favoritesList.toList())
-                    saveFavorites()
-                    Toast.makeText(requireContext(), "Import undone", Toast.LENGTH_SHORT).show()
-                }
-                .show()
+            showUndoSnackbar(message) {
+                // Restore the previous list
+                favoritesList.clear()
+                favoritesList.addAll(previousList)
+                adapter.submitList(favoritesList.toList())
+                saveFavorites()
+                Toast.makeText(requireContext(), R.string.hotspots_import_undone, Toast.LENGTH_SHORT).show()
+            }
         } catch (e: Exception) {
             e.printStackTrace()
-            Toast.makeText(requireContext(), "Failed to import hotspots: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), getString(R.string.hotspots_import_failed, e.message.orEmpty()), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -297,7 +297,7 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
                     !(it.lat == 0.0 && it.lng == 0.0)
             }
             if (usable.isEmpty()) {
-                Toast.makeText(requireContext(), "No favorites found to import", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), R.string.favorites_import_none, Toast.LENGTH_SHORT).show()
                 return
             }
             for (fav in usable) {
@@ -309,10 +309,10 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
             applyCurrentSort()
             adapter.submitList(favoritesList.toList())
             saveFavorites()
-            Toast.makeText(requireContext(), "Favorites imported", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), R.string.favorites_imported, Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             e.printStackTrace()
-            Toast.makeText(requireContext(), "Failed to import favorites", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), R.string.favorites_import_failed, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -338,18 +338,15 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
 
 
     private fun deleteFavorite(favorite: FavoriteLocation) {
-        val rootView = requireActivity().findViewById<View>(android.R.id.content)
         val deletedIndex = favoritesList.indexOf(favorite).takeIf { it != -1 } ?: return
         favoritesList.removeAt(deletedIndex)
         adapter.submitList(favoritesList.toList())
         saveFavorites()
-        Snackbar.make(rootView, "Deleted: ${favorite.name}", Snackbar.LENGTH_LONG)
-            .setAction("UNDO") {
-                favoritesList.add(deletedIndex, favorite)
-                adapter.submitList(favoritesList.toList())
-                saveFavorites()
-            }
-            .show()
+        showUndoSnackbar(getString(R.string.favorite_deleted, favorite.name)) {
+            favoritesList.add(deletedIndex.coerceAtMost(favoritesList.size), favorite)
+            adapter.submitList(favoritesList.toList())
+            saveFavorites()
+        }
     }
 
 
@@ -366,7 +363,7 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
             "${favorite.lat.toPlainCoordinate()}, ${favorite.lng.toPlainCoordinate()}"
         )
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(requireContext(), "Coordinates copied to clipboard", Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), R.string.favorite_coordinates_copied, Toast.LENGTH_SHORT).show()
     }
 
 
@@ -402,10 +399,10 @@ class FavoritesFragment : Fragment(), FavoriteDialogFragment.FavoriteDialogListe
     override fun onFavoriteSaved(favorite: FavoriteLocation, position: Int) {
         if (position == -1) {
             favoritesList.add(favorite)
-            Toast.makeText(requireContext(), "Favorite added", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), R.string.favorite_added, Toast.LENGTH_SHORT).show()
         } else {
             favoritesList[position] = favorite
-            Toast.makeText(requireContext(), "Favorite updated", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), R.string.favorite_updated, Toast.LENGTH_SHORT).show()
         }
         applyCurrentSort()
         adapter.submitList(favoritesList.toList())
