@@ -142,10 +142,6 @@ class DeletedInvasionsRepository(context: Context) {
         (prefs.getStringSet(key, emptySet()) ?: emptySet()).hashCode()
     }
 
-    /** Whether [invasion] was battled; see DeletedInvasions. */
-    fun isInvasionDeleted(invasion: Invasion): Boolean =
-        invasion in DeletedInvasions(getDeletedEntries())
-
     /**
      * Count entries deleted within the last 24 hours (rolling window).
      */

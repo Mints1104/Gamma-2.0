@@ -109,19 +109,4 @@ class HomeCoordinatesManager(private val context: Context) {
             false
         }
     }
-
-    /**
-     * Checks if home coordinates have been set
-     * @return Boolean indicating if coordinates exist
-     */
-    fun hasHomeCoordinates(): Boolean {
-        return getHomeCoordinates() != null
-    }
-
-    /**
-     * Clears saved home coordinates
-     */
-    fun clearHomeCoordinates() {
-        sharedPreferences.edit().remove(KEY_HOME_COORDS).apply()
-    }
 }

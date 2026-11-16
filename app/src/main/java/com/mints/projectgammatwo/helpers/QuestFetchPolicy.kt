@@ -41,3 +41,24 @@ fun shouldRediscoverVariants(
  */
 fun isPublishedQuestListFresh(sameInputs: Boolean, ageMs: Long, complete: Boolean): Boolean =
     sameInputs && ageMs in 0 until if (complete) QUESTS_FRESH_FOR_MS else PARTIAL_QUESTS_FRESH_FOR_MS
+
+/**
+ * Whether a variant discovery heard from every source about every reward, so that a variant
+ * missing from its result is really gone rather than on a source that failed. Only then may
+ * selections for missing variants be pruned ([pruneStaleConditionKeys]); pruning after a partial
+ * discovery would delete the user's selections for variants offered only on the failed source.
+ *
+ * @param selectedSources how many sources are enabled.
+ * @param services how many of them have a known URL (one request set each).
+ * @param unfilteredResults one per service; null where the request failed.
+ * @param chunkResults one per service and filter chunk; null where the request failed. Empty when
+ *   there was no filter list to ask about, in which case nothing was asked reward by reward.
+ */
+fun isVariantDiscoveryComplete(
+    selectedSources: Int,
+    services: Int,
+    unfilteredResults: List<Any?>,
+    chunkResults: List<Any?>,
+): Boolean =
+    services == selectedSources && chunkResults.isNotEmpty() &&
+        unfilteredResults.all { it != null } && chunkResults.all { it != null }

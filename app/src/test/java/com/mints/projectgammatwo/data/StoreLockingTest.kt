@@ -1,5 +1,6 @@
 package com.mints.projectgammatwo.data
 
+import com.mints.projectgammatwo.helpers.DeletedInvasions
 import com.mints.projectgammatwo.testutil.PrefsContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -94,7 +95,8 @@ class StoreLockingTest {
 
         val repo = DeletedInvasionsRepository(context)
 
-        assertTrue(repo.isInvasionDeleted(invasion(40.5).copy(lng = -73.5)))
-        assertFalse(repo.isInvasionDeleted(invasion(40.6).copy(lng = -73.5)))
+        val deleted = DeletedInvasions(repo.getDeletedEntries())
+        assertTrue(invasion(40.5).copy(lng = -73.5) in deleted)
+        assertFalse(invasion(40.6).copy(lng = -73.5) in deleted)
     }
 }

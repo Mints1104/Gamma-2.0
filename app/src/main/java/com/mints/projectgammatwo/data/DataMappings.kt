@@ -1,7 +1,6 @@
 package com.mints.projectgammatwo.data
 
 import android.content.Context
-import android.util.Log
 import retrofit2.Call
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -47,57 +46,6 @@ object DataMappings {
         8 to "Kecleon",
         9 to "Showcase",
         7 to "Golden Lure"
-    )
-
-    enum class PokemonType(val id: Int) {
-        NONE(0), NORMAL(1), FIGHTING(2), FLYING(3), POISON(4),
-        GROUND(5), ROCK(6), BUG(7), GHOST(8), STEEL(9),
-        FIRE(10), WATER(11), GRASS(12), ELECTRIC(13), PSYCHIC(14),
-        ICE(15), DRAGON(16), DARK(17), FAIRY(18);
-
-        companion object {
-            fun fromId(id: Int): PokemonType = PokemonType.entries.firstOrNull { it.id == id } ?: NONE
-        }
-    }
-
-    data class PokemonForm(val id: Int, val types: List<PokemonType>)
-
-    data class Pokemon(
-        val id: Int,
-        val name: String,
-        val types: List<PokemonType>,
-        val forms: List<PokemonForm> = emptyList()
-    )
-
-    data class WeatherAffinity(
-        val weatherId: Int,
-        val affectedTypes: List<PokemonType>
-    )
-
-    data class Item(
-        val name: String
-    )
-
-    data class Encounter(
-        val name: String
-    )
-
-    data class MegaEnergy(
-        val pokemon: String
-    )
-
-    data class Stardust(
-        val amount: Int
-    )
-
-    val stardustList = listOf(
-        Stardust(200), Stardust(500), Stardust(1000), Stardust(1500)
-    )
-
-    val megaEnergyList = listOf(
-        MegaEnergy("Venusaur"), MegaEnergy("Charizard"), MegaEnergy("Blastoise"), MegaEnergy("Beedrill"),
-        MegaEnergy("Pidgeot"), MegaEnergy("Sceptile"), MegaEnergy("Blaziken"), MegaEnergy("Swampert"),
-        MegaEnergy("Aggron"), MegaEnergy("Manectric")
     )
 
     data class PokemonResponse(val results: List<PokemonEntry>)
@@ -239,124 +187,6 @@ object DataMappings {
             "588" to "Karrablast",
             "616" to "Shelmet"
         )
-
-        val megaEnergyMap: Map<String, String> = mapOf(
-            "3" to "Venusaur",
-            "6" to "Charizard",
-            "9" to "Blastoise",
-            "15" to "Beedrill",
-            "18" to "Pidgeot",
-            "254" to "Sceptile",
-            "257" to "Blaziken",
-            "260" to "Swampert",
-            "306" to "Aggron",
-            "310" to "Manectric"
-        )
-
-        val encounterList = listOf(
-            Encounter("Bulbasaur"),
-            Encounter("Charmander"),
-            Encounter("Squirtle"),
-            Encounter("Pidgey"),
-            Encounter("Clefairy"),
-            Encounter("Vulpix"),
-            Encounter("Jigglypuff"),
-            Encounter("Diglett"),
-            Encounter("Meowth"),
-            Encounter("Growlithe (Hisuian)"),
-            Encounter("Growlithe"),
-            Encounter("Poliwag"),
-            Encounter("Abra"),
-            Encounter("Slowpoke"),
-            Encounter("Galarian Slowpoke"),
-            Encounter("Farfetch'd"),
-            Encounter("Doduo"),
-            Encounter("Gastly"),
-            Encounter("Exeggutor"),
-            Encounter("Marowak"),
-            Encounter("Chansey"),
-            Encounter("Scyther"),
-            Encounter("Magikarp"),
-            Encounter("Eevee"),
-            Encounter("Omanyte"),
-            Encounter("Kabuto"),
-            Encounter("Aerodactyl"),
-            Encounter("Dratini"),
-            Encounter("Sudowoodo"),
-            Encounter("Sneasel"),
-            Encounter("Teddiursa"),
-            Encounter("Slugma"),
-            Encounter("Remoraid"),
-            Encounter("Houndour"),
-            Encounter("Larvitar"),
-            Encounter("Poochyena"),
-            Encounter("Wingull"),
-            Encounter("Ralts"),
-            Encounter("Slakoth"),
-            Encounter("Nincada"),
-            Encounter("Skitty"),
-            Encounter("Mawile"),
-            Encounter("Aron"),
-            Encounter("Spinda"),
-            Encounter("Trapinch"),
-            Encounter("Lileep"),
-            Encounter("Anorith"),
-            Encounter("Feebas"),
-            Encounter("Snorunt"),
-            Encounter("Clamperl"),
-            Encounter("Bagon"),
-            Encounter("Beldum"),
-            Encounter("Bidoof"),
-            Encounter("Shinx"),
-            Encounter("Combee"),
-            Encounter("Buneary"),
-            Encounter("Glameow"),
-            Encounter("Stunky"),
-            Encounter("Gible"),
-            Encounter("Hippopotas"),
-            Encounter("Croagunk"),
-            Encounter("Snover"),
-            Encounter("Snivy"),
-            Encounter("Tepig"),
-            Encounter("Oshawott"),
-            Encounter("Lillipup"),
-            Encounter("Pidove"),
-            Encounter("Blitzle"),
-            Encounter("Roggenrola"),
-            Encounter("Cottonee"),
-            Encounter("Darumaka"),
-            Encounter("Tirtouga"),
-            Encounter("Archen"),
-            Encounter("Trubbish"),
-            Encounter("Vanillite"),
-            Encounter("Elgyem"),
-            Encounter("Axew"),
-            Encounter("Cubchoo"),
-            Encounter("Stunfisk"),
-            Encounter("Bunnelby"),
-            Encounter("Litleo"),
-            Encounter("Espurr"),
-            Encounter("Spritzee"),
-            Encounter("Swirlix"),
-            Encounter("Inkay"),
-            Encounter("Binacle"),
-            Encounter("Tyrunt"),
-            Encounter("Amaura"),
-            Encounter("Dedenne"),
-            Encounter("Rowlet"),
-            Encounter("Litten"),
-            Encounter("Popplio"),
-            Encounter("Stufful"),
-            Encounter("Wimpod"),
-            Encounter("Komala"),
-            Encounter("Lechonk")
-        )
-
-        val itemList = listOf(
-            Item("Poké Ball"), Item("Great Ball"), Item("Ultra Ball"), Item("Razz Berry"),
-            Item("Pinap Berry"), Item("Golden Razz Berry"), Item("Rare Candy")
-        )
-
 
         // Mapping for Items. For each raw item value (like "1") we prepend "item" to lookup the friendly name.
         val itemMap: Map<String, String> = mapOf(

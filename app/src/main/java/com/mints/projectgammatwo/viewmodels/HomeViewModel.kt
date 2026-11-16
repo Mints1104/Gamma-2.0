@@ -60,8 +60,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentFilterSize = MutableLiveData<Int>()
     val currentFilterSize: LiveData<Int> get() = _currentFilterSize
 
-    private val _currentInvasionCount = MutableLiveData<Int>()
-    val currentInvasionCount: LiveData<Int> get() = _currentInvasionCount
 
     // LiveData for current sort mode
     private val _sortByDistance = MutableLiveData<Boolean>()
@@ -182,7 +180,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 // Before the list, so the screen knows to scroll once the list is shown.
                 if (scrollToTop) _scrollToTop.value = Event(Unit)
                 _invasions.value = finalList
-                _currentInvasionCount.value = finalList.size
 
                 CurrentInvasionData.currentInvasions = finalList.toMutableList()
 
@@ -286,8 +283,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             val prefs = context.getSharedPreferences("last_invasion_pref", Context.MODE_PRIVATE)
             prefs.edit().apply {
                 putString("lastInvasion", "${invasion.lat},${invasion.lng}")
-                putFloat("lastInvasionLat", invasion.lat.toFloat())
-                putFloat("lastInvasionLng", invasion.lng.toFloat())
                 apply()
             }
             Log.d(TAG, "Saved last invasion coordinates: (${invasion.lat}, ${invasion.lng})")

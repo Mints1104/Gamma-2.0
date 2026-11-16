@@ -21,6 +21,7 @@
 
     <!-- Filter Name Input -->
     <EditText
+        android:importantForAutofill="no"
         android:id="@+id/editFilterName"
         android:layout_width="0dp"
         android:layout_height="wrap_content"

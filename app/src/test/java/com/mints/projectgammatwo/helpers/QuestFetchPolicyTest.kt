@@ -49,4 +49,30 @@ class QuestFetchPolicyTest {
         assertFalse(isPublishedQuestListFresh(sameInputs = true, ageMs = QUESTS_FRESH_FOR_MS, complete = true))
         assertFalse(isPublishedQuestListFresh(sameInputs = true, ageMs = -1L, complete = true))
     }
+
+    // Variant discovery: two sources, each with one unfiltered request and two filter chunks.
+    private val ok = Any()
+
+    @Test
+    fun `a discovery where every request answered is complete`() {
+        assertTrue(isVariantDiscoveryComplete(2, 2, listOf(ok, ok), listOf(ok, ok, ok, ok)))
+    }
+
+    @Test
+    fun `a failed request makes the discovery partial, so nothing is pruned`() {
+        assertFalse(isVariantDiscoveryComplete(2, 2, listOf(ok, null), listOf(ok, ok, ok, ok)))
+        assertFalse(isVariantDiscoveryComplete(2, 2, listOf(ok, ok), listOf(ok, ok, null, ok)))
+    }
+
+    @Test
+    fun `a source without a known URL makes the discovery partial`() {
+        assertFalse(isVariantDiscoveryComplete(2, 1, listOf(ok), listOf(ok, ok)))
+    }
+
+    @Test
+    fun `a discovery that asked about no rewards is not complete`() {
+        // No cached or fresh filter list, so no reward was asked about one by one.
+        assertFalse(isVariantDiscoveryComplete(2, 2, listOf(ok, ok), emptyList()))
+        assertFalse(isVariantDiscoveryComplete(0, 0, emptyList(), emptyList()))
+    }
 }
