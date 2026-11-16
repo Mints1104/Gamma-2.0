@@ -67,3 +67,75 @@ fun <T> previousStopIndex(history: List<T>, isUsable: (T) -> Boolean): Int? {
     }
     return null
 }
+
+/** How many earlier stops the overlay remembers per mode for ◀. */
+const val MAX_OVERLAY_HISTORY = 50
+
+/**
+ * The overlay's ▶/◀ state for one mode (invasions or quests): the item last teleported to, the
+ * items it has handled, and the history ◀ returns through. The service owns the teleports and
+ * the stores; this decides where each tap goes.
+ *
+ * - ▶: [next] with step 1, then [recordTeleport] once the teleport has launched.
+ * - ◀: [previousStop]; with an earlier stop, [returnTo] it once the teleport has launched.
+ *   With none (◀ before any ▶, or once the history is used up), [next] with step -1 walks the
+ *   list backwards, recording nothing, as ◀ always did.
+ *
+ * @param handledKey what identifies an item as handled: the invasion itself, a quest's visit id.
+ */
+class OverlayWalk<T>(
+    private val maxHistory: Int = MAX_OVERLAY_HISTORY,
+    private val handledKey: (T) -> Any? = { it },
+) {
+    /** The item last teleported to; null before the first teleport or after [resetAnchor]. */
+    var anchor: T? = null
+        private set
+    private var anchorIndex = -1
+    private val handled = HashSet<Any?>()
+    private val history = ArrayDeque<T>()
+
+    /** The stops ▶ has teleported to, oldest first, ending with the current one. */
+    val stops: List<T> get() = history.toList()
+
+    fun isHandled(item: T): Boolean = handledKey(item) in handled
+
+    /**
+     * Index in [items] of the next item [step]'s way from the anchor ([nextOverlayIndex]) that
+     * [isEligible] accepts and that hasn't been handled; null if there is none. The item found
+     * becomes the anchor.
+     */
+    fun next(items: List<T>, step: Int, isEligible: (T) -> Boolean): Int? {
+        val index = nextOverlayIndex(items, anchor, anchorIndex, step) { !isHandled(it) && isEligible(it) }
+            ?: return null
+        anchor = items[index]
+        anchorIndex = index
+        return index
+    }
+
+    /** ▶ teleported to [item]: it's handled, and the latest stop in the history. */
+    fun recordTeleport(item: T) {
+        handled += handledKey(item)
+        history.addLast(item)
+        while (history.size > maxHistory) history.removeFirst()
+    }
+
+    /** The stop ◀ returns to ([previousStopIndex]), with its index in the history; null if none. */
+    fun previousStop(isUsable: (T) -> Boolean): IndexedValue<T>? =
+        previousStopIndex(history, isUsable)?.let { IndexedValue(it, history[it]) }
+
+    /**
+     * ◀ teleported back to [stop]: it becomes the current stop, the ones after it are left behind
+     * (as in a browser), and ▶ carries on from it in [items], skipping those already handled.
+     */
+    fun returnTo(stop: IndexedValue<T>, items: List<T>) {
+        while (history.size > stop.index + 1) history.removeLast()
+        anchorIndex = items.indexOf(stop.value).takeIf { it >= 0 } ?: anchorIndex
+        anchor = stop.value
+    }
+
+    /** A new list: ▶ starts from its top. The handled items and the history are kept. */
+    fun resetAnchor() {
+        anchor = null
+        anchorIndex = -1
+    }
+}

@@ -209,13 +209,4 @@ class PokemonRepository private constructor(private val context: Context) {
         Log.d(TAG, "Cache validity check: $isValid (age: ${(System.currentTimeMillis() - lastUpdated) / 1000 / 60} minutes)")
         return isValid
     }
-
-    /**
-     * Clear all cached data
-     */
-    fun clearCache() {
-        pokemonMap = null
-        io.execute { sharedPrefs.edit { clear() } }
-        Log.d(TAG, "Cache cleared")
-    }
 }

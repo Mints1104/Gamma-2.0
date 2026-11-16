@@ -1,18 +1,20 @@
 package com.mints.projectgammatwo.helpers
 
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 
+/**
+ * Drags an overlay window by one of its handles. A touch that doesn't move past [MOVE_THRESHOLD]
+ * is a tap, reported through [View.performClick] so accessibility services see the handle as
+ * clickable.
+ */
 class DragTouchListener(
     private val params: WindowManager.LayoutParams,
     private val windowManager: WindowManager,
     private val rootView: View,
-    private val onLongPress: (() -> Unit)? = null
 ) : View.OnTouchListener {
 
     private var initialX = 0
@@ -21,16 +23,7 @@ class DragTouchListener(
     private var downRawY = 0f
     private var hasMoved = false
 
-    private val longPressHandler = Handler(Looper.getMainLooper())
-    private val longPressRunnable = Runnable {
-        if (!hasMoved) {
-            Log.d("DragTouch", "Long press detected!")
-            onLongPress?.invoke()
-        }
-    }
-
     companion object {
-        private const val LONG_PRESS_TIMEOUT = 500L // 500ms for long press
         private const val MOVE_THRESHOLD = 10 // pixels
     }
 
@@ -43,9 +36,6 @@ class DragTouchListener(
                 downRawX = event.rawX
                 downRawY = event.rawY
                 hasMoved = false
-
-                // Start long press detection
-                longPressHandler.postDelayed(longPressRunnable, LONG_PRESS_TIMEOUT)
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
@@ -55,7 +45,6 @@ class DragTouchListener(
                 // Check if user has moved beyond threshold
                 if (Math.abs(deltaX) > MOVE_THRESHOLD || Math.abs(deltaY) > MOVE_THRESHOLD) {
                     hasMoved = true
-                    longPressHandler.removeCallbacks(longPressRunnable)
 
                     Log.d("DragTouch", "MOVE to (${event.rawX}, ${event.rawY})")
                     // Calculate desired new position
@@ -87,11 +76,11 @@ class DragTouchListener(
                 }
                 return true
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                // Cancel long press if finger is lifted
-                longPressHandler.removeCallbacks(longPressRunnable)
+            MotionEvent.ACTION_UP -> {
+                if (!hasMoved) view.performClick()
                 return true
             }
+            MotionEvent.ACTION_CANCEL -> return true
         }
         return false
     }

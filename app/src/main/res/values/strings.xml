@@ -198,6 +198,10 @@
     <string name="cd_switch_modes">Switch between invasions and quests</string>
     <string name="cd_filters">Filters</string>
     <string name="cd_favorites">Favorites</string>
+    <!-- %1$s: a quest reward on the filter screen. -->
+    <string name="cd_show_variants">Show tasks for %1$s</string>
+    <string name="cd_hide_variants">Hide tasks for %1$s</string>
+
     <!-- Overlay toasts -->
     <string name="overlay_closing">Closing overlay</string>
     <string name="overlay_home_not_set">Home coordinates not set</string>

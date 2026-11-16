@@ -18,6 +18,7 @@ import com.mints.projectgammatwo.helpers.isPublishedQuestListFresh
 import com.mints.projectgammatwo.helpers.pruneStaleConditionKeys
 import com.mints.projectgammatwo.helpers.shouldRediscoverVariants
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.mints.projectgammatwo.data.ApiClient
 import com.mints.projectgammatwo.data.DataSourcePreferences
 import com.mints.projectgammatwo.data.QuestFilterPreferences
@@ -34,25 +35,19 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.pow
-import kotlin.math.sin
-import kotlin.math.sqrt
 import com.mints.projectgammatwo.data.CurrentQuestData
 import androidx.core.content.edit
 import kotlinx.coroutines.withContext
 import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.helpers.carryOverFailedSources
+import com.mints.projectgammatwo.helpers.distanceMeters
+import com.mints.projectgammatwo.helpers.isVariantDiscoveryComplete
 import com.mints.projectgammatwo.helpers.questVisitId
 
 class QuestsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _questsLiveData = MutableLiveData<List<Quest>>()
     val questsLiveData: LiveData<List<Quest>> = _questsLiveData
-
-    private val _questsCountLiveData = MutableLiveData<Int>()
-    val questsCountLiveData: LiveData<Int> = _questsCountLiveData
 
     private val _filterSizeLiveData = MutableLiveData<Int>()
     val filterSizeLiveData: LiveData<Int> = _filterSizeLiveData
@@ -61,14 +56,20 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
 
     // Map of "type,0,id" -> list of SubVariant(filterString, label, condition, type, id, amount, reward)
     // e.g. "9,0,483" -> [SubVariant("9,1,483","× 1 — Spin 14 stops", ...), SubVariant("9,3,483","× 3 — Win a raid", ...)]
+    //
+    // Cached as JSON by Gson. The names are pinned with @SerializedName because this class is
+    // outside the data package that proguard-rules.pro keeps: release builds stored the fields as
+    // "a" to "g", which a later build could hand out in a different order, loading a cached label
+    // as a filter key and so on. Caches written that way load with every field null and are
+    // dropped (isComplete), then rediscovered.
     data class SubVariant(
-        val filterString: String,
-        val label: String,
-        val condition: String,
-        val type: String,
-        val id: String,
-        val amount: String,
-        val reward: String
+        @SerializedName("filterString") val filterString: String,
+        @SerializedName("label") val label: String,
+        @SerializedName("condition") val condition: String,
+        @SerializedName("type") val type: String,
+        @SerializedName("id") val id: String,
+        @SerializedName("amount") val amount: String,
+        @SerializedName("reward") val reward: String
     ) {
         /** False for a cached entry missing a field: Gson leaves those null despite the types. */
         @Suppress("SENSELESS_COMPARISON")
@@ -157,7 +158,6 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
 
         val remaining = current - quest
         _questsLiveData.value = remaining
-        _questsCountLiveData.value = remaining.size
         saveLastVisitedCoordinates(quest)
 
         val context = getApplication<Application>().applicationContext
@@ -251,33 +251,11 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
     // Cache for last visited coordinates to avoid repeated SharedPreferences reads
     private var cachedLastVisitedCoords: Pair<Double?, Double?>? = null
 
-    // Calculate the distance between two quests using the Haversine formula.
-    private fun haversineDistance(a: Quest, b: Quest): Double {
-        val R = 6371e3 // Earth's radius in meters
-        val lat1 = Math.toRadians(a.lat)
-        val lat2 = Math.toRadians(b.lat)
-        val deltaLat = Math.toRadians(b.lat - a.lat)
-        val deltaLon = Math.toRadians(b.lng - a.lng)
+    /** Distance in metres between two quests, by the app's one distance helper (distanceMeters). */
+    private fun distanceBetween(a: Quest, b: Quest): Double = distanceMeters(a.lat, a.lng, b.lat, b.lng)
 
-        val aVal = sin(deltaLat / 2).pow(2.0) +
-                cos(lat1) * cos(lat2) *
-                sin(deltaLon / 2).pow(2.0)
-        val c = 2 * atan2(sqrt(aVal), sqrt(1 - aVal))
-        return R * c
-    }
-
-    // Calculate the distance from a given point (lat, lng) to a quest.
-    private fun haversineDistanceFromPoint(lat: Double, lng: Double, quest: Quest): Double {
-        val R = 6371e3 // Earth's radius in meters
-        val lat1 = Math.toRadians(lat)
-        val lat2 = Math.toRadians(quest.lat)
-        val deltaLat = Math.toRadians(quest.lat - lat)
-        val deltaLon = Math.toRadians(quest.lng - lng)
-        val aVal = sin(deltaLat / 2).pow(2.0) +
-                cos(lat1) * cos(lat2) * sin(deltaLon / 2).pow(2.0)
-        val c = 2 * atan2(sqrt(aVal), sqrt(1 - aVal))
-        return R * c
-    }
+    private fun distanceFrom(lat: Double, lng: Double, quest: Quest): Double =
+        distanceMeters(lat, lng, quest.lat, quest.lng)
 
     // Sort the list of quests by repeatedly choosing the nearest unvisited quest.
     // If startLat and startLng are provided, use them as the reference point.
@@ -294,7 +272,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         // Determine the starting quest using the provided coordinates if available.
         val startingQuest = if (startLat != null && startLng != null) {
             remaining.minByOrNull { quest ->
-                haversineDistanceFromPoint(startLat, startLng, quest)
+                distanceFrom(startLat, startLng, quest)
             } ?: remaining.first()
         } else {
             remaining.first()
@@ -305,7 +283,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
 
         var current = startingQuest
         while (remaining.isNotEmpty()) {
-            val next = remaining.minByOrNull { haversineDistance(current, it) }!!
+            val next = remaining.minByOrNull { distanceBetween(current, it) }!!
             sorted.add(next)
             remaining.remove(next)
             current = next
@@ -319,7 +297,7 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         if (quests.size <= n) return quests
         return quests
             .asSequence()
-            .map { it to haversineDistanceFromPoint(lat, lng, it) }
+            .map { it to distanceFrom(lat, lng, it) }
             .sortedBy { it.second }
             .take(n)
             .map { it.first }
@@ -507,7 +485,6 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                     sortQuestsByNearestNeighbor(filteredQuests, startLat, startLng)
                 }
 
-                _questsCountLiveData.value = sortedQuests.size
                 _questsLiveData.value = sortedQuests
                 listFetchedWithFilters = inputs.filters
                 CurrentQuestData.currentQuests = sortedQuests.toMutableList()
@@ -544,7 +521,6 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
     private fun showEmptyListIfNone() {
         if (_questsLiveData.value != null) return
         _questsLiveData.value = emptyList()
-        _questsCountLiveData.value = 0
     }
 
     /**
@@ -639,10 +615,9 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                 }.awaitAll().flatten()
             }
             val chunkedQuests = chunkResults.flatMap { it?.validQuests().orEmpty() }
-            // Every source asked for every reward, and answered: only then is a variant missing
-            // from the result really gone, rather than on a source that failed.
-            val complete = services.size == selectedSources.size && chunkResults.isNotEmpty() &&
-                unfilteredResults.all { it != null } && chunkResults.all { it != null }
+            val complete = isVariantDiscoveryComplete(
+                selectedSources.size, services.size, unfilteredResults, chunkResults
+            )
 
             val questsForVariants = when {
                 chunkedQuests.isNotEmpty() -> chunkedQuests

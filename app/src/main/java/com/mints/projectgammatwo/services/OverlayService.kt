@@ -1,5 +1,6 @@
 package com.mints.projectgammatwo.services
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -24,12 +25,9 @@ import android.view.WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
 import android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 import android.view.WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
 import android.view.WindowManager.LayoutParams.WRAP_CONTENT
-import android.widget.Button
 import android.widget.ImageButton
 import android.widget.PopupMenu
-import android.widget.SeekBar
 import android.widget.TextView
-import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.edit
 import androidx.lifecycle.LiveData
@@ -37,7 +35,6 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
-import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.mints.projectgammatwo.R
@@ -53,18 +50,13 @@ import com.mints.projectgammatwo.data.Invasion
 import com.mints.projectgammatwo.data.OverlayCustomizationManager
 import com.mints.projectgammatwo.helpers.DragTouchListener
 import com.mints.projectgammatwo.helpers.Event
-import com.mints.projectgammatwo.helpers.ItemTouchHelperAdapter
-import com.mints.projectgammatwo.helpers.ItemTouchHelperCallback
 import com.mints.projectgammatwo.helpers.DeletedInvasions
 import com.mints.projectgammatwo.helpers.isLiveInvasion
-import com.mints.projectgammatwo.helpers.nextOverlayIndex
-import com.mints.projectgammatwo.helpers.previousStopIndex
+import com.mints.projectgammatwo.helpers.OverlayWalk
 import com.mints.projectgammatwo.helpers.questVisitId
 import com.mints.projectgammatwo.helpers.Teleporter
 import com.mints.projectgammatwo.recyclerviews.FiltersRecyclerView
 import com.mints.projectgammatwo.recyclerviews.OverlayFavoritesAdapter
-import com.mints.projectgammatwo.recyclerviews.OverlayCustomizationAdapter
-import com.mints.projectgammatwo.recyclerviews.OverlayButtonItem
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -81,38 +73,19 @@ enum class FilterSortOrder {
 
 private const val PREF_FILTER_SORT_ORDER = "filter_sort_order"
 
-/** How many earlier stops the overlay remembers per mode for ◀. */
-private const val MAX_HISTORY = 50
-
 class OverlayService : Service() {
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
     /**
-     * The invasion and quest last teleported to by ▶/◀, and where they were in the list; null
-     * before the first teleport (or after a refresh), so ▶ starts at the top. ▶ resumes from the
-     * item itself ([nextOverlayIndex]): the lists are shared with the app, whose refreshes and
-     * deletions replace them, and a bare index then pointed at some other item.
+     * ▶/◀ state per mode ([OverlayWalk]): the item last teleported to, which ▶ resumes from by
+     * value (the lists are shared with the app, whose refreshes and deletions replace them), the
+     * items handled, and the history ◀ returns through, kept across refreshes.
+     *
+     * Handled items are skipped as well as the stored deleted/visited sets: some invasion types
+     * are never stored, and a record can still be being written when the next tap reads the store.
      */
-    private var lastInvasion: Invasion? = null
-    private var lastInvasionIndex = -1
-    private var lastQuest: Quest? = null
-    private var lastQuestIndex = -1
-
-    /**
-     * Invasions and quests this overlay has teleported to. The stored deleted/visited sets cover
-     * most of them, but some invasion types are never stored, and this also covers a record
-     * still being written when the next tap reads the store.
-     */
-    private val handledInvasions = mutableSetOf<Invasion>()
-    private val handledQuestIds = mutableSetOf<String>()
-
-    /**
-     * The stops ▶ has teleported to, oldest first, ending with the current one; ◀ steps back
-     * through them ([previousStopIndex]). Kept per mode and across refreshes, capped at
-     * [MAX_HISTORY].
-     */
-    private val invasionHistory = ArrayDeque<Invasion>()
-    private val questHistory = ArrayDeque<Quest>()
+    private val invasionWalk = OverlayWalk<Invasion>()
+    private val questWalk = OverlayWalk<Quest>(handledKey = { questVisitId(it) })
 
     /** True while a ▶/◀ tap is being handled; further taps are ignored until it's done. */
     private var navigating = false
@@ -404,6 +377,9 @@ class OverlayService : Service() {
         }
     }
 
+    // The drag handles' DragTouchListener calls performClick on a tap; lint flags every
+    // setOnTouchListener on a stock ImageButton regardless.
+    @SuppressLint("ClickableViewAccessibility")
     private fun setupButtons(mode: String, params: WindowManager.LayoutParams) {
         val dragHandle = overlayView?.findViewById<ImageButton>(R.id.drag_handle)
         val closeBtn = overlayView?.findViewById<ImageButton>(R.id.close_button)
@@ -499,15 +475,9 @@ class OverlayService : Service() {
         }
     }
 
-    private fun resetInvasionWalk() {
-        lastInvasion = null
-        lastInvasionIndex = -1
-    }
+    private fun resetInvasionWalk() = invasionWalk.resetAnchor()
 
-    private fun resetQuestWalk() {
-        lastQuest = null
-        lastQuestIndex = -1
-    }
+    private fun resetQuestWalk() = questWalk.resetAnchor()
 
     /** ▶: see [walkInvasions]. */
     private fun nextInvasion() = walkInvasions(1)
@@ -539,16 +509,14 @@ class OverlayService : Service() {
                     DeletedInvasions(deletedInvasionsRepository.getDeletedEntries())
                 }
                 val now = nowSeconds()
-                val index = nextOverlayIndex(invasions, lastInvasion, lastInvasionIndex, step) {
-                    isLiveInvasion(it, now) && it !in handledInvasions && it !in deleted
+                val index = invasionWalk.next(invasions, step) {
+                    isLiveInvasion(it, now) && it !in deleted
                 }
                 if (index == null) {
                     refetchExpiredInvasions()
                     return@launch
                 }
                 val invasion = invasions[index]
-                lastInvasion = invasion
-                lastInvasionIndex = index
                 Log.d(TAG, "Navigating to invasion at index $index: ${invasion.lat}, ${invasion.lng}")
                 if (step < 0) {
                     if (launchMap(invasion)) {
@@ -559,8 +527,7 @@ class OverlayService : Service() {
                 // Record it only once the teleport has actually launched, so a failed teleport
                 // neither consumes the invasion nor inflates the count.
                 if (launchMap(invasion)) {
-                    handledInvasions += invasion
-                    pushHistory(invasionHistory, invasion)
+                    invasionWalk.recordTeleport(invasion)
                     val count = withContext(Dispatchers.IO) {
                         deletedInvasionsRepository.addDeletedInvasion(invasion)
                         deletedInvasionsRepository.getDeletionCountLast24Hours()
@@ -598,18 +565,13 @@ class OverlayService : Service() {
         serviceScope.launch {
             try {
                 val visited = withContext(Dispatchers.IO) { visitedQuestsPreferences.getVisitedQuests() }
-                val index = nextOverlayIndex(quests, lastQuest, lastQuestIndex, step) {
-                    val id = questVisitId(it)
-                    id !in handledQuestIds && id !in visited
-                }
+                val index = questWalk.next(quests, step) { questVisitId(it) !in visited }
                 if (index == null) {
                     showOverlayToast(getString(R.string.overlay_no_quests_left))
                     fetchQuests()
                     return@launch
                 }
                 val quest = quests[index]
-                lastQuest = quest
-                lastQuestIndex = index
                 Log.d(TAG, "Navigating to quest at index $index: ${quest.lat}, ${quest.lng}")
                 showOverlayToast(getString(R.string.overlay_teleporting_to, quest.rewardsString))
                 if (step < 0) {
@@ -618,8 +580,7 @@ class OverlayService : Service() {
                 }
                 if (launchQuest(quest)) {
                     val id = questVisitId(quest)
-                    handledQuestIds += id
-                    pushHistory(questHistory, quest)
+                    questWalk.recordTeleport(quest)
                     // Also the start point for the quest list's nearest-first order.
                     questsViewModel.saveLastVisitedCoordinates(quest)
                     withContext(Dispatchers.IO) {
@@ -646,18 +607,15 @@ class OverlayService : Service() {
     private fun previousInvasion() {
         if (navigating) return
         val now = nowSeconds()
-        val index = previousStopIndex(invasionHistory) { isLiveInvasion(it, now) }
-        if (index == null) {
+        val stop = invasionWalk.previousStop { isLiveInvasion(it, now) }
+        if (stop == null) {
             walkInvasions(-1)
             return
         }
-        val invasion = invasionHistory[index]
+        val invasion = stop.value
         if (launchMap(invasion)) {
-            dropHistoryAfter(invasionHistory, index)
             // ▶ carries on from here, skipping the ones already battled.
-            lastInvasionIndex = CurrentInvasionData.currentInvasions.indexOf(invasion)
-                .takeIf { it >= 0 } ?: lastInvasionIndex
-            lastInvasion = invasion
+            invasionWalk.returnTo(stop, CurrentInvasionData.currentInvasions.toList())
             showOverlayToast(getString(R.string.overlay_back_to, invasion.characterName))
         }
     }
@@ -668,29 +626,16 @@ class OverlayService : Service() {
      */
     private fun previousQuest() {
         if (navigating) return
-        val index = previousStopIndex(questHistory) { true }
-        if (index == null) {
+        val stop = questWalk.previousStop { true }
+        if (stop == null) {
             walkQuests(-1)
             return
         }
-        val quest = questHistory[index]
+        val quest = stop.value
         if (launchQuest(quest)) {
-            dropHistoryAfter(questHistory, index)
-            lastQuestIndex = CurrentQuestData.currentQuests.indexOf(quest)
-                .takeIf { it >= 0 } ?: lastQuestIndex
-            lastQuest = quest
+            questWalk.returnTo(stop, CurrentQuestData.currentQuests.toList())
             showOverlayToast(getString(R.string.overlay_back_to, quest.rewardsString))
         }
-    }
-
-    private fun <T> pushHistory(history: ArrayDeque<T>, item: T) {
-        history.addLast(item)
-        while (history.size > MAX_HISTORY) history.removeFirst()
-    }
-
-    /** Makes [index] the current stop: the ones after it are left behind, as in a browser. */
-    private fun <T> dropHistoryAfter(history: ArrayDeque<T>, index: Int) {
-        while (history.size > index + 1) history.removeLast()
     }
 
     private fun nowSeconds() = System.currentTimeMillis() / 1000
@@ -952,6 +897,9 @@ class OverlayService : Service() {
     }
 
 
+    // The drag handles' DragTouchListener calls performClick on a tap; lint flags every
+    // setOnTouchListener on a stock ImageButton regardless.
+    @SuppressLint("ClickableViewAccessibility")
     private fun showFiltersOverlay() {
         if (filterOverlayView == null) {
             setupFiltersOverlay()
@@ -1043,6 +991,9 @@ class OverlayService : Service() {
         overlayView?.visibility = View.VISIBLE
     }
 
+    // The drag handles' DragTouchListener calls performClick on a tap; lint flags every
+    // setOnTouchListener on a stock ImageButton regardless.
+    @SuppressLint("ClickableViewAccessibility")
     private fun showFavoritesOverlay() {
         if (favoritesOverlayView == null) {
             setupFavoritesOverlay()
@@ -1246,36 +1197,4 @@ class OverlayService : Service() {
             }
         }
     }
-
-    private fun getButtonDisplayName(buttonId: String): String {
-        return when (buttonId) {
-            "drag_handle" -> "Drag Handle"
-            "close_button" -> "Close"
-            "right_button" -> "Next"
-            "left_button" -> "Previous"
-            "home_button" -> "Home"
-            "refresh_button" -> "Refresh"
-            "switch_modes" -> "Switch Mode"
-            "filter_tab" -> "Filters"
-            "favorites_tab" -> "Favorites"
-            else -> buttonId
-        }
-    }
-
-    private fun getButtonIcon(buttonId: String): Int {
-        return when (buttonId) {
-            "drag_handle" -> R.drawable.ic_drag_handle_overlay
-            "close_button" -> R.drawable.close_24px
-            "right_button" -> R.drawable.arrow_right_24px
-            "left_button" -> R.drawable.arrow_left_24px
-            "home_button" -> R.drawable.home_24px
-            "refresh_button" -> R.drawable.refresh_24px
-            "switch_modes" -> R.drawable.team_rocket_logo
-            "filter_tab" -> R.drawable.tune_24px
-            "favorites_tab" -> R.drawable.ic_favorite
-            else -> R.drawable.ic_launcher_foreground
-        }
-    }
-
-
 }

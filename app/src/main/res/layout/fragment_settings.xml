@@ -61,6 +61,7 @@
             android:textSize="16sp" />
 
         <EditText
+            android:importantForAutofill="no"
             android:id="@+id/homeCoordinates"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -154,6 +155,7 @@
         </RadioGroup>
 
         <EditText
+            android:importantForAutofill="no"
             android:id="@+id/customDeeplinkUrl"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

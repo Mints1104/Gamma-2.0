@@ -1,6 +1,5 @@
 package com.mints.projectgammatwo.ui
 
-import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -33,6 +32,7 @@ import com.mints.projectgammatwo.data.FilterPreferences
 import com.mints.projectgammatwo.data.QuestCache
 import com.mints.projectgammatwo.data.Quests
 import com.mints.projectgammatwo.helpers.questConditionKey
+import com.mints.projectgammatwo.helpers.reconcileVariantSelections
 import com.mints.projectgammatwo.viewmodels.QuestsViewModel
 import java.text.DateFormat
 import java.util.Date
@@ -44,8 +44,7 @@ class FilterFragment : Fragment() {
     private val enabledRocketFilters = mutableSetOf<Int>()
     private lateinit var questsViewModel: QuestsViewModel
     private var currentFilterType = "Rocket"
-    private lateinit var questPrefs: SharedPreferences
-    /** Network-derived quest data; separate from [questPrefs] so it can be left out of backups. */
+    /** Network-derived quest data; kept out of the quest_filters prefs so it can be left out of backups. */
     private lateinit var questCachePrefs: SharedPreferences
     private val enabledQuestFilters = mutableSetOf<String>()
     private val enabledEncounterConditions = mutableSetOf<String>()
@@ -130,7 +129,6 @@ class FilterFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         filterPreferences = FilterPreferences(requireContext())
-        questPrefs = requireContext().getSharedPreferences("quest_filters", Context.MODE_PRIVATE)
         questCachePrefs = QuestCache.prefs(requireContext())
         currentFilterTextView = view.findViewById(R.id.currentFilterText)
         rocketLayoutGlobal = view.findViewById(R.id.rocketFiltersLayout)
@@ -559,7 +557,7 @@ class FilterFragment : Fragment() {
                 "setupQuestFilters: sections t3=${filters.stardust.size}, t8=${filters.pokecoins.size}, t4=${filters.candy.size}, t9=${filters.candyXl.size}, t12=${filters.megaEnergy.size}, t7=${filters.encounters.size}, t2=${filters.items.size}; subVariants keys=${subVariants.size}"
             )
 
-            reconcileVariantSelections(subVariants)
+            reconcileQuestSelection(subVariants)
 
             addFilterSectionWithVariants(parent, "Stardust",         filters.stardust,   subVariants)
             addFilterSectionWithVariants(parent, "Pokecoins",        filters.pokecoins,  subVariants)
@@ -665,87 +663,12 @@ class FilterFragment : Fragment() {
         }
     }
 
-    private fun ensureVariantSelectionConsistency(variants: List<QuestsViewModel.SubVariant>) {
-        // Intentionally empty — variant/condition pairs are written together atomically.
-    }
-
-    private fun ensureEncounterSelectionConsistency(
-        baseFilter: String,
-        variants: List<QuestsViewModel.SubVariant>
-    ) {
-        // Intentionally empty — see ensureVariantSelectionConsistency.
-    }
-
-    private fun reconcileVariantSelections(subVariants: Map<String, List<QuestsViewModel.SubVariant>>) {
-        if (subVariants.isEmpty()) return
-
-        var changed = false
-        var addedFilters = 0
-
-        subVariants.forEach { (baseFilter, variants) ->
-            if (variants.isEmpty()) return@forEach
-            val isEncounter = baseFilter.startsWith("7,")
-            val encounterPrefix = if (isEncounter) {
-                "7|${variants.first().id}|"
-            } else {
-                ""
-            }
-
-            if (!isEncounter) {
-                val conditionKeys = variants.map {
-                    questConditionKey(it.type, it.id, it.amount, it.condition, it.reward)
-                }
-
-                // Take the base filter and any legacy per-variant filter strings out; the base is
-                // put back below exactly when one of its variants is ticked.
-                val baseWasSelected = enabledQuestFilters.remove(baseFilter)
-                val legacyVariants = variants.filter { it.filterString in enabledQuestFilters }
-                legacyVariants.forEach { enabledQuestFilters.remove(it.filterString) }
-                if (baseWasSelected || legacyVariants.isNotEmpty()) changed = true
-
-                // A reward ticked with no variant chosen was ticked before its variants were known:
-                // by Toggle All or a tap while they were still loading (the variant cache expires
-                // after a day), or by an older backup. The quest list already shows all of its
-                // quests, so tick its variants to match. This used to drop the reward instead,
-                // undoing Toggle All for every such reward once the variants arrived.
-                if (conditionKeys.none { it in enabledEncounterConditions }) {
-                    val adopted = when {
-                        legacyVariants.isNotEmpty() -> legacyVariants.map {
-                            questConditionKey(it.type, it.id, it.amount, it.condition, it.reward)
-                        }
-                        baseWasSelected -> conditionKeys
-                        else -> emptyList()
-                    }
-                    if (adopted.isNotEmpty()) {
-                        enabledEncounterConditions.addAll(adopted)
-                        changed = true
-                    }
-                }
-
-                if (conditionKeys.any { it in enabledEncounterConditions }) {
-                    enabledQuestFilters.add(baseFilter)
-                    if (!baseWasSelected) {
-                        addedFilters += 1
-                        changed = true
-                    }
-                }
-            }
-
-            if (isEncounter && enabledEncounterConditions.any { it.startsWith(encounterPrefix) }) {
-                if (baseFilter !in enabledQuestFilters) {
-                    enabledQuestFilters.add(baseFilter)
-                    addedFilters += 1
-                    changed = true
-                }
-            }
-        }
-
+    /** See the helper of the same name; saves the selection if it changed it. */
+    private fun reconcileQuestSelection(subVariants: Map<String, List<QuestsViewModel.SubVariant>>) {
+        val changed = reconcileVariantSelections(subVariants, enabledQuestFilters, enabledEncounterConditions)
         if (changed) {
-            Log.d("QuestFilterDebug", "reconcileVariantSelections: addedFilters=$addedFilters")
-        }
-
-        if (changed && currentFilterType == "Quest") {
-            persistQuestSelection()
+            Log.d("QuestFilterDebug", "reconcileVariantSelections: selection updated")
+            if (currentFilterType == "Quest") persistQuestSelection()
         }
     }
 
@@ -789,7 +712,6 @@ class FilterFragment : Fragment() {
 
             if (sectionName == "Pokémon Encounter") {
                 if (!variants.isNullOrEmpty() && variants.size > 1) {
-                    ensureEncounterSelectionConsistency(baseFilter, variants)
                     addEncounterFilterWithVariants(parent, displayText, rawValue, variants)
                 } else {
                     val variant = variants?.firstOrNull()
@@ -807,7 +729,6 @@ class FilterFragment : Fragment() {
                 }
             } else {
                 if (!variants.isNullOrEmpty()) {
-                    ensureVariantSelectionConsistency(variants)
                     addCandyFilterWithVariants(parent, displayText, baseFilter, variants)
                 } else {
                     addQuestCheckBox(parent, displayText, baseFilter, enabledQuestFilters) {
@@ -924,7 +845,7 @@ class FilterFragment : Fragment() {
             variantsContainer.addView(cb)
         }
 
-        wireExpandButton(expandButton, variantsContainer, baseFilter)
+        wireExpandButton(expandButton, variantsContainer, baseFilter, displayText)
         container.addView(topRow)
         container.addView(variantsContainer)
         parent.addView(container)
@@ -1019,7 +940,7 @@ class FilterFragment : Fragment() {
                 variantCheckboxes.add(cb)
                 variantsContainer.addView(cb)
             }
-            wireExpandButton(expandButton, variantsContainer, baseFilter)
+            wireExpandButton(expandButton, variantsContainer, baseFilter, displayText)
         }
 
         container.addView(topRow)
@@ -1043,11 +964,16 @@ class FilterFragment : Fragment() {
     }
 
     // Wires the expand/collapse toggle between a button and its container; [groupKey] (the base
-    // filter) records the state in expandedGroups, so it survives rebuilds and rotation.
-    private fun wireExpandButton(button: MaterialButton, container: LinearLayout, groupKey: String) {
+    // filter) records the state in expandedGroups, so it survives rebuilds and rotation. The
+    // button shows only ▶/▼, so it is labelled with what it does for [label] (the reward) for
+    // screen readers, which otherwise announced just "button".
+    private fun wireExpandButton(button: MaterialButton, container: LinearLayout, groupKey: String, label: String) {
         fun show(expanded: Boolean) {
             container.visibility = if (expanded) View.VISIBLE else View.GONE
             button.text = if (expanded) "▼" else "▶"
+            button.contentDescription = getString(
+                if (expanded) R.string.cd_hide_variants else R.string.cd_show_variants, label
+            )
         }
         show(groupKey in expandedGroups)
         button.setOnClickListener {

@@ -1,5 +1,6 @@
 package com.mints.projectgammatwo.recyclerviews
 
+import android.annotation.SuppressLint
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -56,6 +57,9 @@ class OverlayCustomizationAdapter(
         private val buttonName: TextView = itemView.findViewById(R.id.button_name)
         private val visibilitySwitch: SwitchCompat = itemView.findViewById(R.id.visibility_switch)
 
+        // The drag handle's touch listener calls performClick on a tap; lint flags every
+        // setOnTouchListener on a stock ImageView regardless.
+        @SuppressLint("ClickableViewAccessibility")
         fun bind(item: OverlayButtonItem, position: Int) {
             buttonIcon.setImageResource(item.iconResId)
             buttonName.text = item.name
@@ -80,12 +84,18 @@ class OverlayCustomizationAdapter(
                 onItemChanged(items)
             }
 
-            dragIcon.setOnTouchListener { _, event ->
-                if (event.action == MotionEvent.ACTION_DOWN) {
-                    onStartDrag(this)
-                    true
-                } else {
-                    false
+            dragIcon.setOnTouchListener { view, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        onStartDrag(this)
+                        true
+                    }
+                    // Reached only when the touch didn't turn into a drag: a tap.
+                    MotionEvent.ACTION_UP -> {
+                        view.performClick()
+                        true
+                    }
+                    else -> false
                 }
             }
         }
