@@ -7,6 +7,7 @@ import android.util.Log
 import android.util.Log.e
 import androidx.core.content.edit
 import androidx.lifecycle.*
+import com.mints.projectgammatwo.data.LastLocations
 import com.mints.projectgammatwo.data.ApiClient
 import com.mints.projectgammatwo.data.CurrentInvasionData
 import com.mints.projectgammatwo.data.DataSourcePreferences
@@ -71,8 +72,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     // Job to cancel ongoing fetch if new one is started
     private var fetchJob: kotlinx.coroutines.Job? = null
 
-    // Cache for last invasion coordinates to avoid repeated SharedPreferences reads
-    private var cachedLastInvasionCoords: Pair<Double?, Double?>? = null
+    /** The last battled grunt, shared with the overlay; the distance sort starts there. */
+    private val lastLocations = LastLocations(application)
 
     /** Everything that decides what the invasion list contains. */
     private data class Inputs(
@@ -241,54 +242,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         if (list.isEmpty()) return list
 
         val reference = if (sortByDistanceInternal) {
-            val (lat, lng) = loadLastInvasionCoordinates()
-            if (lat != null && lng != null) lat to lng else list.first().let { it.lat to it.lng }
+            lastLocations.invasion() ?: list.first().let { it.lat to it.lng }
         } else {
             null
         }
         val sorted = sortAndCapInvasions(list, reference)
         Log.d(TAG, "Sorted ${list.size} invasions by ${if (reference == null) "time" else "distance from $reference"}, listing ${sorted.size}")
         return sorted
-    }
-
-    // Load last invasion coordinates from cache or SharedPreferences (NO quest fallback)
-    private fun loadLastInvasionCoordinates(): Pair<Double?, Double?> {
-        // Return cached value if available
-        cachedLastInvasionCoords?.let { return it }
-
-        // Otherwise load from SharedPreferences
-        val context = getApplication<Application>().applicationContext
-        val prefs = context.getSharedPreferences("last_invasion_pref", Context.MODE_PRIVATE)
-        val combined = prefs.getString("lastInvasion", null)
-        val result = if (!combined.isNullOrEmpty() && "," in combined) {
-            val parts = combined.split(",")
-            val lat = parts.getOrNull(0)?.toDoubleOrNull()
-            val lng = parts.getOrNull(1)?.toDoubleOrNull()
-            Log.d(TAG, "Loaded last invasion coordinates from SharedPreferences: ($lat, $lng)")
-            lat to lng
-        } else {
-            Log.d(TAG, "No stored last invasion coordinates found")
-            null to null
-        }
-
-        // Cache the result
-        cachedLastInvasionCoords = result
-        return result
-    }
-
-    // Save last invasion coordinates to SharedPreferences on background thread
-    private suspend fun saveLastInvasionCoordinates(invasion: Invasion) {
-        withContext(Dispatchers.IO) {
-            val context = getApplication<Application>().applicationContext
-            val prefs = context.getSharedPreferences("last_invasion_pref", Context.MODE_PRIVATE)
-            prefs.edit().apply {
-                putString("lastInvasion", "${invasion.lat},${invasion.lng}")
-                apply()
-            }
-            Log.d(TAG, "Saved last invasion coordinates: (${invasion.lat}, ${invasion.lng})")
-        }
-        // Update cache immediately
-        cachedLastInvasionCoords = invasion.lat to invasion.lng
     }
 
     /**
@@ -345,8 +305,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             // changed deleted set would make the next visit to the tab refetch for nothing.
             publishedInputs = publishedInputs?.copy(deletedFingerprint = deletedFingerprint)
 
-            // Save last invasion coordinates for distance-based ordering
-            saveLastInvasionCoordinates(invasion)
+            // The distance sort starts from the invasion just battled.
+            withContext(Dispatchers.IO) { lastLocations.saveInvasion(invasion.lat, invasion.lng) }
 
             // Re-sort (distance order is relative to the invasion just deleted), but only if
             // nothing newer — another delete, or a fetch — has replaced the list meanwhile.

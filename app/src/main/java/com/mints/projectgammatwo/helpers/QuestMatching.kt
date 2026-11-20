@@ -1,6 +1,7 @@
 package com.mints.projectgammatwo.helpers
 
 import com.mints.projectgammatwo.data.Quests.Quest
+import com.mints.projectgammatwo.data.VisitedQuestsPreferences
 
 /**
  * Key for one quest variant, "type|id|amount|condition|reward". The filter screen stores these in
@@ -169,5 +170,31 @@ fun pruneStaleConditionKeys(enabledConditions: Set<String>, currentVariantKeys: 
     return enabledConditions.filterTo(LinkedHashSet()) { key ->
         val prefix = conditionKeyPrefix(key)
         prefix == null || prefix !in knownPrefixes || key in current
+    }
+}
+
+/**
+ * The quests visited recently (VisitedQuestsPreferences' records), for hiding them from the
+ * quest list and the overlay's ▶.
+ *
+ * A visit is matched by its stop *and* its reward and task. Matching on the stop alone
+ * ([questVisitId]) hid the stop's next quest too: quests change daily but a visit is kept for
+ * 24 hours, so a quest visited at 8pm hid that stop's new quest until 8pm the next day, and a
+ * second quest listed at the same stop was hidden along with the first. Records without a
+ * reward (from the legacy one-argument addVisitedQuest) still match on the stop alone.
+ */
+class VisitedQuests(records: Collection<VisitedQuestsPreferences.Record>) {
+    private val byStop: Map<String, List<VisitedQuestsPreferences.Record>> = records.groupBy { it.id }
+
+    operator fun contains(quest: Quest): Boolean {
+        val visits = byStop[questVisitId(quest)] ?: return false
+        return visits.any { visit ->
+            visit.rewards.isNullOrEmpty() ||
+                (visit.rewards == quest.rewardsString && visit.conditions.orEmpty() == quest.conditionsString)
+        }
+    }
+
+    companion object {
+        val NONE = VisitedQuests(emptyList())
     }
 }

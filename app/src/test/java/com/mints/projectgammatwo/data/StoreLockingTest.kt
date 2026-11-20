@@ -57,7 +57,7 @@ class StoreLockingTest {
             repeat(perThread) { i -> prefs.addVisitedQuest("quest|$t|$i") }
         }
 
-        assertEquals(threads * perThread, VisitedQuestsPreferences(context).getVisitedQuests().size)
+        assertEquals(threads * perThread, VisitedQuestsPreferences(context).getVisitedRecords().size)
     }
 
     @Test

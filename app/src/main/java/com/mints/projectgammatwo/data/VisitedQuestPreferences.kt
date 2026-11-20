@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.google.gson.Gson
+import com.mints.projectgammatwo.helpers.VisitedQuests
 
 /**
  * Concurrency: every read-modify-write of the stored set happens under a process-wide lock.
@@ -63,13 +64,8 @@ class VisitedQuestsPreferences(context: Context) {
         }
     }
 
-    // Public API kept backward compatible: returns only IDs visited in the last 24 hours and prunes storage.
-    fun getVisitedQuests(): Set<String> = synchronized(lock) {
-        val records = readAllRecordsRaw()
-        // Persist pruned set back (also wipes legacy entries)
-        writeAllRecords(records)
-        records.map { it.id }.toSet()
-    }
+    /** The quests visited in the last 24 hours, matched by stop, reward and task; prunes storage. */
+    fun getVisited(): VisitedQuests = VisitedQuests(getVisitedRecords())
 
     // For UI: return timestamped records (last 24h only), sorted not guaranteed.
     fun getVisitedRecords(): List<Record> = synchronized(lock) {

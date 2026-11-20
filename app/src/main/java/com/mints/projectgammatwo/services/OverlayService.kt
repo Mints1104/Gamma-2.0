@@ -41,6 +41,7 @@ import com.mints.projectgammatwo.R
 import com.mints.projectgammatwo.data.CurrentInvasionData
 import com.mints.projectgammatwo.data.CurrentQuestData
 import com.mints.projectgammatwo.data.Quests.Quest
+import com.mints.projectgammatwo.data.LastLocations
 import com.mints.projectgammatwo.data.VisitedQuestsPreferences
 import com.mints.projectgammatwo.data.DeletedInvasionsRepository
 import com.mints.projectgammatwo.data.FavoritesManager
@@ -73,6 +74,9 @@ enum class FilterSortOrder {
 
 private const val PREF_FILTER_SORT_ORDER = "filter_sort_order"
 
+/** How long an overlay pop-up message stays up after its latest update. */
+private const val TOAST_DURATION_MS = 1500L
+
 class OverlayService : Service() {
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
@@ -85,7 +89,7 @@ class OverlayService : Service() {
      * are never stored, and a record can still be being written when the next tap reads the store.
      */
     private val invasionWalk = OverlayWalk<Invasion>()
-    private val questWalk = OverlayWalk<Quest>(handledKey = { questVisitId(it) })
+    private val questWalk = OverlayWalk<Quest>()
 
     /** True while a ▶/◀ tap is being handled; further taps are ignored until it's done. */
     private var navigating = false
@@ -128,6 +132,15 @@ class OverlayService : Service() {
     private lateinit var customizationManager: OverlayCustomizationManager
 
     private val favoritesTimeHandler = Handler(Looper.getMainLooper())
+
+    /**
+     * The pop-up message window while one is showing. There is only ever one: a new message
+     * replaces the text and restarts the timer. Each message used to open its own window in the
+     * same spot, so quick ▶ taps stacked them on top of each other.
+     */
+    private var toastView: View? = null
+    private val toastHandler = Handler(Looper.getMainLooper())
+    private val hideToast = Runnable { removeToast() }
 
     /** Repaints the per-favorite local times, re-posting itself on each wall-clock minute. */
     private val favoritesTimeTicker = object : Runnable {
@@ -284,6 +297,8 @@ class OverlayService : Service() {
 
             removeOverlayView(filterOverlayView)
             filterOverlayView = null
+
+            removeToast()
 
             cleanupObservers()
         } catch (e: Exception) {
@@ -530,6 +545,8 @@ class OverlayService : Service() {
                     invasionWalk.recordTeleport(invasion)
                     val count = withContext(Dispatchers.IO) {
                         deletedInvasionsRepository.addDeletedInvasion(invasion)
+                        // The app's distance sort starts from the last grunt battled, here too.
+                        LastLocations(this@OverlayService).saveInvasion(invasion.lat, invasion.lng)
                         deletedInvasionsRepository.getDeletionCountLast24Hours()
                     }
                     showOverlayToast(getString(R.string.overlay_teleport_invasion, invasion.characterName, count))
@@ -564,8 +581,8 @@ class OverlayService : Service() {
         navigating = true
         serviceScope.launch {
             try {
-                val visited = withContext(Dispatchers.IO) { visitedQuestsPreferences.getVisitedQuests() }
-                val index = questWalk.next(quests, step) { questVisitId(it) !in visited }
+                val visited = withContext(Dispatchers.IO) { visitedQuestsPreferences.getVisited() }
+                val index = questWalk.next(quests, step) { it !in visited }
                 if (index == null) {
                     showOverlayToast(getString(R.string.overlay_no_quests_left))
                     fetchQuests()
@@ -730,9 +747,15 @@ class OverlayService : Service() {
     }
 
     private fun showOverlayToast(message: String) {
-        val toastOverlayView = LayoutInflater.from(this).inflate(R.layout.overlay_toast, null)
-        val toastText = toastOverlayView.findViewById<TextView>(R.id.toast_text)
-        toastText.text = message
+        toastView?.let { shown ->
+            shown.findViewById<TextView>(R.id.toast_text).text = message
+            toastHandler.removeCallbacks(hideToast)
+            toastHandler.postDelayed(hideToast, TOAST_DURATION_MS)
+            return
+        }
+
+        val view = LayoutInflater.from(this).inflate(R.layout.overlay_toast, null)
+        view.findViewById<TextView>(R.id.toast_text).text = message
 
         val params = WindowManager.LayoutParams().apply {
             width = WRAP_CONTENT
@@ -746,16 +769,22 @@ class OverlayService : Service() {
         }
 
         try {
-            windowManager.addView(toastOverlayView, params)
-            Handler(Looper.getMainLooper()).postDelayed({
-                try {
-                    windowManager.removeView(toastOverlayView)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error removing toast overlay: ${e.message}")
-                }
-            }, 1500)  // Show for 3 seconds
+            windowManager.addView(view, params)
+            toastView = view
+            toastHandler.postDelayed(hideToast, TOAST_DURATION_MS)
         } catch (e: Exception) {
             Log.e(TAG, "Error showing toast overlay: ${e.message}")
+        }
+    }
+
+    private fun removeToast() {
+        toastHandler.removeCallbacks(hideToast)
+        val view = toastView ?: return
+        toastView = null
+        try {
+            windowManager.removeView(view)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error removing toast overlay: ${e.message}")
         }
     }
 

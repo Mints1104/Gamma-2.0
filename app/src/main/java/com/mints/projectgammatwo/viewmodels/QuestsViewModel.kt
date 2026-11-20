@@ -19,6 +19,7 @@ import com.mints.projectgammatwo.helpers.pruneStaleConditionKeys
 import com.mints.projectgammatwo.helpers.shouldRediscoverVariants
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
+import com.mints.projectgammatwo.data.LastLocations
 import com.mints.projectgammatwo.data.ApiClient
 import com.mints.projectgammatwo.data.DataSourcePreferences
 import com.mints.projectgammatwo.data.QuestFilterPreferences
@@ -248,8 +249,8 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
     private val _error = MutableLiveData<String>()
     val error: LiveData<Event<String>> = _error.map { Event(it) } // One-shot, so a replay to a re-created view doesn't show the last error again.
 
-    // Cache for last visited coordinates to avoid repeated SharedPreferences reads
-    private var cachedLastVisitedCoords: Pair<Double?, Double?>? = null
+    /** The last visited quest, shared with the overlay; the nearest-first order starts there. */
+    private val lastLocations = LastLocations(application)
 
     /** Distance in metres between two quests, by the app's one distance helper (distanceMeters). */
     private fun distanceBetween(a: Quest, b: Quest): Double = distanceMeters(a.lat, a.lng, b.lat, b.lng)
@@ -304,48 +305,9 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
             .toList()
     }
 
-    // Save the coordinates of the last visited quest. Store as string for precision; fallback compatible when reading.
+    /** Records [quest] as the last one visited, the start of the nearest-first order. */
     fun saveLastVisitedCoordinates(quest: Quest) {
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                val context = getApplication<Application>().applicationContext
-                val prefs = context.getSharedPreferences("last_visited_pref", Context.MODE_PRIVATE)
-                prefs.edit().apply {
-                    putString("lastVisited", "${quest.lat},${quest.lng}")
-                    // Keep old keys for backward compatibility
-                    putFloat("lastVisitedLat", quest.lat.toFloat())
-                    putFloat("lastVisitedLng", quest.lng.toFloat())
-                    apply()
-                }
-            }
-            // Update cache immediately
-            cachedLastVisitedCoords = quest.lat to quest.lng
-        }
-    }
-
-    // Load last visited coordinates from cache or SharedPreferences
-    private fun loadLastVisitedCoordinates(): Pair<Double?, Double?> {
-        // Return cached value if available
-        cachedLastVisitedCoords?.let { return it }
-
-        // Otherwise load from SharedPreferences
-        val context = getApplication<Application>().applicationContext
-        val prefs = context.getSharedPreferences("last_visited_pref", Context.MODE_PRIVATE)
-        val lastCombined = prefs.getString("lastVisited", null)
-        val result = if (!lastCombined.isNullOrEmpty() && "," in lastCombined) {
-            val parts = lastCombined.split(",")
-            parts.getOrNull(0)?.toDoubleOrNull() to parts.getOrNull(1)?.toDoubleOrNull()
-        } else {
-            val latF = prefs.getFloat("lastVisitedLat", Float.NaN)
-            val lngF = prefs.getFloat("lastVisitedLng", Float.NaN)
-            val lat = if (!latF.isNaN()) latF.toDouble() else null
-            val lng = if (!lngF.isNaN()) lngF.toDouble() else null
-            lat to lng
-        }
-
-        // Cache the result
-        cachedLastVisitedCoords = result
-        return result
+        viewModelScope.launch(Dispatchers.IO) { lastLocations.saveQuest(quest.lat, quest.lng) }
     }
 
     /**
@@ -395,7 +357,9 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
         }.distinct()
 
         val selectedSources = inputs.sources
-        val (startLat, startLng) = loadLastVisitedCoordinates()
+        val start = lastLocations.quest()
+        val startLat = start?.first
+        val startLng = start?.second
 
         // Shared by the quest list and the filter screen, so overlapping fetches are possible;
         // cancel the older one so a slow fetch with stale filters can't finish last and win.
@@ -464,10 +428,8 @@ class QuestsViewModel(application: Application) : AndroidViewModel(application) 
                         allQuests
                     }
 
-                    val visited = visitedPreferences.getVisitedQuests()
-                    var filteredQuests = listQuests.filter { quest ->
-                        questVisitId(quest) !in visited
-                    }
+                    val visited = visitedPreferences.getVisited()
+                    var filteredQuests = listQuests.filter { quest -> quest !in visited }
 
                     // All of them, not the unvisited ones, decide which ticked variants still exist.
                     filteredQuests = filterQuestsByConditions(
