@@ -2,6 +2,7 @@ package com.mints.projectgammatwo.helpers
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -23,5 +24,22 @@ class CoordinatesTest {
         assertFalse(isValidLatLng(40.7, -273.9))
         assertFalse(isValidLatLng(Double.NaN, 0.0))
         assertFalse(isValidLatLng(0.0, Double.POSITIVE_INFINITY))
+    }
+
+    @Test
+    fun `typed coordinates parse with or without spaces`() {
+        assertEquals(40.7128 to -74.006, parseLatLng("40.7128, -74.0060"))
+        assertEquals(40.7128 to -74.006, parseLatLng(" 40.7128,-74.0060 "))
+        assertEquals(-0.000747 to 0.0, parseLatLng("-0.000747, 0"))
+    }
+
+    @Test
+    fun `malformed or out-of-range coordinates don't parse`() {
+        assertNull(parseLatLng(null))
+        assertNull(parseLatLng(""))
+        assertNull(parseLatLng("40.7128"))
+        assertNull(parseLatLng("40,7128, -74,0060"))
+        assertNull(parseLatLng("abc, def"))
+        assertNull(parseLatLng("407.128, -74.006"))
     }
 }

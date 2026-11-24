@@ -18,6 +18,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.mints.projectgammatwo.R
+import com.mints.projectgammatwo.data.LastLocations
 import com.mints.projectgammatwo.helpers.OverlayButtonController
 import com.mints.projectgammatwo.recyclerviews.InvasionsAdapter
 import com.mints.projectgammatwo.viewmodels.HomeViewModel
@@ -193,8 +194,40 @@ class HomeFragment : Fragment() {
         override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
             R.id.action_sort_by_distance -> { viewModel.sortInvasions(true); true }
             R.id.action_sort_by_time -> { viewModel.sortInvasions(false); true }
+            R.id.action_set_invasion_start -> {
+                if (childFragmentManager.findFragmentByTag(START_LOCATION_DIALOG) == null) {
+                    StartLocationDialogFragment.newInstance(LastLocations.Kind.INVASION)
+                        .show(childFragmentManager, START_LOCATION_DIALOG)
+                }
+                true
+            }
+            R.id.action_reset_invasion_start -> {
+                LastLocations(requireContext()).clear(LastLocations.Kind.INVASION)
+                viewModel.startLocationChanged()
+                Toast.makeText(requireContext(), R.string.start_location_reset, Toast.LENGTH_SHORT).show()
+                true
+            }
             else -> false
         }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Registered here so a dialog restored after rotation still has someone to report to.
+        childFragmentManager.setFragmentResultListener(
+            StartLocationDialogFragment.requestKey(LastLocations.Kind.INVASION), this
+        ) { _, _ ->
+            val resorting = viewModel.startLocationChanged()
+            Toast.makeText(
+                requireContext(),
+                if (resorting) R.string.start_location_saved else R.string.start_location_saved_time_sort,
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    private companion object {
+        const val START_LOCATION_DIALOG = "start_location"
     }
 
     private fun checkAndUpdateFabVisibility() {

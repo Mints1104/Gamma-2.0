@@ -118,6 +118,11 @@ class MainActivity : AppCompatActivity() {
         // Show sort options only on Home
         menu.findItem(R.id.action_sort_by_time)?.isVisible = isHome
         menu.findItem(R.id.action_sort_by_distance)?.isVisible = isHome
+        // Start location items: handled by HomeFragment / QuestsFragment
+        menu.findItem(R.id.action_set_invasion_start)?.isVisible = isHome
+        menu.findItem(R.id.action_reset_invasion_start)?.isVisible = isHome
+        menu.findItem(R.id.action_set_quest_start)?.isVisible = isQuests
+        menu.findItem(R.id.action_reset_quest_start)?.isVisible = isQuests
         return super.onPrepareOptionsMenu(menu)
     }
 

@@ -2,6 +2,8 @@ package com.mints.projectgammatwo.data
 
 import com.mints.projectgammatwo.testutil.PrefsContext
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -63,6 +65,44 @@ class LastLocationsTest {
             .apply()
 
         assertNull(LastLocations(context).invasion())
+        assertNull(LastLocations(context).quest())
+    }
+
+    @Test
+    fun `a point set by hand is marked manual until a stop replaces it`() {
+        val locations = LastLocations(PrefsContext())
+        locations.set(LastLocations.Kind.QUEST, 35.6, 139.7, manual = true)
+        assertEquals(35.6 to 139.7, locations.quest())
+        assertTrue(locations.isManual(LastLocations.Kind.QUEST))
+
+        locations.saveQuest(35.7, 139.8)
+        assertFalse(locations.isManual(LastLocations.Kind.QUEST))
+    }
+
+    @Test
+    fun `clearing one point leaves the other`() {
+        val locations = LastLocations(PrefsContext())
+        locations.saveInvasion(1.0, 2.0)
+        locations.saveQuest(3.0, 4.0)
+
+        locations.clear(LastLocations.Kind.QUEST)
+
+        assertNull(locations.quest())
+        assertFalse(locations.isManual(LastLocations.Kind.QUEST))
+        assertEquals(1.0 to 2.0, locations.invasion())
+    }
+
+    @Test
+    fun `clearing the quest point also forgets the legacy float keys`() {
+        // Otherwise the old floats would be read back and the reset would do nothing.
+        val context = PrefsContext()
+        context.getSharedPreferences("last_visited_pref", 0).edit()
+            .putFloat("lastVisitedLat", 1.5f)
+            .putFloat("lastVisitedLng", -2.5f)
+            .apply()
+
+        LastLocations(context).clear(LastLocations.Kind.QUEST)
+
         assertNull(LastLocations(context).quest())
     }
 }

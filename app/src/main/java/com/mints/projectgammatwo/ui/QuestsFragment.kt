@@ -2,17 +2,23 @@ package com.mints.projectgammatwo.ui
 
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.mints.projectgammatwo.R
+import com.mints.projectgammatwo.data.LastLocations
 import com.mints.projectgammatwo.data.Quests
 import com.mints.projectgammatwo.helpers.OverlayButtonController
 import com.mints.projectgammatwo.recyclerviews.QuestsAdapter
@@ -33,6 +39,50 @@ class QuestsFragment : Fragment() {
     // Track listeners to properly unregister on view teardown
     private var scrollListener: RecyclerView.OnScrollListener? = null
     private var dataObserver: RecyclerView.AdapterDataObserver? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Registered here so a dialog restored after rotation still has someone to report to.
+        childFragmentManager.setFragmentResultListener(
+            StartLocationDialogFragment.requestKey(LastLocations.Kind.QUEST), this
+        ) { _, _ ->
+            reorderFromStartLocation()
+            Toast.makeText(requireContext(), R.string.start_location_saved, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** Handles the start location items; MainActivity inflates the Quests menu they belong to. */
+    private val startLocationMenuProvider = object : MenuProvider {
+        override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) = Unit
+
+        override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
+            R.id.action_set_quest_start -> {
+                if (childFragmentManager.findFragmentByTag(START_LOCATION_DIALOG) == null) {
+                    StartLocationDialogFragment.newInstance(LastLocations.Kind.QUEST)
+                        .show(childFragmentManager, START_LOCATION_DIALOG)
+                }
+                true
+            }
+            R.id.action_reset_quest_start -> {
+                LastLocations(requireContext()).clear(LastLocations.Kind.QUEST)
+                reorderFromStartLocation()
+                Toast.makeText(requireContext(), R.string.start_location_reset, Toast.LENGTH_SHORT).show()
+                true
+            }
+            else -> false
+        }
+    }
+
+    /**
+     * Refetches so the list orders from the new start point. A refetch, not a re-sort: the
+     * fetch keeps only the 500 quests nearest the start point, so the old list may not even
+     * contain the quests near the new one.
+     */
+    private fun reorderFromStartLocation() {
+        // The view may be gone when a restored dialog reports back during re-creation.
+        if (view != null && ::swipeRefresh.isInitialized) swipeRefresh.isRefreshing = true
+        ViewModelProvider(requireActivity())[QuestsViewModel::class.java].fetchQuests()
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -95,6 +145,8 @@ class QuestsFragment : Fragment() {
         }
 
         overlayButton.bind(view.findViewById(R.id.startServiceButton))
+
+        requireActivity().addMenuProvider(startLocationMenuProvider, viewLifecycleOwner, Lifecycle.State.RESUMED)
 
         if (questsViewModel.refreshIfStale()) {
             swipeRefresh.isRefreshing = true
@@ -167,5 +219,9 @@ class QuestsFragment : Fragment() {
         overlayButton.updateLabel()
         checkAndUpdateFabVisibility()
 
+    }
+
+    private companion object {
+        const val START_LOCATION_DIALOG = "start_location"
     }
 }

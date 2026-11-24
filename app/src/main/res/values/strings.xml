@@ -298,4 +298,20 @@
         <item quantity="one">Found %1$d invasion</item>
         <item quantity="other">Found %1$d invasions</item>
     </plurals>
+    <!-- Start location (the point the distance sort / nearest-first quest order begins at) -->
+    <string name="set_start_location">Set Start Location</string>
+    <string name="reset_last_location">Reset Last Location</string>
+    <string name="start_location_title_quests">Quest Start Location</string>
+    <string name="start_location_title_rockets">Rocket Start Location</string>
+    <string name="start_location_from_quest">From your last visited quest. Updates as you visit quests.</string>
+    <string name="start_location_from_rocket">From your last battled grunt. Updates as you battle.</string>
+    <string name="start_location_manual">Set by you. Visiting a stop replaces it.</string>
+    <string name="start_location_not_set_quests">Not set. The list starts with the first quest the server sends.</string>
+    <string name="start_location_not_set_rockets">Not set. The list starts with the first invasion the server sends.</string>
+    <string name="start_location_invalid">Enter latitude, longitude (e.g. 40.7128, -74.0060)</string>
+    <string name="start_location_paste">Paste</string>
+    <string name="start_location_set">Set</string>
+    <string name="start_location_saved">Start location set</string>
+    <string name="start_location_saved_time_sort">Start location set. It\'s used when sorting by distance.</string>
+    <string name="start_location_reset">Last location reset</string>
 </resources>

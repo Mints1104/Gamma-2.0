@@ -21,5 +21,13 @@
         android:icon="@drawable/history_24px"
         app:showAsAction="never"/>
 
+    <item
+        android:id="@+id/action_set_invasion_start"
+        android:title="@string/set_start_location"
+        app:showAsAction="never"/>
 
+    <item
+        android:id="@+id/action_reset_invasion_start"
+        android:title="@string/reset_last_location"
+        app:showAsAction="never"/>
 </menu>

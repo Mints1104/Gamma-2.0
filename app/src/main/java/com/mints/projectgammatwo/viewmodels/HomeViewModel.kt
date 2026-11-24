@@ -281,6 +281,19 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         fetchInvasions(scrollToTop = true)
     }
 
+    /**
+     * The distance sort's start point was set or reset by hand. Refetches (the list is capped
+     * after sorting, so re-sorting what's shown would miss invasions near the new point) when
+     * the distance sort is in use; the time sort doesn't read it.
+     *
+     * @return whether the list is being re-sorted.
+     */
+    fun startLocationChanged(): Boolean {
+        if (!sortByDistanceInternal) return false
+        fetchInvasions(scrollToTop = true)
+        return true
+    }
+
     // When an invasion is deleted/handled, record its coords as last invasion and remove from list.
     fun deleteInvasion(invasion: Invasion) {
         val current = _invasions.value.orEmpty()
